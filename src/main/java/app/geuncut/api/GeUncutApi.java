@@ -4,8 +4,10 @@ import java.util.function.Consumer;
 import java.util.List;
 
 import app.geuncut.dto.FlipsResponse;
+import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
+import app.geuncut.dto.PositionsResponse;
 
 /**
  * The plugin's contract with geuncut.app. Services depend on this seam, never
@@ -18,7 +20,11 @@ import app.geuncut.dto.LinkSession;
 public interface GeUncutApi {
 	void fetchFlips(String scanType, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
 
+	void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError);
+
 	void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError);
+
+	void postOffers(String accountHash, List<GeOffer> offers, Runnable onSuccess, Consumer<ApiFailure> onError);
 
 	void startLink(Consumer<LinkSession> onSuccess, Consumer<ApiFailure> onError);
 

@@ -3,10 +3,7 @@ package app.geuncut.service.impl;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.Deque;
-import java.util.function.Supplier;
 import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -25,37 +22,23 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Singleton
-public class TradeSyncServiceImpl implements TradeSyncService {
+public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSyncService {
 	private static final int FLUSH_SECONDS = 5;
 	private static final int MAX_QUEUED = 200;
 
 	private final GeUncutApi api;
 	private final GeUncutConfig config;
-	private final ScheduledExecutorService executor;
 	private final Deque<GeTradeEvent> queue = new ArrayDeque<>();
-
-	private ScheduledFuture<?> flusher;
-	private Supplier<String> accountHashSupplier;
 
 	@Inject
 	public TradeSyncServiceImpl(GeUncutApi api, GeUncutConfig config, ScheduledExecutorService executor) {
+		super(executor, FLUSH_SECONDS);
 		this.api = api;
 		this.config = config;
-		this.executor = executor;
 	}
 
 	@Override
-	public void start(Supplier<String> accountHashSupplier) {
-		this.accountHashSupplier = accountHashSupplier;
-		flusher = executor.scheduleWithFixedDelay(this::flush, FLUSH_SECONDS, FLUSH_SECONDS, TimeUnit.SECONDS);
-	}
-
-	@Override
-	public void stop() {
-		if (flusher != null) {
-			flusher.cancel(false);
-			flusher = null;
-		}
+	protected void onStop() {
 		flush();
 		synchronized (queue) {
 			queue.clear();
@@ -76,7 +59,8 @@ public class TradeSyncServiceImpl implements TradeSyncService {
 		}
 	}
 
-	private void flush() {
+	@Override
+	protected void flush() {
 		List<GeTradeEvent> batch;
 		synchronized (queue) {
 			if (queue.isEmpty()) {
@@ -105,7 +89,7 @@ public class TradeSyncServiceImpl implements TradeSyncService {
 	}
 
 	private GeTradeEvent toPayload(OfferDelta delta) {
-		String accountHash = accountHashSupplier.get();
+		String accountHash = accountHash();
 		return GeTradeEvent.builder()
 				.accountHash(accountHash)
 				.idempotencyKey(idempotencyKey(accountHash, delta))

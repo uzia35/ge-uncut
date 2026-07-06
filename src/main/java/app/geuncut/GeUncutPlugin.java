@@ -2,18 +2,26 @@ package app.geuncut;
 
 import java.awt.image.BufferedImage;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.api.impl.HttpGeUncutApi;
 import app.geuncut.config.GeUncutConfig;
+import app.geuncut.dto.GeOffer;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.FlipsService;
 import app.geuncut.service.impl.FlipsServiceImpl;
 import app.geuncut.service.impl.LinkServiceImpl;
+import app.geuncut.service.impl.OfferSyncServiceImpl;
+import app.geuncut.service.impl.PositionsServiceImpl;
 import app.geuncut.service.impl.TradeSyncServiceImpl;
 import app.geuncut.service.LinkService;
+import app.geuncut.service.OfferSyncService;
+import app.geuncut.service.PositionsService;
 import app.geuncut.service.TradeSyncService;
 import app.geuncut.tracker.BuyLimitTracker;
 import app.geuncut.tracker.impl.BuyLimitTrackerImpl;
@@ -28,7 +36,9 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.ItemComposition;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -44,8 +54,10 @@ public class GeUncutPlugin extends Plugin {
 	public void configure(Binder binder) {
 		binder.bind(GeUncutApi.class).to(HttpGeUncutApi.class);
 		binder.bind(FlipsService.class).to(FlipsServiceImpl.class);
+		binder.bind(PositionsService.class).to(PositionsServiceImpl.class);
 		binder.bind(LinkService.class).to(LinkServiceImpl.class);
 		binder.bind(TradeSyncService.class).to(TradeSyncServiceImpl.class);
+		binder.bind(OfferSyncService.class).to(OfferSyncServiceImpl.class);
 		binder.bind(OfferTracker.class).to(OfferTrackerImpl.class);
 		binder.bind(BuyLimitTracker.class).to(BuyLimitTrackerImpl.class);
 	}
@@ -54,16 +66,25 @@ public class GeUncutPlugin extends Plugin {
 	private Client client;
 
 	@Inject
+	private ItemManager itemManager;
+
+	@Inject
 	private ClientToolbar clientToolbar;
 
 	@Inject
 	private FlipsService flips;
 
 	@Inject
+	private PositionsService positions;
+
+	@Inject
 	private LinkService link;
 
 	@Inject
 	private TradeSyncService tradeSync;
+
+	@Inject
+	private OfferSyncService offerSync;
 
 	@Inject
 	private OfferTracker offerTracker;
@@ -76,7 +97,7 @@ public class GeUncutPlugin extends Plugin {
 
 	@Override
 	protected void startUp() {
-		panel = new FlipsPanel(this::refreshFlips, this::linkAccount);
+		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, itemManager);
 		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
 		navButton = NavigationButton.builder()
 				.tooltip("GE Uncut")
@@ -87,6 +108,7 @@ public class GeUncutPlugin extends Plugin {
 		clientToolbar.addNavigation(navButton);
 
 		tradeSync.start(() -> Long.toString(client.getAccountHash()));
+		offerSync.start(() -> Long.toString(client.getAccountHash()));
 		refreshFlips();
 	}
 
@@ -94,6 +116,7 @@ public class GeUncutPlugin extends Plugin {
 	protected void shutDown() {
 		link.cancel();
 		tradeSync.stop();
+		offerSync.stop();
 		clientToolbar.removeNavigation(navButton);
 		offerTracker.reset();
 		buyLimits.reset();
@@ -109,13 +132,34 @@ public class GeUncutPlugin extends Plugin {
 	@Subscribe
 	public void onGrandExchangeOfferChanged(GrandExchangeOfferChanged event) {
 		GrandExchangeOffer offer = event.getOffer();
+		Instant now = Instant.now();
 		offerTracker.onOfferChanged(
 				event.getSlot(),
 				offer.getItemId(),
 				offer.getState(),
 				offer.getQuantitySold(),
 				offer.getSpent(),
-				Instant.now()).ifPresent(this::onFill);
+				now).ifPresent(this::onFill);
+		offerSync.record(
+				event.getSlot(),
+				offer.getItemId(),
+				offer.getState(),
+				offer.getQuantitySold(),
+				offer.getTotalQuantity(),
+				offer.getPrice(),
+				now);
+		// Resolve names here on the client thread; the panel only has item ids.
+		List<GeOffer> working = offerSync.current();
+		Map<Integer, String> itemNames = new HashMap<>();
+		for (GeOffer openOffer : working) {
+			itemNames.computeIfAbsent(openOffer.getItemId(), this::itemName);
+		}
+		SwingUtilities.invokeLater(() -> panel.showOffers(working, itemNames));
+	}
+
+	private String itemName(int itemId) {
+		ItemComposition composition = itemManager.getItemComposition(itemId);
+		return composition != null ? composition.getName() : "Item " + itemId;
 	}
 
 	@Provides
@@ -134,8 +178,12 @@ public class GeUncutPlugin extends Plugin {
 
 	private void refreshFlips() {
 		SwingUtilities.invokeLater(() -> panel.showStatus("Scanning..."));
+		refreshPositions();
 		flips.fetch(panel.selectedScan(),
-				list -> SwingUtilities.invokeLater(() -> panel.showFlips(list)),
+				list -> SwingUtilities.invokeLater(() -> {
+					panel.setLinked(true);
+					panel.showFlips(list);
+				}),
 				failure -> SwingUtilities.invokeLater(() -> {
 					// Unauthorized means unlinked (never paired, revoked, or the
 					// token aged out): offer pairing instead of an error message.
@@ -145,6 +193,15 @@ public class GeUncutPlugin extends Plugin {
 						panel.showStatus(failure.getMessage());
 					}
 				}));
+	}
+
+	private void refreshPositions() {
+		// Best-effort: an unlinked or offline fetch leaves the last known flips in
+		// place; the flip scan above is what surfaces the link prompt.
+		positions.fetch(
+				response -> SwingUtilities.invokeLater(() -> panel.showActiveFlips(response)),
+				failure -> log.debug("event=positions_fetch_failed kind={} status={}",
+						failure.getKind(), failure.getStatusCode()));
 	}
 
 	private void linkAccount() {

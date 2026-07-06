@@ -7,8 +7,10 @@ import java.util.List;
 import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.FlipsResponse;
+import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
+import app.geuncut.dto.PositionsResponse;
 
 /**
  * Scriptable in-memory GeUncutApi. Calls are recorded; outcomes are whatever
@@ -16,19 +18,32 @@ import app.geuncut.dto.LinkSession;
  */
 class MockGeUncutApi implements GeUncutApi {
 	boolean failNextPost;
+	boolean failNextOffers;
 	String linkToken;
 	boolean linkPending = true;
 	ApiFailure failure = ApiFailure.network("boom");
 	LinkSession session;
 	FlipsResponse flipsResponse;
+	PositionsResponse positionsResponse;
 
 	final List<List<GeTradeEvent>> postedBatches = new ArrayList<>();
+	final List<List<GeOffer>> postedOffers = new ArrayList<>();
+	String lastOffersAccountHash;
 	int pollCount;
 
 	@Override
 	public void fetchFlips(String scanType, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
 		if (flipsResponse != null) {
 			onSuccess.accept(flipsResponse);
+		} else {
+			onError.accept(failure);
+		}
+	}
+
+	@Override
+	public void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError) {
+		if (positionsResponse != null) {
+			onSuccess.accept(positionsResponse);
 		} else {
 			onError.accept(failure);
 		}
@@ -42,6 +57,18 @@ class MockGeUncutApi implements GeUncutApi {
 			return;
 		}
 		postedBatches.add(new ArrayList<>(events));
+		onSuccess.run();
+	}
+
+	@Override
+	public void postOffers(String accountHash, List<GeOffer> offers, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		if (failNextOffers) {
+			failNextOffers = false;
+			onError.accept(failure);
+			return;
+		}
+		lastOffersAccountHash = accountHash;
+		postedOffers.add(new ArrayList<>(offers));
 		onSuccess.run();
 	}
 
