@@ -7,7 +7,6 @@ import java.util.Optional;
 import javax.inject.Singleton;
 
 import app.geuncut.model.OfferDelta;
-import app.geuncut.model.OfferSnapshot;
 import app.geuncut.tracker.OfferTracker;
 import net.runelite.api.GrandExchangeOfferState;
 

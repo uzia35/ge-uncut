@@ -1,5 +1,6 @@
 package app.geuncut.tracker.impl;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -8,11 +9,12 @@ import java.util.Map;
 import java.util.Optional;
 import javax.inject.Singleton;
 
-import app.geuncut.model.Purchase;
 import app.geuncut.tracker.BuyLimitTracker;
 
 @Singleton
 public class BuyLimitTrackerImpl implements BuyLimitTracker {
+	private static final Duration WINDOW = Duration.ofHours(4);
+
 	private final Map<Integer, Deque<Purchase>> purchasesByItem = new HashMap<>();
 
 	@Override

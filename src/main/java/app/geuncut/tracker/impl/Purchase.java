@@ -1,11 +1,11 @@
-package app.geuncut.model;
+package app.geuncut.tracker.impl;
 
 import java.time.Instant;
 
 import lombok.Value;
 
 @Value
-public class Purchase {
+class Purchase {
 	int quantity;
 	Instant boughtAt;
 }

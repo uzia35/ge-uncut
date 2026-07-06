@@ -1,9 +1,9 @@
-package app.geuncut.model;
+package app.geuncut.tracker.impl;
 
 import lombok.Value;
 
 @Value
-public class OfferSnapshot {
+class OfferSnapshot {
 	int itemId;
 	int quantitySold;
 	int spent;
