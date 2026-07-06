@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.HttpUrl;
+import okhttp3.Interceptor;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -38,9 +39,28 @@ public class HttpGeUncutApi implements GeUncutApi {
 
 	@Inject
 	public HttpGeUncutApi(OkHttpClient http, Gson gson, GeUncutConfig config) {
-		this.http = http;
+		// Plugin-scoped client derived from RuneLite's shared instance: same
+		// connection pool and dispatcher, but the auth interceptor only ever
+		// sees this plugin's requests.
+		this.http = http.newBuilder().addInterceptor(this::authorize).build();
 		this.gson = gson;
 		this.config = config;
+	}
+
+	private Response authorize(Interceptor.Chain chain) throws IOException {
+		Request request = chain.request();
+		String token = config.apiToken().trim();
+		if (token.isEmpty() || isAnonymous(request)) {
+			return chain.proceed(request);
+		}
+		return chain.proceed(request.newBuilder()
+				.header("Authorization", "Bearer " + token)
+				.build());
+	}
+
+	private static boolean isAnonymous(Request request) {
+		// Pairing runs before a token exists; those endpoints never carry one.
+		return request.url().encodedPath().startsWith("/api/plugin/link/");
 	}
 
 	@Override
@@ -53,7 +73,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 		HttpUrl url = HttpUrl.parse(config.apiBase() + "/api/plugin/flips").newBuilder()
 				.addQueryParameter("scan_type", scanType)
 				.build();
-		Request request = authorized(new Request.Builder().url(url).get()).build();
+		Request request = new Request.Builder().url(url).get().build();
 		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, FlipsResponse.class)));
 	}
 
@@ -61,9 +81,9 @@ public class HttpGeUncutApi implements GeUncutApi {
 	public void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<String> onError) {
 		JsonObject payload = new JsonObject();
 		payload.add("events", gson.toJsonTree(events));
-		Request request = authorized(new Request.Builder()
+		Request request = new Request.Builder()
 				.url(config.apiBase() + "/api/plugin/ge-events")
-				.post(RequestBody.create(JSON, payload.toString())))
+				.post(RequestBody.create(JSON, payload.toString()))
 				.build();
 		enqueue(request, onError, body -> onSuccess.run());
 	}
@@ -93,10 +113,6 @@ public class HttpGeUncutApi implements GeUncutApi {
 				onToken.accept(parsed.get("token").getAsString());
 			}
 		});
-	}
-
-	private Request.Builder authorized(Request.Builder builder) {
-		return builder.header("Authorization", "Bearer " + config.apiToken().trim());
 	}
 
 	private void enqueue(Request request, Consumer<String> onError, Consumer<String> onBody) {
