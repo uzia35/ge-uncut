@@ -1,5 +1,6 @@
 package app.geuncut.api;
 
+import java.net.HttpURLConnection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -83,62 +84,65 @@ public class HttpGeUncutApiTest {
 
 	@Test
 	public void unauthorizedResponseReportsTheRelinkMessage() throws Exception {
-		server.enqueue(new MockResponse().setResponseCode(401).setBody("{}"));
+		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_UNAUTHORIZED).setBody("{}"));
 
-		AtomicReference<String> error = new AtomicReference<>();
+		AtomicReference<ApiFailure> error = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", response -> done.countDown(), message -> {
-			error.set(message);
+		api.fetchFlips("standard", response -> done.countDown(), failure -> {
+			error.set(failure);
 			done.countDown();
 		});
 
 		assertTrue(done.await(2, TimeUnit.SECONDS));
-		assertEquals("This plugin is no longer linked. Link it again from the panel.", error.get());
+		assertTrue(error.get().isUnauthorized());
+		assertEquals("This plugin is no longer linked. Link it again from the panel.", error.get().getMessage());
 	}
 
 	@Test
 	public void serverErrorReportsTheStatusCode() throws Exception {
-		server.enqueue(new MockResponse().setResponseCode(503).setBody("{}"));
+		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_UNAVAILABLE).setBody("{}"));
 
-		AtomicReference<String> error = new AtomicReference<>();
+		AtomicReference<ApiFailure> error = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", response -> done.countDown(), message -> {
-			error.set(message);
+		api.fetchFlips("standard", response -> done.countDown(), failure -> {
+			error.set(failure);
 			done.countDown();
 		});
 
 		assertTrue(done.await(2, TimeUnit.SECONDS));
-		assertEquals("geuncut.app error 503", error.get());
+		assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, error.get().getStatusCode());
+		assertEquals("geuncut.app error 503", error.get().getMessage());
 	}
 
 	@Test
 	public void unreachableServerReportsUnreachable() throws Exception {
 		server.shutdown();
 
-		AtomicReference<String> error = new AtomicReference<>();
+		AtomicReference<ApiFailure> error = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", response -> done.countDown(), message -> {
-			error.set(message);
+		api.fetchFlips("standard", response -> done.countDown(), failure -> {
+			error.set(failure);
 			done.countDown();
 		});
 
 		assertTrue(done.await(2, TimeUnit.SECONDS));
-		assertEquals("geuncut.app is unreachable", error.get());
+		assertEquals(ApiFailure.NETWORK_FAILURE, error.get().getStatusCode());
+		assertEquals("geuncut.app is unreachable", error.get().getMessage());
 	}
 
 	@Test
 	public void malformedBodyReportsUnexpectedResponse() throws Exception {
 		server.enqueue(new MockResponse().setBody("not json"));
 
-		AtomicReference<String> error = new AtomicReference<>();
+		AtomicReference<ApiFailure> error = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", response -> done.countDown(), message -> {
-			error.set(message);
+		api.fetchFlips("standard", response -> done.countDown(), failure -> {
+			error.set(failure);
 			done.countDown();
 		});
 
 		assertTrue(done.await(2, TimeUnit.SECONDS));
-		assertEquals("Unexpected response from geuncut.app", error.get());
+		assertEquals("Unexpected response from geuncut.app", error.get().getMessage());
 	}
 
 	@Test

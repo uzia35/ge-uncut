@@ -3,13 +3,13 @@ package app.geuncut.service;
 import java.util.function.Consumer;
 import java.util.List;
 
+import app.geuncut.api.ApiFailure;
 import app.geuncut.dto.Flip;
 
 /**
- * The caller's personalized flip list.
+ * The caller's personalized flip list. An unlinked plugin surfaces as an
+ * unauthorized ApiFailure; there is no client-side link state to consult.
  */
 public interface FlipsService {
-	boolean isLinked();
-
-	void fetch(String scanType, Consumer<List<Flip>> onSuccess, Consumer<String> onError);
+	void fetch(String scanType, Consumer<List<Flip>> onSuccess, Consumer<ApiFailure> onError);
 }

@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
+import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.LinkSession;
@@ -55,7 +56,7 @@ public class LinkServiceImpl implements LinkService {
 	}
 
 	@Override
-	public void begin(Consumer<String> onCode, Runnable onLinked, Consumer<String> onError) {
+	public void begin(Consumer<String> onCode, Runnable onLinked, Consumer<ApiFailure> onError) {
 		if (session != null) {
 			openClaimPage();
 			return;
@@ -77,7 +78,7 @@ public class LinkServiceImpl implements LinkService {
 		}
 	}
 
-	private void poll(Runnable onLinked, Consumer<String> onError) {
+	private void poll(Runnable onLinked, Consumer<ApiFailure> onError) {
 		if (session == null) {
 			return;
 		}
@@ -89,10 +90,10 @@ public class LinkServiceImpl implements LinkService {
 				},
 				() -> {
 				},
-				error -> {
-					log.debug("link polling stopped: {}", error);
+				failure -> {
+					log.debug("link polling stopped: {}", failure.getMessage());
 					cancel();
-					onError.accept(error);
+					onError.accept(failure);
 				});
 	}
 }

@@ -1,11 +1,13 @@
 package app.geuncut.api.impl;
 
 import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.util.function.Consumer;
 import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
+import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.FlipsResponse;
@@ -64,12 +66,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public boolean hasToken() {
-		return !config.apiToken().trim().isEmpty();
-	}
-
-	@Override
-	public void fetchFlips(String scanType, Consumer<FlipsResponse> onSuccess, Consumer<String> onError) {
+	public void fetchFlips(String scanType, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
 		HttpUrl url = HttpUrl.parse(config.apiBase() + "/api/plugin/flips").newBuilder()
 				.addQueryParameter("scan_type", scanType)
 				.build();
@@ -78,7 +75,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<String> onError) {
+	public void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError) {
 		JsonObject payload = new JsonObject();
 		payload.add("events", gson.toJsonTree(events));
 		Request request = new Request.Builder()
@@ -89,7 +86,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void startLink(Consumer<LinkSession> onSuccess, Consumer<String> onError) {
+	public void startLink(Consumer<LinkSession> onSuccess, Consumer<ApiFailure> onError) {
 		Request request = new Request.Builder()
 				.url(config.apiBase() + "/api/plugin/link/start")
 				.post(RequestBody.create(JSON, "{}"))
@@ -98,7 +95,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void pollLink(String deviceCode, Consumer<String> onToken, Runnable onPending, Consumer<String> onError) {
+	public void pollLink(String deviceCode, Consumer<String> onToken, Runnable onPending, Consumer<ApiFailure> onError) {
 		JsonObject payload = new JsonObject();
 		payload.addProperty("device_code", deviceCode);
 		Request request = new Request.Builder()
@@ -115,29 +112,31 @@ public class HttpGeUncutApi implements GeUncutApi {
 		});
 	}
 
-	private void enqueue(Request request, Consumer<String> onError, Consumer<String> onBody) {
+	private void enqueue(Request request, Consumer<ApiFailure> onError, Consumer<String> onBody) {
 		http.newCall(request).enqueue(new Callback() {
 			@Override
 			public void onFailure(Call call, IOException exception) {
 				log.debug("geuncut request failed: {}", exception.getMessage());
-				onError.accept("geuncut.app is unreachable");
+				onError.accept(ApiFailure.network("geuncut.app is unreachable"));
 			}
 
 			@Override
 			public void onResponse(Call call, Response response) {
 				try (Response managedResponse = response) {
-					if (managedResponse.code() == 401) {
-						onError.accept("This plugin is no longer linked. Link it again from the panel.");
+					int statusCode = managedResponse.code();
+					if (statusCode == HttpURLConnection.HTTP_UNAUTHORIZED) {
+						onError.accept(ApiFailure.http(statusCode,
+								"This plugin is no longer linked. Link it again from the panel."));
 						return;
 					}
 					if (!managedResponse.isSuccessful()) {
-						onError.accept("geuncut.app error " + managedResponse.code());
+						onError.accept(ApiFailure.http(statusCode, "geuncut.app error " + statusCode));
 						return;
 					}
 					onBody.accept(managedResponse.body().string());
 				} catch (Exception exception) {
 					log.debug("geuncut response handling failed", exception);
-					onError.accept("Unexpected response from geuncut.app");
+					onError.accept(ApiFailure.network("Unexpected response from geuncut.app"));
 				}
 			}
 		});

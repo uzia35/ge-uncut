@@ -129,14 +129,18 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshFlips() {
-		if (!flips.isLinked()) {
-			SwingUtilities.invokeLater(panel::showLinkPrompt);
-			return;
-		}
 		SwingUtilities.invokeLater(() -> panel.showStatus("Scanning..."));
 		flips.fetch(panel.selectedScan(),
 				list -> SwingUtilities.invokeLater(() -> panel.showFlips(list)),
-				error -> SwingUtilities.invokeLater(() -> panel.showStatus(error)));
+				failure -> SwingUtilities.invokeLater(() -> {
+					// Unauthorized means unlinked (never paired, revoked, or the
+					// token aged out): offer pairing instead of an error message.
+					if (failure.isUnauthorized()) {
+						panel.showLinkPrompt();
+					} else {
+						panel.showStatus(failure.getMessage());
+					}
+				}));
 	}
 
 	private void linkAccount() {
@@ -147,6 +151,6 @@ public class GeUncutPlugin extends Plugin {
 		link.begin(
 				code -> SwingUtilities.invokeLater(() -> panel.showLinkCode(code)),
 				this::refreshFlips,
-				error -> SwingUtilities.invokeLater(() -> panel.showStatus(error)));
+				failure -> SwingUtilities.invokeLater(() -> panel.showStatus(failure.getMessage())));
 	}
 }

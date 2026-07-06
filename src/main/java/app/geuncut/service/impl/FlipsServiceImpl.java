@@ -5,6 +5,7 @@ import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
+import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.Flip;
 import app.geuncut.service.FlipsService;
@@ -22,12 +23,7 @@ public class FlipsServiceImpl implements FlipsService {
 	}
 
 	@Override
-	public boolean isLinked() {
-		return api.hasToken();
-	}
-
-	@Override
-	public void fetch(String scanType, Consumer<List<Flip>> onSuccess, Consumer<String> onError) {
+	public void fetch(String scanType, Consumer<List<Flip>> onSuccess, Consumer<ApiFailure> onError) {
 		api.fetchFlips(scanType, response -> onSuccess.accept(response.getFlips()), onError);
 	}
 }

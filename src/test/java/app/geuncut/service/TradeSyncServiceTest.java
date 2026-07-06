@@ -1,9 +1,11 @@
 package app.geuncut.service;
 
+import java.net.HttpURLConnection;
 import java.time.Instant;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import app.geuncut.api.ApiFailure;
 import app.geuncut.config.GeUncutConfig;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.impl.TradeSyncServiceImpl;
@@ -90,9 +92,12 @@ public class TradeSyncServiceTest {
 	}
 
 	@Test
-	public void missingTokenDropsFills() {
-		api.tokenPresent = false;
+	public void unauthorizedFlushDropsTheBatchInsteadOfRetrying() {
 		service.accept(buy(3));
+		api.failNextPost = true;
+		api.failure = ApiFailure.http(HttpURLConnection.HTTP_UNAUTHORIZED, "not linked");
+		flushTick.run();
+
 		flushTick.run();
 		assertTrue(api.postedBatches.isEmpty());
 	}

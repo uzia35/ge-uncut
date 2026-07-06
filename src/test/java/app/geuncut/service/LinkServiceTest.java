@@ -5,6 +5,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.List;
 
+import app.geuncut.api.ApiFailure;
 import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.service.impl.LinkServiceImpl;
@@ -29,7 +30,7 @@ public class LinkServiceTest {
 	private LinkService service;
 
 	private final List<String> shownCodes = new ArrayList<>();
-	private final List<String> errors = new ArrayList<>();
+	private final List<ApiFailure> errors = new ArrayList<>();
 	private int linkedCalls;
 
 	@Before

@@ -10,15 +10,17 @@ import app.geuncut.dto.LinkSession;
 /**
  * The plugin's contract with geuncut.app. Services depend on this seam, never
  * on the HTTP implementation, so they are testable without a network.
+ *
+ * Authentication is entirely the transport's concern: callers never see the
+ * token, and an expired or missing link surfaces as an unauthorized
+ * ApiFailure.
  */
 public interface GeUncutApi {
-	boolean hasToken();
+	void fetchFlips(String scanType, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
 
-	void fetchFlips(String scanType, Consumer<FlipsResponse> onSuccess, Consumer<String> onError);
+	void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError);
 
-	void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<String> onError);
+	void startLink(Consumer<LinkSession> onSuccess, Consumer<ApiFailure> onError);
 
-	void startLink(Consumer<LinkSession> onSuccess, Consumer<String> onError);
-
-	void pollLink(String deviceCode, Consumer<String> onToken, Runnable onPending, Consumer<String> onError);
+	void pollLink(String deviceCode, Consumer<String> onToken, Runnable onPending, Consumer<ApiFailure> onError);
 }
