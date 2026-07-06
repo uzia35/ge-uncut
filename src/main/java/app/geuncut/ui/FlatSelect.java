@@ -3,6 +3,9 @@ package app.geuncut.ui;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Cursor;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import javax.swing.BorderFactory;
@@ -13,8 +16,8 @@ import javax.swing.SwingUtilities;
 
 /**
  * A flat, brand-styled dropdown that replaces the default Swing combo box (a
- * beveled, Windows-era control). Shows the current value and a chevron; a click
- * opens a dark popup of the options.
+ * beveled, Windows-era control). Shows the current value and a painted chevron;
+ * a click opens a dark popup of the options.
  */
 class FlatSelect extends RoundedPanel {
 	private final String[] options;
@@ -28,16 +31,12 @@ class FlatSelect extends RoundedPanel {
 		this.options = options;
 		this.selectedIndex = selectedIndex;
 		setLayout(new BorderLayout(6, 0));
-		setBorder(BorderFactory.createEmptyBorder(5, 9, 5, 8));
+		setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 18));
 
 		valueLabel = new JLabel(options[selectedIndex]);
 		valueLabel.setForeground(Theme.INK);
 		valueLabel.setFont(Theme.BODY);
-		JLabel chevron = new JLabel("▾");
-		chevron.setForeground(Theme.FAINT);
-		chevron.setFont(Theme.SMALL);
 		add(valueLabel, BorderLayout.CENTER);
-		add(chevron, BorderLayout.EAST);
 
 		MouseAdapter adapter = new MouseAdapter() {
 			@Override
@@ -60,7 +59,18 @@ class FlatSelect extends RoundedPanel {
 		setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		addMouseListener(adapter);
 		valueLabel.addMouseListener(adapter);
-		chevron.addMouseListener(adapter);
+	}
+
+	@Override
+	protected void paintComponent(Graphics g) {
+		super.paintComponent(g);
+		Graphics2D g2 = (Graphics2D) g.create();
+		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		g2.setColor(Theme.FAINT);
+		int cx = getWidth() - 12;
+		int cy = getHeight() / 2;
+		g2.fillPolygon(new int[] { cx - 4, cx + 4, cx }, new int[] { cy - 2, cy - 2, cy + 3 }, 3);
+		g2.dispose();
 	}
 
 	void setOnChange(Runnable onChange) {

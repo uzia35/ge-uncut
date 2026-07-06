@@ -271,23 +271,21 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private JPanel buildFinderBar(Runnable onRefresh) {
-		JPanel bar = new JPanel();
-		bar.setLayout(new BoxLayout(bar, BoxLayout.Y_AXIS));
+		JPanel bar = new JPanel(new BorderLayout(6, 0));
 		bar.setBackground(Theme.SURFACE);
 		bar.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		// Stacked (scan + refresh, then risk) so each control shows its full
-		// label at the panel's real width, mirroring the web scanner's options.
-		JPanel scanRow = new JPanel(new BorderLayout(6, 0));
-		scanRow.setBackground(Theme.SURFACE);
-		scanRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-		scanRow.add(scanPicker, BorderLayout.CENTER);
-		scanRow.add(flatButton("↻", onRefresh), BorderLayout.EAST);
-		bar.add(scanRow);
-		bar.add(Box.createVerticalStrut(6));
+		// Two equal-width dropdowns stacked, with one refresh button beside them
+		// spanning both rows, so scan and risk line up instead of one being short.
+		JPanel pickers = new JPanel();
+		pickers.setLayout(new BoxLayout(pickers, BoxLayout.Y_AXIS));
+		pickers.setBackground(Theme.SURFACE);
+		pickers.add(scanPicker);
+		pickers.add(Box.createVerticalStrut(6));
+		pickers.add(riskPicker);
 
-		riskPicker.setAlignmentX(Component.LEFT_ALIGNMENT);
-		bar.add(riskPicker);
+		bar.add(pickers, BorderLayout.CENTER);
+		bar.add(flatButton("↻", onRefresh), BorderLayout.EAST);
 		return bar;
 	}
 
