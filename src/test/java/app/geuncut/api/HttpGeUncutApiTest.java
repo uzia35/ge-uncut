@@ -162,7 +162,7 @@ public class HttpGeUncutApiTest {
 		});
 
 		assertTrue(done.await(5, TimeUnit.SECONDS));
-		assertEquals(ApiFailure.NETWORK_FAILURE, error.get().getStatusCode());
+		assertEquals(ApiFailure.Kind.NETWORK, error.get().getKind());
 		assertEquals("geuncut.app is unreachable", error.get().getMessage());
 	}
 

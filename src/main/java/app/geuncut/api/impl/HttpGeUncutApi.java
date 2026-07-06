@@ -3,6 +3,7 @@ package app.geuncut.api.impl;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.List;
@@ -38,6 +39,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 	private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 	private static final int MAX_ATTEMPTS = 3;
 	private static final long RETRY_BASE_DELAY_MS = 300;
+	private static final long RETRY_JITTER_MS = 150;
 
 	private final OkHttpClient http;
 	private final Gson gson;
@@ -160,7 +162,10 @@ public class HttpGeUncutApi implements GeUncutApi {
 					fail(failure);
 					return;
 				}
-				long delayMs = RETRY_BASE_DELAY_MS * attemptNumber;
+				// Jitter prevents a fleet of clients that failed together (server
+				// deploy, brief outage) from retrying in lockstep.
+				long delayMs = RETRY_BASE_DELAY_MS * attemptNumber
+						+ ThreadLocalRandom.current().nextLong(RETRY_JITTER_MS);
 				log.debug("event=api_retry path={} attempt={} delay_ms={} reason=\"{}\"",
 						request.url().encodedPath(), attemptNumber, delayMs, reason);
 				executor.schedule(

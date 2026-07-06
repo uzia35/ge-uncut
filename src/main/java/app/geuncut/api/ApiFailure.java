@@ -5,25 +5,28 @@ import java.net.HttpURLConnection;
 import lombok.Value;
 
 /**
- * A failed API call. statusCode is the HTTP status, or NETWORK_FAILURE when
- * the request never got a response.
+ * A failed API call. statusCode is only meaningful for HTTP failures.
  */
 @Value
 public class ApiFailure {
-	public static final int NETWORK_FAILURE = 0;
+	public enum Kind {
+		NETWORK,
+		HTTP
+	}
 
+	Kind kind;
 	int statusCode;
 	String message;
 
 	public static ApiFailure network(String message) {
-		return new ApiFailure(NETWORK_FAILURE, message);
+		return new ApiFailure(Kind.NETWORK, 0, message);
 	}
 
 	public static ApiFailure http(int statusCode, String message) {
-		return new ApiFailure(statusCode, message);
+		return new ApiFailure(Kind.HTTP, statusCode, message);
 	}
 
 	public boolean isUnauthorized() {
-		return statusCode == HttpURLConnection.HTTP_UNAUTHORIZED;
+		return kind == Kind.HTTP && statusCode == HttpURLConnection.HTTP_UNAUTHORIZED;
 	}
 }

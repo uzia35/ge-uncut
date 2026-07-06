@@ -95,7 +95,7 @@ public class TradeSyncServiceImpl implements TradeSyncService {
 						log.warn("event=trade_sync_unauthorized dropped={}", batch.size());
 						return;
 					}
-					log.debug("event=trade_sync_requeued count={} status={} reason=\"{}\"", batch.size(), failure.getStatusCode(), failure.getMessage());
+					log.debug("event=trade_sync_requeued count={} kind={} status={} reason=\"{}\"", batch.size(), failure.getKind(), failure.getStatusCode(), failure.getMessage());
 					synchronized (queue) {
 						for (int index = batch.size() - 1; index >= 0; index--) {
 							queue.addFirst(batch.get(index));
