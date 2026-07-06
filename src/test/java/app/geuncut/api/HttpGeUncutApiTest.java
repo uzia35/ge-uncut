@@ -13,8 +13,10 @@ import app.geuncut.api.impl.HttpGeUncutApi;
 import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.Flip;
 import app.geuncut.dto.FlipsResponse;
+import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
+import app.geuncut.dto.PositionsResponse;
 import com.google.gson.Gson;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
@@ -209,6 +211,68 @@ public class HttpGeUncutApiTest {
 		assertTrue(body.contains("\"idempotency_key\""));
 		assertTrue(body.contains("\"price_each\":1480000000"));
 		assertTrue(body.contains("\"occurred_at\":\"2026-07-05T12:00:00Z\""));
+	}
+
+	@Test
+	public void fetchPositionsParsesPositionsAndSummaryAndAuthenticates() throws Exception {
+		server.enqueue(new MockResponse().setBody(
+				"{\"positions\":[{\"item_id\":561,\"item_name\":\"Nature rune\",\"quantity\":100,"
+						+ "\"buy_price\":128,\"unrealized_profit\":3100,\"roi\":2.4,\"phase\":\"hold\","
+						+ "\"sell_reason\":null,\"price_stale\":false}],"
+						+ "\"summary\":{\"open_unrealized\":3100,\"today_realized\":5100,\"open_count\":1}}"));
+
+		AtomicReference<PositionsResponse> received = new AtomicReference<>();
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchPositions(response -> {
+			received.set(response);
+			done.countDown();
+		}, error -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		PositionsResponse response = received.get();
+		assertEquals(1, response.getPositions().size());
+		assertEquals("Nature rune", response.getPositions().get(0).getName());
+		assertEquals(Long.valueOf(3100), response.getPositions().get(0).getUnrealizedProfit());
+		assertEquals("hold", response.getPositions().get(0).getPhase());
+		assertEquals(5100, response.getSummary().getTodayRealized());
+		assertEquals(1, response.getSummary().getOpenCount());
+
+		RecordedRequest recorded = server.takeRequest();
+		assertEquals("GET", recorded.getMethod());
+		assertEquals("/api/plugin/positions", recorded.getPath());
+		assertEquals("Bearer " + TOKEN, recorded.getHeader("Authorization"));
+	}
+
+	@Test
+	public void postOffersSendsSnapshotWithAccountHashAndAuthenticates() throws Exception {
+		server.enqueue(new MockResponse().setBody("{\"stored\":1}"));
+
+		List<GeOffer> offers = Collections.singletonList(GeOffer.builder()
+				.slot(2)
+				.itemId(561)
+				.side("buy")
+				.state("buying")
+				.quantityFilled(40)
+				.quantityTotal(100)
+				.priceEach(128)
+				.occurredAt("2026-07-06T03:00:00Z")
+				.build());
+
+		CountDownLatch done = new CountDownLatch(1);
+		api.postOffers("acct-1", offers, done::countDown, error -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		RecordedRequest recorded = server.takeRequest();
+		assertEquals("POST", recorded.getMethod());
+		assertEquals("/api/plugin/offers", recorded.getPath());
+		assertEquals("Bearer " + TOKEN, recorded.getHeader("Authorization"));
+		String body = recorded.getBody().readUtf8();
+		assertTrue(body.contains("\"account_hash\":\"acct-1\""));
+		assertTrue(body.contains("\"item_id\":561"));
+		assertTrue(body.contains("\"quantity_filled\":40"));
+		assertTrue(body.contains("\"quantity_total\":100"));
+		assertTrue(body.contains("\"price_each\":128"));
+		assertTrue(body.contains("\"occurred_at\":\"2026-07-06T03:00:00Z\""));
 	}
 
 	@Test

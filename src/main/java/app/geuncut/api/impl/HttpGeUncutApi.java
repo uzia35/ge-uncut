@@ -14,8 +14,10 @@ import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.FlipsResponse;
+import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
+import app.geuncut.dto.PositionsResponse;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import lombok.extern.slf4j.Slf4j;
@@ -83,11 +85,32 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
+	public void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError) {
+		Request request = new Request.Builder()
+				.url(config.apiBase() + "/api/plugin/positions")
+				.get()
+				.build();
+		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, PositionsResponse.class)));
+	}
+
+	@Override
 	public void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError) {
 		JsonObject payload = new JsonObject();
 		payload.add("events", gson.toJsonTree(events));
 		Request request = new Request.Builder()
 				.url(config.apiBase() + "/api/plugin/ge-events")
+				.post(RequestBody.create(JSON, payload.toString()))
+				.build();
+		enqueue(request, onError, body -> onSuccess.run());
+	}
+
+	@Override
+	public void postOffers(String accountHash, List<GeOffer> offers, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		JsonObject payload = new JsonObject();
+		payload.addProperty("account_hash", accountHash);
+		payload.add("offers", gson.toJsonTree(offers));
+		Request request = new Request.Builder()
+				.url(config.apiBase() + "/api/plugin/offers")
 				.post(RequestBody.create(JSON, payload.toString()))
 				.build();
 		enqueue(request, onError, body -> onSuccess.run());
