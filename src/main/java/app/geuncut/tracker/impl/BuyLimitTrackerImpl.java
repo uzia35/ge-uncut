@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Optional;
 import javax.inject.Singleton;
 
+import app.geuncut.model.Purchase;
 import app.geuncut.tracker.BuyLimitTracker;
 
 @Singleton

@@ -8,23 +8,23 @@ import lombok.Value;
 @Builder
 public class Flip {
 	@SerializedName("item_id")
-	int itemId;
+	private final int itemId;
 
-	String name;
+	private final String name;
 
 	@SerializedName("buy_price")
-	long buyPrice;
+	private final long buyPrice;
 
 	@SerializedName("target_sell_price")
-	long targetSellPrice;
+	private final long targetSellPrice;
 
-	long quantity;
+	private final long quantity;
 
 	@SerializedName("total_profit")
-	long totalProfit;
+	private final long totalProfit;
 
 	@SerializedName("roi_per_day")
-	double roiPerDay;
+	private final double roiPerDay;
 
-	String strategy;
+	private final String strategy;
 }

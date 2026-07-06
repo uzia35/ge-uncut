@@ -8,11 +8,11 @@ import lombok.Value;
 @Builder
 public class LinkSession {
 	@SerializedName("user_code")
-	String userCode;
+	private final String userCode;
 
 	@SerializedName("device_code")
-	String deviceCode;
+	private final String deviceCode;
 
 	@SerializedName("expires_in_seconds")
-	int expiresInSeconds;
+	private final int expiresInSeconds;
 }

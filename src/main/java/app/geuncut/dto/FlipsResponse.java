@@ -8,5 +8,5 @@ import lombok.Value;
 @Value
 @Builder
 public class FlipsResponse {
-	List<Flip> flips;
+	private final List<Flip> flips;
 }

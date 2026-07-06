@@ -13,9 +13,9 @@ import lombok.Value;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ApiFailure {
 
-	Kind kind;
-	int statusCode;
-	String message;
+	private final Kind kind;
+	private final int statusCode;
+	private final String message;
 
 	public static ApiFailure network(String message) {
 		return new ApiFailure(Kind.NETWORK, 0, message);

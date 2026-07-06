@@ -8,23 +8,23 @@ import lombok.Value;
 @Builder
 public class GeTradeEvent {
 	@SerializedName("account_hash")
-	String accountHash;
+	private final String accountHash;
 
 	@SerializedName("idempotency_key")
-	String idempotencyKey;
+	private final String idempotencyKey;
 
 	@SerializedName("item_id")
-	int itemId;
+	private final int itemId;
 
-	String side;
+	private final String side;
 
-	int quantity;
+	private final int quantity;
 
 	@SerializedName("price_each")
-	int priceEach;
+	private final int priceEach;
 
-	Integer slot;
+	private final Integer slot;
 
 	@SerializedName("occurred_at")
-	String occurredAt;
+	private final String occurredAt;
 }

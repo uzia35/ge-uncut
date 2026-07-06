@@ -15,10 +15,10 @@ public class OfferDelta {
 		SELL
 	}
 
-	int itemId;
-	Side side;
-	int quantity;
-	int priceEach;
-	int slot;
-	Instant occurredAt;
+	private final int itemId;
+	private final Side side;
+	private final int quantity;
+	private final int priceEach;
+	private final int slot;
+	private final Instant occurredAt;
 }
