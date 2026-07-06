@@ -2,6 +2,7 @@ package app.geuncut.ui;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.GridLayout;
@@ -17,10 +18,10 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 
 import app.geuncut.dto.Flip;
 import app.geuncut.dto.GeOffer;
@@ -56,8 +57,8 @@ public class FlipsPanel extends PluginPanel {
 	private final JPanel activeList = listPanel();
 	private final JLabel activeCount = new JLabel("0");
 
-	private final JComboBox<String> scanPicker = new JComboBox<>(new String[] { "standard", "fast", "value" });
-	private final JComboBox<String> riskPicker = new JComboBox<>(new String[] { "Conservative", "Balanced", "Aggressive" });
+	private final FlatSelect scanPicker = new FlatSelect(new String[] { "standard", "fast", "value" }, 0);
+	private final FlatSelect riskPicker = new FlatSelect(new String[] { "Conservative", "Balanced", "Aggressive" }, 1);
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
@@ -98,6 +99,10 @@ public class FlipsPanel extends PluginPanel {
 		column.add(strut(14));
 
 		column.add(sectionHeader("Flip finder", null));
+		column.add(strut(4));
+		JLabel finderHint = text("Click an item to open on geuncut.app ↗", Theme.FAINT, Theme.SMALL);
+		finderHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+		column.add(finderHint);
 		column.add(strut(6));
 		column.add(buildFinderBar(onRefresh));
 		column.add(strut(6));
@@ -108,8 +113,8 @@ public class FlipsPanel extends PluginPanel {
 		column.add(wrapList(finderList));
 
 		linkButton.addActionListener(event -> onLink.run());
-		scanPicker.addActionListener(event -> onRefresh.run());
-		riskPicker.addActionListener(event -> onRefresh.run());
+		scanPicker.setOnChange(onRefresh);
+		riskPicker.setOnChange(onRefresh);
 
 		add(column, BorderLayout.NORTH);
 		setLinked(true);
@@ -118,11 +123,11 @@ public class FlipsPanel extends PluginPanel {
 	// ---- public updates (call on the EDT) ------------------------------------
 
 	public String selectedScan() {
-		return (String) scanPicker.getSelectedItem();
+		return scanPicker.selectedValue();
 	}
 
 	public String selectedRisk() {
-		return ((String) riskPicker.getSelectedItem()).toLowerCase();
+		return riskPicker.selectedValue().toLowerCase();
 	}
 
 	public void setLinked(boolean linked) {
@@ -270,34 +275,33 @@ public class FlipsPanel extends PluginPanel {
 		bar.setBackground(Theme.SURFACE);
 		bar.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		styleCombo(scanPicker);
-		styleCombo(riskPicker);
-		riskPicker.setSelectedItem("Balanced");
-
 		// Scan type + risk level side by side, mirroring the web scanner.
 		JPanel pickers = new JPanel(new GridLayout(1, 2, 6, 0));
 		pickers.setBackground(Theme.SURFACE);
 		pickers.add(scanPicker);
 		pickers.add(riskPicker);
 
-		JButton refresh = styledButton("↻");
-		refresh.addActionListener(event -> onRefresh.run());
 		bar.add(pickers, BorderLayout.CENTER);
-		bar.add(refresh, BorderLayout.EAST);
+		bar.add(flatButton("↻", onRefresh), BorderLayout.EAST);
 		return bar;
 	}
 
-	private static void styleCombo(JComboBox<String> combo) {
-		combo.setBackground(Theme.RAISED);
-		combo.setForeground(Theme.INK);
-		combo.setFont(Theme.BODY);
+	private RoundedPanel flatButton(String glyph, Runnable onClick) {
+		RoundedPanel button = new RoundedPanel(7, Theme.RAISED, Theme.LINE);
+		button.setLayout(new BorderLayout());
+		button.setBorder(BorderFactory.createEmptyBorder(5, 11, 5, 11));
+		JLabel label = new JLabel(glyph, SwingConstants.CENTER);
+		label.setForeground(Theme.MUTED);
+		label.setFont(Theme.BODY);
+		button.add(label, BorderLayout.CENTER);
+		installHoverClick(button, onClick);
+		return button;
 	}
 
 	// ---- cards ---------------------------------------------------------------
 
 	private RoundedPanel offerCard(GeOffer offer, String name) {
 		RoundedPanel card = card();
-		clickable(card, offer.getItemId());
 		card.add(icon(offer.getItemId(), name), BorderLayout.WEST);
 
 		JPanel body = new JPanel();
@@ -330,19 +334,19 @@ public class FlipsPanel extends PluginPanel {
 		body.add(meta);
 
 		card.add(body, BorderLayout.CENTER);
+		clickable(card, offer.getItemId());
 		return card;
 	}
 
 	private RoundedPanel finderCard(Flip flip) {
 		RoundedPanel card = card();
-		clickable(card, flip.getItemId());
 		card.add(icon(flip.getItemId(), flip.getName()), BorderLayout.WEST);
 
 		JPanel body = new JPanel();
 		body.setOpaque(false);
 		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 
-		// Name on its own line so it never gets squeezed by the ROI/price row.
+		// Name and profit.
 		JPanel line1 = new JPanel(new BorderLayout(6, 0));
 		line1.setOpaque(false);
 		line1.add(text(flip.getName(), Theme.WHITE, Theme.BODY_BOLD), BorderLayout.CENTER);
@@ -351,21 +355,26 @@ public class FlipsPanel extends PluginPanel {
 		body.add(line1);
 		body.add(Box.createVerticalStrut(4));
 
-		JPanel line2 = new JPanel(new BorderLayout(6, 0));
-		line2.setOpaque(false);
-		line2.add(pill(trimNum(flip.getRoiPerDay()) + "%", Theme.UP), BorderLayout.WEST);
-		line2.add(text(GP.format(flip.getQuantity()) + " @ " + GP.format(flip.getBuyPrice())
-				+ " → " + GP.format(flip.getTargetSellPrice()), Theme.MUTED, Theme.NUM_SMALL), BorderLayout.CENTER);
-		line2.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(line2);
+		// Spell it out: buy N at a price, then sell at a price, with the ROI.
+		JLabel buyLine = text("Buy " + GP.format(flip.getQuantity()) + " @ " + GP.format(flip.getBuyPrice()), Theme.MUTED, Theme.NUM_SMALL);
+		buyLine.setAlignmentX(Component.LEFT_ALIGNMENT);
+		body.add(buyLine);
+		body.add(Box.createVerticalStrut(2));
+
+		JPanel sellLine = new JPanel(new BorderLayout(6, 0));
+		sellLine.setOpaque(false);
+		sellLine.add(text("Sell @ " + GP.format(flip.getTargetSellPrice()), Theme.MUTED, Theme.NUM_SMALL), BorderLayout.CENTER);
+		sellLine.add(pill("ROI " + trimNum(flip.getRoiPerDay()) + "%", Theme.UP), BorderLayout.EAST);
+		sellLine.setAlignmentX(Component.LEFT_ALIGNMENT);
+		body.add(sellLine);
 
 		card.add(body, BorderLayout.CENTER);
+		clickable(card, flip.getItemId());
 		return card;
 	}
 
 	private RoundedPanel activeFlipCard(Position position) {
 		RoundedPanel card = card();
-		clickable(card, position.getItemId());
 		card.add(icon(position.getItemId(), position.getName()), BorderLayout.WEST);
 
 		JPanel body = new JPanel();
@@ -388,6 +397,7 @@ public class FlipsPanel extends PluginPanel {
 
 		card.add(body, BorderLayout.CENTER);
 		card.add(pnlBlock(position), BorderLayout.EAST);
+		clickable(card, position.getItemId());
 		return card;
 	}
 
@@ -432,15 +442,43 @@ public class FlipsPanel extends PluginPanel {
 		return label;
 	}
 
-	// Item rows open the full item page on the website on click.
+	// Item rows open the full item page on geuncut.app, with a hover highlight so
+	// the row reads as tappable. Installed across the whole subtree so a click
+	// anywhere in the card counts, not just the padding between labels.
 	private void clickable(RoundedPanel card, int itemId) {
-		card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		card.addMouseListener(new MouseAdapter() {
+		installHoverClick(card, () -> onOpenItem.accept(itemId));
+	}
+
+	private static void installHoverClick(RoundedPanel panel, Runnable onClick) {
+		MouseAdapter adapter = new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent event) {
-				onOpenItem.accept(itemId);
+				onClick.run();
 			}
-		});
+
+			@Override
+			public void mouseEntered(MouseEvent event) {
+				panel.setFill(Theme.HOVER);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent event) {
+				if (!panel.contains(SwingUtilities.convertPoint((Component) event.getSource(), event.getPoint(), panel))) {
+					panel.setFill(Theme.RAISED);
+				}
+			}
+		};
+		installRecursively(panel, adapter);
+	}
+
+	private static void installRecursively(Component component, MouseAdapter adapter) {
+		component.addMouseListener(adapter);
+		component.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		if (component instanceof Container) {
+			for (Component child : ((Container) component).getComponents()) {
+				installRecursively(child, adapter);
+			}
+		}
 	}
 
 	private Pill pill(String label, java.awt.Color hue) {
