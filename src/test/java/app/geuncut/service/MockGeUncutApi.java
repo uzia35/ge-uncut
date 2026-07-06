@@ -32,7 +32,7 @@ class MockGeUncutApi implements GeUncutApi {
 	int pollCount;
 
 	@Override
-	public void fetchFlips(String scanType, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
+	public void fetchFlips(String scanType, String risk, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
 		if (flipsResponse != null) {
 			onSuccess.accept(flipsResponse);
 		} else {

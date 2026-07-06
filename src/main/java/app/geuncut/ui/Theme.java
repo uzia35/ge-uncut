@@ -44,4 +44,5 @@ final class Theme {
 	static final Font NUM = new Font(Font.MONOSPACED, Font.PLAIN, 12);
 	static final Font NUM_BOLD = new Font(Font.MONOSPACED, Font.BOLD, 12);
 	static final Font NUM_SMALL = new Font(Font.MONOSPACED, Font.PLAIN, 10);
+	static final Font NUM_HERO = new Font(Font.MONOSPACED, Font.BOLD, 19);
 }

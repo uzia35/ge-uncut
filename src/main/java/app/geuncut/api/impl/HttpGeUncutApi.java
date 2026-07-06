@@ -76,11 +76,13 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void fetchFlips(String scanType, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
-		HttpUrl url = HttpUrl.parse(config.apiBase() + "/api/plugin/flips").newBuilder()
-				.addQueryParameter("scan_type", scanType)
-				.build();
-		Request request = new Request.Builder().url(url).get().build();
+	public void fetchFlips(String scanType, String risk, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl.Builder url = HttpUrl.parse(config.apiBase() + "/api/plugin/flips").newBuilder()
+				.addQueryParameter("scan_type", scanType);
+		if (risk != null && !risk.isEmpty()) {
+			url.addQueryParameter("risk", risk);
+		}
+		Request request = new Request.Builder().url(url.build()).get().build();
 		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, FlipsResponse.class)));
 	}
 

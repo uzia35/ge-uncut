@@ -26,6 +26,7 @@ import app.geuncut.dto.Flip;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.Position;
 import app.geuncut.dto.PositionsResponse;
+import app.geuncut.dto.PositionsSummary;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.ImageUtil;
 
@@ -41,6 +42,8 @@ public class FlipsPanel extends PluginPanel {
 	private final IntConsumer onOpenItem;
 
 	private final JLabel linkStatus = new JLabel();
+	private final JLabel allTimeValue = statValue("—");
+	private final JLabel statsSubtitle = new JLabel("", SwingConstants.CENTER);
 	private final JLabel openValue = statValue("—");
 	private final JLabel slotsValue = statValue("0/8");
 	private final JLabel todayValue = statValue("—");
@@ -54,6 +57,7 @@ public class FlipsPanel extends PluginPanel {
 	private final JLabel activeCount = new JLabel("0");
 
 	private final JComboBox<String> scanPicker = new JComboBox<>(new String[] { "standard", "fast", "value" });
+	private final JComboBox<String> riskPicker = new JComboBox<>(new String[] { "Conservative", "Balanced", "Aggressive" });
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
@@ -105,6 +109,7 @@ public class FlipsPanel extends PluginPanel {
 
 		linkButton.addActionListener(event -> onLink.run());
 		scanPicker.addActionListener(event -> onRefresh.run());
+		riskPicker.addActionListener(event -> onRefresh.run());
 
 		add(column, BorderLayout.NORTH);
 		setLinked(true);
@@ -114,6 +119,10 @@ public class FlipsPanel extends PluginPanel {
 
 	public String selectedScan() {
 		return (String) scanPicker.getSelectedItem();
+	}
+
+	public String selectedRisk() {
+		return ((String) riskPicker.getSelectedItem()).toLowerCase();
 	}
 
 	public void setLinked(boolean linked) {
@@ -136,8 +145,11 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showActiveFlips(PositionsResponse response) {
-		setStat(openValue, response.getSummary().getOpenUnrealized());
-		setStat(todayValue, response.getSummary().getTodayRealized());
+		PositionsSummary summary = response.getSummary();
+		setStat(allTimeValue, summary.getTotalRealized());
+		setStat(todayValue, summary.getTodayRealized());
+		setStat(openValue, summary.getOpenUnrealized());
+		statsSubtitle.setText(subtitleText(summary));
 		List<Position> positions = response.getPositions();
 		activeCount.setText(Integer.toString(positions.size()));
 		activeList.removeAll();
@@ -217,12 +229,39 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private JPanel buildStats() {
-		JPanel stats = new JPanel(new GridLayout(1, 3, 7, 0));
+		JPanel stats = new JPanel();
+		stats.setLayout(new BoxLayout(stats, BoxLayout.Y_AXIS));
 		stats.setBackground(Theme.SURFACE);
 		stats.setAlignmentX(Component.LEFT_ALIGNMENT);
-		stats.add(statCell("Open", openValue));
-		stats.add(statCell("Slots", slotsValue));
-		stats.add(statCell("Today", todayValue));
+
+		// Hero: lifetime realized profit, with a win-rate / flips subtitle. This
+		// is the number a flipper actually cares about, not a single session.
+		RoundedPanel hero = new RoundedPanel(8, Theme.RAISED, Theme.LINE);
+		hero.setLayout(new BoxLayout(hero, BoxLayout.Y_AXIS));
+		hero.setBorder(BorderFactory.createEmptyBorder(9, 10, 9, 10));
+		hero.setAlignmentX(Component.LEFT_ALIGNMENT);
+		JLabel heroLabel = text("ALL-TIME PROFIT", Theme.FAINT, Theme.SMALL);
+		heroLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+		allTimeValue.setFont(Theme.NUM_HERO);
+		allTimeValue.setAlignmentX(Component.CENTER_ALIGNMENT);
+		statsSubtitle.setForeground(Theme.MUTED);
+		statsSubtitle.setFont(Theme.NUM_SMALL);
+		statsSubtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+		hero.add(heroLabel);
+		hero.add(Box.createVerticalStrut(2));
+		hero.add(allTimeValue);
+		hero.add(Box.createVerticalStrut(3));
+		hero.add(statsSubtitle);
+		stats.add(hero);
+		stats.add(Box.createVerticalStrut(7));
+
+		JPanel row = new JPanel(new GridLayout(1, 3, 7, 0));
+		row.setBackground(Theme.SURFACE);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.add(statCell("Today", todayValue));
+		row.add(statCell("Open", openValue));
+		row.add(statCell("Slots", slotsValue));
+		stats.add(row);
 		return stats;
 	}
 
@@ -230,14 +269,28 @@ public class FlipsPanel extends PluginPanel {
 		JPanel bar = new JPanel(new BorderLayout(7, 0));
 		bar.setBackground(Theme.SURFACE);
 		bar.setAlignmentX(Component.LEFT_ALIGNMENT);
-		scanPicker.setBackground(Theme.RAISED);
-		scanPicker.setForeground(Theme.INK);
-		scanPicker.setFont(Theme.BODY);
-		JButton refresh = styledButton("Refresh");
+
+		styleCombo(scanPicker);
+		styleCombo(riskPicker);
+		riskPicker.setSelectedItem("Balanced");
+
+		// Scan type + risk level side by side, mirroring the web scanner.
+		JPanel pickers = new JPanel(new GridLayout(1, 2, 6, 0));
+		pickers.setBackground(Theme.SURFACE);
+		pickers.add(scanPicker);
+		pickers.add(riskPicker);
+
+		JButton refresh = styledButton("↻");
 		refresh.addActionListener(event -> onRefresh.run());
-		bar.add(scanPicker, BorderLayout.CENTER);
+		bar.add(pickers, BorderLayout.CENTER);
 		bar.add(refresh, BorderLayout.EAST);
 		return bar;
+	}
+
+	private static void styleCombo(JComboBox<String> combo) {
+		combo.setBackground(Theme.RAISED);
+		combo.setForeground(Theme.INK);
+		combo.setFont(Theme.BODY);
 	}
 
 	// ---- cards ---------------------------------------------------------------
@@ -473,6 +526,21 @@ public class FlipsPanel extends PluginPanel {
 
 	private static Component strut(int height) {
 		return Box.createVerticalStrut(height);
+	}
+
+	private static String subtitleText(PositionsSummary summary) {
+		if (summary.getFlips() == 0) {
+			return "no closed flips yet";
+		}
+		StringBuilder builder = new StringBuilder();
+		if (summary.getWinRate() != null) {
+			builder.append(Math.round(summary.getWinRate())).append("% win · ");
+		}
+		builder.append(summary.getFlips()).append(summary.getFlips() == 1 ? " flip" : " flips");
+		if (summary.getAvgRoi() != null) {
+			builder.append(" · ").append(signedPct(summary.getAvgRoi())).append(" avg");
+		}
+		return builder.toString();
 	}
 
 	private static boolean isSell(String phase) {

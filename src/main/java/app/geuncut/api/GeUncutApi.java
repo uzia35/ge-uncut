@@ -18,7 +18,7 @@ import app.geuncut.dto.PositionsResponse;
  * ApiFailure.
  */
 public interface GeUncutApi {
-	void fetchFlips(String scanType, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
+	void fetchFlips(String scanType, String risk, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
 
 	void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError);
 

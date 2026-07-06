@@ -21,7 +21,7 @@ public class FlipsServiceTest {
 				.build();
 
 		List<List<Flip>> received = new ArrayList<>();
-		new FlipsServiceImpl(api).fetch("standard", received::add, error -> {
+		new FlipsServiceImpl(api).fetch("standard", "balanced", received::add, error -> {
 		});
 
 		assertEquals(1, received.size());
@@ -32,7 +32,7 @@ public class FlipsServiceTest {
 	public void fetchSurfacesErrors() {
 		MockGeUncutApi api = new MockGeUncutApi();
 		List<ApiFailure> errors = new ArrayList<>();
-		new FlipsServiceImpl(api).fetch("standard", flips -> {
+		new FlipsServiceImpl(api).fetch("standard", "balanced", flips -> {
 		}, errors::add);
 
 		assertEquals(1, errors.size());
