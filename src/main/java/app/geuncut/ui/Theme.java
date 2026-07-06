@@ -2,6 +2,9 @@ package app.geuncut.ui;
 
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.FontFormatException;
+import java.io.IOException;
+import java.io.InputStream;
 
 /**
  * GE Uncut brand palette and fonts for the panel, mirroring the website's
@@ -38,12 +41,32 @@ final class Theme {
 		return new Color(base.getRed(), base.getGreen(), base.getBlue(), 90);
 	}
 
-	static final Font BODY = new Font(Font.SANS_SERIF, Font.PLAIN, 12);
-	static final Font BODY_BOLD = new Font(Font.SANS_SERIF, Font.BOLD, 12);
-	static final Font SMALL = new Font(Font.SANS_SERIF, Font.PLAIN, 10);
-	static final Font SECTION = new Font(Font.SANS_SERIF, Font.BOLD, 10);
-	static final Font NUM = new Font(Font.MONOSPACED, Font.PLAIN, 12);
-	static final Font NUM_BOLD = new Font(Font.MONOSPACED, Font.BOLD, 12);
-	static final Font NUM_SMALL = new Font(Font.MONOSPACED, Font.PLAIN, 10);
-	static final Font NUM_HERO = new Font(Font.MONOSPACED, Font.BOLD, 19);
+	// The website's faces, bundled so the panel matches it exactly: Inter for
+	// text, JetBrains Mono for numerals. Falls back to logical fonts if a
+	// resource is somehow missing.
+	private static final Font INTER = load("/fonts/Inter-Regular.ttf", Font.SANS_SERIF);
+	private static final Font INTER_SEMI = load("/fonts/Inter-SemiBold.ttf", Font.SANS_SERIF);
+	private static final Font MONO = load("/fonts/JetBrainsMono-Regular.ttf", Font.MONOSPACED);
+	private static final Font MONO_SEMI = load("/fonts/JetBrainsMono-Bold.ttf", Font.MONOSPACED);
+
+	static final Font BODY = INTER.deriveFont(12.5f);
+	static final Font BODY_BOLD = INTER_SEMI.deriveFont(12.5f);
+	static final Font SMALL = INTER.deriveFont(11f);
+	static final Font SECTION = INTER_SEMI.deriveFont(10.5f);
+	static final Font NUM = MONO.deriveFont(12f);
+	static final Font NUM_BOLD = MONO_SEMI.deriveFont(12f);
+	static final Font NUM_SMALL = MONO.deriveFont(11f);
+	static final Font NUM_TINY = MONO.deriveFont(9.5f);
+	static final Font NUM_HERO = MONO_SEMI.deriveFont(20f);
+
+	private static Font load(String resource, String fallbackFamily) {
+		try (InputStream in = Theme.class.getResourceAsStream(resource)) {
+			if (in != null) {
+				return Font.createFont(Font.TRUETYPE_FONT, in);
+			}
+		} catch (FontFormatException | IOException unreadable) {
+			// Fall through to the logical-font fallback.
+		}
+		return new Font(fallbackFamily, Font.PLAIN, 12);
+	}
 }

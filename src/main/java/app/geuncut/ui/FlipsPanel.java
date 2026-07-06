@@ -100,7 +100,7 @@ public class FlipsPanel extends PluginPanel {
 
 		column.add(sectionHeader("Flip finder", null));
 		column.add(strut(4));
-		JLabel finderHint = text("Click an item to open on geuncut.app ↗", Theme.FAINT, Theme.SMALL);
+		JLabel finderHint = text("Click any item → geuncut.app ↗", Theme.FAINT, Theme.SMALL);
 		finderHint.setAlignmentX(Component.LEFT_ALIGNMENT);
 		column.add(finderHint);
 		column.add(strut(6));
@@ -250,7 +250,7 @@ public class FlipsPanel extends PluginPanel {
 		allTimeValue.setFont(Theme.NUM_HERO);
 		allTimeValue.setAlignmentX(Component.CENTER_ALIGNMENT);
 		statsSubtitle.setForeground(Theme.MUTED);
-		statsSubtitle.setFont(Theme.NUM_SMALL);
+		statsSubtitle.setFont(Theme.NUM_TINY);
 		statsSubtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
 		hero.add(heroLabel);
 		hero.add(Box.createVerticalStrut(2));
@@ -271,18 +271,23 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private JPanel buildFinderBar(Runnable onRefresh) {
-		JPanel bar = new JPanel(new BorderLayout(7, 0));
+		JPanel bar = new JPanel();
+		bar.setLayout(new BoxLayout(bar, BoxLayout.Y_AXIS));
 		bar.setBackground(Theme.SURFACE);
 		bar.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		// Scan type + risk level side by side, mirroring the web scanner.
-		JPanel pickers = new JPanel(new GridLayout(1, 2, 6, 0));
-		pickers.setBackground(Theme.SURFACE);
-		pickers.add(scanPicker);
-		pickers.add(riskPicker);
+		// Stacked (scan + refresh, then risk) so each control shows its full
+		// label at the panel's real width, mirroring the web scanner's options.
+		JPanel scanRow = new JPanel(new BorderLayout(6, 0));
+		scanRow.setBackground(Theme.SURFACE);
+		scanRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+		scanRow.add(scanPicker, BorderLayout.CENTER);
+		scanRow.add(flatButton("↻", onRefresh), BorderLayout.EAST);
+		bar.add(scanRow);
+		bar.add(Box.createVerticalStrut(6));
 
-		bar.add(pickers, BorderLayout.CENTER);
-		bar.add(flatButton("↻", onRefresh), BorderLayout.EAST);
+		riskPicker.setAlignmentX(Component.LEFT_ALIGNMENT);
+		bar.add(riskPicker);
 		return bar;
 	}
 
@@ -309,21 +314,21 @@ public class FlipsPanel extends PluginPanel {
 		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 
 		boolean buy = "buy".equals(offer.getSide());
-		JPanel top = new JPanel(new BorderLayout());
-		top.setOpaque(false);
-		top.add(text(name, Theme.WHITE, Theme.BODY_BOLD), BorderLayout.CENTER);
-		top.add(buy ? pill("BUY", Theme.INFO) : pill("SELL", Theme.AMBER), BorderLayout.EAST);
-		top.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(top);
+		JLabel nameLabel = text(name, Theme.WHITE, Theme.BODY_BOLD);
+		nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+		body.add(nameLabel);
+		body.add(Box.createVerticalStrut(6));
 
 		double fraction = offer.getQuantityTotal() > 0
 				? (double) offer.getQuantityFilled() / offer.getQuantityTotal() : 0;
+		JPanel barRow = new JPanel(new BorderLayout(7, 0));
+		barRow.setOpaque(false);
+		barRow.add(buy ? pill("BUY", Theme.INFO) : pill("SELL", Theme.AMBER), BorderLayout.WEST);
 		FillBar progress = new FillBar(fraction, buy ? Theme.INFO : Theme.AMBER);
-		progress.setPreferredSize(new Dimension(10, 5));
-		progress.setMaximumSize(new Dimension(Integer.MAX_VALUE, 5));
-		progress.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(Box.createVerticalStrut(6));
-		body.add(progress);
+		progress.setPreferredSize(new Dimension(10, 6));
+		barRow.add(progress, BorderLayout.CENTER);
+		barRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+		body.add(barRow);
 		body.add(Box.createVerticalStrut(5));
 
 		JPanel meta = new JPanel(new BorderLayout());
@@ -346,27 +351,29 @@ public class FlipsPanel extends PluginPanel {
 		body.setOpaque(false);
 		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 
-		// Name and profit.
-		JPanel line1 = new JPanel(new BorderLayout(6, 0));
-		line1.setOpaque(false);
-		line1.add(text(flip.getName(), Theme.WHITE, Theme.BODY_BOLD), BorderLayout.CENTER);
-		line1.add(text("+" + shortGp(flip.getTotalProfit()), Theme.UP, Theme.NUM_BOLD), BorderLayout.EAST);
-		line1.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(line1);
+		// Name on its own line so long names are never clipped.
+		JLabel name = text(flip.getName(), Theme.WHITE, Theme.BODY_BOLD);
+		name.setAlignmentX(Component.LEFT_ALIGNMENT);
+		body.add(name);
 		body.add(Box.createVerticalStrut(4));
 
-		// Spell it out: buy N at a price, then sell at a price, with the ROI.
+		// One number per line, each labelled, then profit with the ROI badge.
 		JLabel buyLine = text("Buy " + GP.format(flip.getQuantity()) + " @ " + GP.format(flip.getBuyPrice()), Theme.MUTED, Theme.NUM_SMALL);
 		buyLine.setAlignmentX(Component.LEFT_ALIGNMENT);
 		body.add(buyLine);
 		body.add(Box.createVerticalStrut(2));
 
-		JPanel sellLine = new JPanel(new BorderLayout(6, 0));
-		sellLine.setOpaque(false);
-		sellLine.add(text("Sell @ " + GP.format(flip.getTargetSellPrice()), Theme.MUTED, Theme.NUM_SMALL), BorderLayout.CENTER);
-		sellLine.add(pill("ROI " + trimNum(flip.getRoiPerDay()) + "%", Theme.UP), BorderLayout.EAST);
+		JLabel sellLine = text("Sell @ " + GP.format(flip.getTargetSellPrice()), Theme.MUTED, Theme.NUM_SMALL);
 		sellLine.setAlignmentX(Component.LEFT_ALIGNMENT);
 		body.add(sellLine);
+		body.add(Box.createVerticalStrut(5));
+
+		JPanel profitLine = new JPanel(new BorderLayout(6, 0));
+		profitLine.setOpaque(false);
+		profitLine.add(text("+" + shortGp(flip.getTotalProfit()), Theme.UP, Theme.NUM_BOLD), BorderLayout.WEST);
+		profitLine.add(pill("ROI " + trimNum(flip.getRoiPerDay()) + "%", Theme.UP), BorderLayout.EAST);
+		profitLine.setAlignmentX(Component.LEFT_ALIGNMENT);
+		body.add(profitLine);
 
 		card.add(body, BorderLayout.CENTER);
 		clickable(card, flip.getItemId());
