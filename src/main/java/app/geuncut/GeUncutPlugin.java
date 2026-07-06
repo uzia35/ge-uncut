@@ -28,6 +28,7 @@ import app.geuncut.tracker.impl.BuyLimitTrackerImpl;
 import app.geuncut.tracker.impl.OfferTrackerImpl;
 import app.geuncut.tracker.OfferTracker;
 import app.geuncut.ui.FlipsPanel;
+import app.geuncut.ui.ItemIconLoader;
 import com.google.inject.Binder;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +46,8 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.LinkBrowser;
+import okhttp3.OkHttpClient;
 
 @Slf4j
 @PluginDescriptor(name = "GE Uncut", description = "Live flip finder with automatic profit tracking, backed by geuncut.app", tags = {
@@ -67,6 +70,12 @@ public class GeUncutPlugin extends Plugin {
 
 	@Inject
 	private ItemManager itemManager;
+
+	@Inject
+	private OkHttpClient okHttpClient;
+
+	@Inject
+	private GeUncutConfig config;
 
 	@Inject
 	private ClientToolbar clientToolbar;
@@ -97,7 +106,8 @@ public class GeUncutPlugin extends Plugin {
 
 	@Override
 	protected void startUp() {
-		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, itemManager);
+		panel = new FlipsPanel(this::refreshFlips, this::linkAccount,
+				new ItemIconLoader(okHttpClient, itemManager), this::openItem);
 		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
 		navButton = NavigationButton.builder()
 				.tooltip("GE Uncut")
@@ -193,6 +203,10 @@ public class GeUncutPlugin extends Plugin {
 						panel.showStatus(failure.getMessage());
 					}
 				}));
+	}
+
+	private void openItem(int itemId) {
+		LinkBrowser.browse(config.apiBase() + "/items/" + itemId);
 	}
 
 	private void refreshPositions() {

@@ -2,12 +2,16 @@ package app.geuncut.ui;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.GridLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.text.NumberFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.function.IntConsumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -22,9 +26,7 @@ import app.geuncut.dto.Flip;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.Position;
 import app.geuncut.dto.PositionsResponse;
-import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.PluginPanel;
-import net.runelite.client.util.AsyncBufferedImage;
 import net.runelite.client.util.ImageUtil;
 
 /**
@@ -35,7 +37,8 @@ import net.runelite.client.util.ImageUtil;
 public class FlipsPanel extends PluginPanel {
 	private static final NumberFormat GP = NumberFormat.getIntegerInstance();
 
-	private final ItemManager itemManager;
+	private final ItemIconLoader iconLoader;
+	private final IntConsumer onOpenItem;
 
 	private final JLabel linkStatus = new JLabel();
 	private final JLabel openValue = statValue("—");
@@ -55,8 +58,9 @@ public class FlipsPanel extends PluginPanel {
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
 
-	public FlipsPanel(Runnable onRefresh, Runnable onLink, ItemManager itemManager) {
-		this.itemManager = itemManager;
+	public FlipsPanel(Runnable onRefresh, Runnable onLink, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
+		this.iconLoader = iconLoader;
+		this.onOpenItem = onOpenItem;
 
 		setLayout(new BorderLayout());
 		setBackground(Theme.SURFACE);
@@ -240,7 +244,8 @@ public class FlipsPanel extends PluginPanel {
 
 	private RoundedPanel offerCard(GeOffer offer, String name) {
 		RoundedPanel card = card();
-		card.add(icon(offer.getItemId()), BorderLayout.WEST);
+		clickable(card, offer.getItemId());
+		card.add(icon(offer.getItemId(), name), BorderLayout.WEST);
 
 		JPanel body = new JPanel();
 		body.setOpaque(false);
@@ -277,7 +282,8 @@ public class FlipsPanel extends PluginPanel {
 
 	private RoundedPanel finderCard(Flip flip) {
 		RoundedPanel card = card();
-		card.add(icon(flip.getItemId()), BorderLayout.WEST);
+		clickable(card, flip.getItemId());
+		card.add(icon(flip.getItemId(), flip.getName()), BorderLayout.WEST);
 
 		JPanel body = new JPanel();
 		body.setOpaque(false);
@@ -306,7 +312,8 @@ public class FlipsPanel extends PluginPanel {
 
 	private RoundedPanel activeFlipCard(Position position) {
 		RoundedPanel card = card();
-		card.add(icon(position.getItemId()), BorderLayout.WEST);
+		clickable(card, position.getItemId());
+		card.add(icon(position.getItemId(), position.getName()), BorderLayout.WEST);
 
 		JPanel body = new JPanel();
 		body.setOpaque(false);
@@ -364,13 +371,23 @@ public class FlipsPanel extends PluginPanel {
 		return card;
 	}
 
-	private JLabel icon(int itemId) {
+	private JLabel icon(int itemId, String name) {
 		JLabel label = new JLabel();
 		label.setPreferredSize(new Dimension(36, 32));
 		label.setHorizontalAlignment(SwingConstants.CENTER);
-		AsyncBufferedImage image = itemManager.getImage(itemId);
-		image.addTo(label);
+		iconLoader.load(itemId, name, label, 32);
 		return label;
+	}
+
+	// Item rows open the full item page on the website on click.
+	private void clickable(RoundedPanel card, int itemId) {
+		card.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		card.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onOpenItem.accept(itemId);
+			}
+		});
 	}
 
 	private Pill pill(String label, java.awt.Color hue) {
