@@ -189,7 +189,7 @@ public class GeUncutPlugin extends Plugin {
 	private void refreshFlips() {
 		SwingUtilities.invokeLater(() -> panel.showStatus("Scanning..."));
 		refreshPositions();
-		flips.fetch(panel.selectedScan(),
+		flips.fetch(panel.selectedScan(), panel.selectedRisk(),
 				list -> SwingUtilities.invokeLater(() -> {
 					panel.setLinked(true);
 					panel.showFlips(list);

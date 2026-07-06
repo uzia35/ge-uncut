@@ -16,4 +16,15 @@ public class PositionsSummary {
 
 	@SerializedName("open_count")
 	private final int openCount;
+
+	@SerializedName("total_realized")
+	private final long totalRealized;
+
+	private final int flips;
+
+	@SerializedName("win_rate")
+	private final Double winRate;
+
+	@SerializedName("avg_roi")
+	private final Double avgRoi;
 }

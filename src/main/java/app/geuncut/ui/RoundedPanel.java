@@ -9,7 +9,7 @@ import javax.swing.JPanel;
 /** A panel that paints a rounded, optionally bordered background. */
 class RoundedPanel extends JPanel {
 	private final int arc;
-	private final Color fill;
+	private Color fill;
 	private final Color border;
 
 	RoundedPanel(int arc, Color fill, Color border) {
@@ -17,6 +17,11 @@ class RoundedPanel extends JPanel {
 		this.fill = fill;
 		this.border = border;
 		setOpaque(false);
+	}
+
+	void setFill(Color fill) {
+		this.fill = fill;
+		repaint();
 	}
 
 	@Override

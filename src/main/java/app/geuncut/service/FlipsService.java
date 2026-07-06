@@ -11,5 +11,5 @@ import app.geuncut.dto.Flip;
  * unauthorized ApiFailure; there is no client-side link state to consult.
  */
 public interface FlipsService {
-	void fetch(String scanType, Consumer<List<Flip>> onSuccess, Consumer<ApiFailure> onError);
+	void fetch(String scanType, String risk, Consumer<List<Flip>> onSuccess, Consumer<ApiFailure> onError);
 }

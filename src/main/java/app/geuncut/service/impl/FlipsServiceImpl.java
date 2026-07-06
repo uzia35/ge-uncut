@@ -23,7 +23,7 @@ public class FlipsServiceImpl implements FlipsService {
 	}
 
 	@Override
-	public void fetch(String scanType, Consumer<List<Flip>> onSuccess, Consumer<ApiFailure> onError) {
-		api.fetchFlips(scanType, response -> onSuccess.accept(response.getFlips()), onError);
+	public void fetch(String scanType, String risk, Consumer<List<Flip>> onSuccess, Consumer<ApiFailure> onError) {
+		api.fetchFlips(scanType, risk, response -> onSuccess.accept(response.getFlips()), onError);
 	}
 }
