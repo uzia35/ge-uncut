@@ -63,6 +63,7 @@ public class LinkServiceImpl implements LinkService {
 		}
 		api.startLink(started -> {
 			session = started;
+			log.debug("event=link_started expires_in={}s", started.getExpiresInSeconds());
 			onCode.accept(started.getUserCode());
 			poller = executor.scheduleWithFixedDelay(
 					() -> poll(onLinked, onError), POLL_SECONDS, POLL_SECONDS, TimeUnit.SECONDS);
@@ -85,13 +86,14 @@ public class LinkServiceImpl implements LinkService {
 		api.pollLink(session.getDeviceCode(),
 				token -> {
 					configManager.setConfiguration(GeUncutConfig.GROUP, "apiToken", token);
+					log.debug("event=link_completed");
 					cancel();
 					onLinked.run();
 				},
 				() -> {
 				},
 				failure -> {
-					log.debug("link polling stopped: {}", failure.getMessage());
+					log.debug("event=link_poll_stopped status={} message=\"{}\"", failure.getStatusCode(), failure.getMessage());
 					cancel();
 					onError.accept(failure);
 				});

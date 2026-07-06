@@ -4,6 +4,8 @@ import java.net.HttpURLConnection;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -30,6 +32,7 @@ public class HttpGeUncutApiTest {
 	private static final String TOKEN = "gu_test_token";
 
 	private MockWebServer server;
+	private ScheduledExecutorService executor;
 	private HttpGeUncutApi api;
 
 	@Before
@@ -48,12 +51,14 @@ public class HttpGeUncutApiTest {
 				return base.substring(0, base.length() - 1);
 			}
 		};
-		api = new HttpGeUncutApi(new OkHttpClient(), new Gson(), config);
+		executor = Executors.newSingleThreadScheduledExecutor();
+		api = new HttpGeUncutApi(new OkHttpClient(), new Gson(), config, executor);
 	}
 
 	@After
 	public void tearDown() throws Exception {
 		server.shutdown();
+		executor.shutdownNow();
 	}
 
 	@Test
@@ -99,7 +104,9 @@ public class HttpGeUncutApiTest {
 	}
 
 	@Test
-	public void serverErrorReportsTheStatusCode() throws Exception {
+	public void transientErrorsRetryUntilTheBudgetThenReport() throws Exception {
+		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_UNAVAILABLE).setBody("{}"));
+		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_UNAVAILABLE).setBody("{}"));
 		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_UNAVAILABLE).setBody("{}"));
 
 		AtomicReference<ApiFailure> error = new AtomicReference<>();
@@ -109,9 +116,38 @@ public class HttpGeUncutApiTest {
 			done.countDown();
 		});
 
-		assertTrue(done.await(2, TimeUnit.SECONDS));
+		assertTrue(done.await(5, TimeUnit.SECONDS));
 		assertEquals(HttpURLConnection.HTTP_UNAVAILABLE, error.get().getStatusCode());
 		assertEquals("geuncut.app error 503", error.get().getMessage());
+		assertEquals(3, server.getRequestCount());
+	}
+
+	@Test
+	public void transientErrorRecoversOnRetry() throws Exception {
+		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_UNAVAILABLE).setBody("{}"));
+		server.enqueue(new MockResponse().setBody("{\"flips\":[]}"));
+
+		AtomicReference<FlipsResponse> received = new AtomicReference<>();
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchFlips("standard", response -> {
+			received.set(response);
+			done.countDown();
+		}, failure -> done.countDown());
+
+		assertTrue(done.await(5, TimeUnit.SECONDS));
+		assertTrue(received.get().getFlips().isEmpty());
+		assertEquals(2, server.getRequestCount());
+	}
+
+	@Test
+	public void unauthorizedIsNeverRetried() throws Exception {
+		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_UNAUTHORIZED).setBody("{}"));
+
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchFlips("standard", response -> done.countDown(), failure -> done.countDown());
+
+		assertTrue(done.await(5, TimeUnit.SECONDS));
+		assertEquals(1, server.getRequestCount());
 	}
 
 	@Test
@@ -125,7 +161,7 @@ public class HttpGeUncutApiTest {
 			done.countDown();
 		});
 
-		assertTrue(done.await(2, TimeUnit.SECONDS));
+		assertTrue(done.await(5, TimeUnit.SECONDS));
 		assertEquals(ApiFailure.NETWORK_FAILURE, error.get().getStatusCode());
 		assertEquals("geuncut.app is unreachable", error.get().getMessage());
 	}

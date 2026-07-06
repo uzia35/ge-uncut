@@ -22,6 +22,7 @@ import app.geuncut.tracker.OfferTracker;
 import app.geuncut.ui.FlipsPanel;
 import com.google.inject.Binder;
 import com.google.inject.Provides;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GrandExchangeOfferChanged;
@@ -35,6 +36,7 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
 
+@Slf4j
 @PluginDescriptor(name = "GE Uncut", description = "Live flip finder with automatic profit tracking, backed by geuncut.app", tags = {
 		"grand exchange", "flipping", "money making", "ge", "merch" })
 public class GeUncutPlugin extends Plugin {
@@ -122,6 +124,8 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void onFill(OfferDelta delta) {
+		log.debug("event=fill_observed item={} side={} quantity={} price_each={} slot={}",
+				delta.getItemId(), delta.getSide(), delta.getQuantity(), delta.getPriceEach(), delta.getSlot());
 		if (delta.getSide() == OfferDelta.Side.BUY) {
 			buyLimits.recordBuy(delta.getItemId(), delta.getQuantity(), delta.getOccurredAt());
 		}

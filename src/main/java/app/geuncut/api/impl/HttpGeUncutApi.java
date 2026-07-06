@@ -2,6 +2,8 @@ package app.geuncut.api.impl;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.List;
 import javax.inject.Inject;
@@ -34,19 +36,23 @@ import okhttp3.Response;
 @Singleton
 public class HttpGeUncutApi implements GeUncutApi {
 	private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+	private static final int MAX_ATTEMPTS = 3;
+	private static final long RETRY_BASE_DELAY_MS = 300;
 
 	private final OkHttpClient http;
 	private final Gson gson;
 	private final GeUncutConfig config;
+	private final ScheduledExecutorService executor;
 
 	@Inject
-	public HttpGeUncutApi(OkHttpClient http, Gson gson, GeUncutConfig config) {
+	public HttpGeUncutApi(OkHttpClient http, Gson gson, GeUncutConfig config, ScheduledExecutorService executor) {
 		// Plugin-scoped client derived from RuneLite's shared instance: same
 		// connection pool and dispatcher, but the auth interceptor only ever
 		// sees this plugin's requests.
 		this.http = http.newBuilder().addInterceptor(this::authorize).build();
 		this.gson = gson;
 		this.config = config;
+		this.executor = executor;
 	}
 
 	private Response authorize(Interceptor.Chain chain) throws IOException {
@@ -113,11 +119,14 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	private void enqueue(Request request, Consumer<ApiFailure> onError, Consumer<String> onBody) {
+		attempt(request, 1, onError, onBody);
+	}
+
+	private void attempt(Request request, int attemptNumber, Consumer<ApiFailure> onError, Consumer<String> onBody) {
 		http.newCall(request).enqueue(new Callback() {
 			@Override
 			public void onFailure(Call call, IOException exception) {
-				log.debug("geuncut request failed: {}", exception.getMessage());
-				onError.accept(ApiFailure.network("geuncut.app is unreachable"));
+				retryOrFail(ApiFailure.network("geuncut.app is unreachable"), exception.getMessage());
 			}
 
 			@Override
@@ -125,20 +134,51 @@ public class HttpGeUncutApi implements GeUncutApi {
 				try (Response managedResponse = response) {
 					int statusCode = managedResponse.code();
 					if (statusCode == HttpURLConnection.HTTP_UNAUTHORIZED) {
-						onError.accept(ApiFailure.http(statusCode,
+						fail(ApiFailure.http(statusCode,
 								"This plugin is no longer linked. Link it again from the panel."));
 						return;
 					}
+					if (isTransient(statusCode)) {
+						retryOrFail(ApiFailure.http(statusCode, "geuncut.app error " + statusCode),
+								"status " + statusCode);
+						return;
+					}
 					if (!managedResponse.isSuccessful()) {
-						onError.accept(ApiFailure.http(statusCode, "geuncut.app error " + statusCode));
+						fail(ApiFailure.http(statusCode, "geuncut.app error " + statusCode));
 						return;
 					}
 					onBody.accept(managedResponse.body().string());
 				} catch (Exception exception) {
-					log.debug("geuncut response handling failed", exception);
-					onError.accept(ApiFailure.network("Unexpected response from geuncut.app"));
+					log.debug("event=api_response_unreadable path={} error={}",
+							request.url().encodedPath(), exception.toString());
+					fail(ApiFailure.network("Unexpected response from geuncut.app"));
 				}
 			}
+
+			private void retryOrFail(ApiFailure failure, String reason) {
+				if (attemptNumber >= MAX_ATTEMPTS) {
+					fail(failure);
+					return;
+				}
+				long delayMs = RETRY_BASE_DELAY_MS * attemptNumber;
+				log.debug("event=api_retry path={} attempt={} delay_ms={} reason=\"{}\"",
+						request.url().encodedPath(), attemptNumber, delayMs, reason);
+				executor.schedule(
+						() -> attempt(request, attemptNumber + 1, onError, onBody),
+						delayMs, TimeUnit.MILLISECONDS);
+			}
+
+			private void fail(ApiFailure failure) {
+				log.debug("event=api_failure path={} status={} attempts={} message=\"{}\"",
+						request.url().encodedPath(), failure.getStatusCode(), attemptNumber, failure.getMessage());
+				onError.accept(failure);
+			}
 		});
+	}
+
+	private static boolean isTransient(int statusCode) {
+		return statusCode == HttpURLConnection.HTTP_BAD_GATEWAY
+				|| statusCode == HttpURLConnection.HTTP_UNAVAILABLE
+				|| statusCode == HttpURLConnection.HTTP_GATEWAY_TIMEOUT;
 	}
 }
