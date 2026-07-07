@@ -12,7 +12,10 @@ public interface GeUncutConfig extends Config {
 	@ConfigSection(name = "Account", description = "Connection to your geuncut.app account", position = 0)
 	String accountSection = "account";
 
-	@ConfigItem(keyName = "apiToken", name = "API token", description = "Personal token from geuncut.app Settings. The plugin never sees your password.", secret = true, position = 1, section = accountSection)
+	// Hidden: the pairing flow in the panel writes this, and the transport reads it.
+	// It is never entered by hand, so it should not clutter the config or expose the
+	// token in the UI. Use "Link account" in the panel to set it.
+	@ConfigItem(keyName = "apiToken", name = "API token", description = "Set automatically when you link your account", secret = true, hidden = true, position = 1, section = accountSection)
 	default String apiToken() {
 		return "";
 	}
