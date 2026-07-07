@@ -46,15 +46,11 @@ public class HttpGeUncutApiTest {
 			public String apiToken() {
 				return TOKEN;
 			}
-
-			@Override
-			public String apiBase() {
-				String base = server.url("/").toString();
-				return base.substring(0, base.length() - 1);
-			}
 		};
 		executor = Executors.newSingleThreadScheduledExecutor();
-		api = new HttpGeUncutApi(new OkHttpClient(), new Gson(), config, executor);
+		String base = server.url("/").toString();
+		base = base.substring(0, base.length() - 1);
+		api = new HttpGeUncutApi(new OkHttpClient(), new Gson(), config, executor, base);
 	}
 
 	@After

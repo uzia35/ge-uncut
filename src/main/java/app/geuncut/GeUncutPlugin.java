@@ -82,6 +82,9 @@ public class GeUncutPlugin extends Plugin {
 	private GeUncutConfig config;
 
 	@Inject
+	private ConfigManager configManager;
+
+	@Inject
 	private ClientToolbar clientToolbar;
 
 	@Inject
@@ -110,7 +113,7 @@ public class GeUncutPlugin extends Plugin {
 
 	@Override
 	protected void startUp() {
-		panel = new FlipsPanel(this::refreshFlips, this::linkAccount,
+		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, this::unlinkAccount,
 				new ItemIconLoader(okHttpClient, itemManager), this::openItem);
 		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
 		navButton = NavigationButton.builder()
@@ -122,7 +125,9 @@ public class GeUncutPlugin extends Plugin {
 		clientToolbar.addNavigation(navButton);
 
 		tradeSync.start(() -> Long.toString(client.getAccountHash()));
-		offerSync.start(() -> Long.toString(client.getAccountHash()));
+		// Offers still record locally for the working-offers panel when unlinked, but
+		// only transmit when linked: a null hash makes the flush skip (see OfferSync).
+		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
 		refreshFlips();
 	}
 
@@ -145,6 +150,12 @@ public class GeUncutPlugin extends Plugin {
 		if (event.getGameState() == GameState.LOGIN_SCREEN || event.getGameState() == GameState.HOPPING) {
 			offerTracker.reset();
 		}
+	}
+
+	private void unlinkAccount() {
+		link.cancel();
+		configManager.unsetConfiguration(GeUncutConfig.GROUP, "apiToken");
+		refreshFlips();
 	}
 
 	@Subscribe
@@ -185,19 +196,28 @@ public class GeUncutPlugin extends Plugin {
 		return configManager.getConfig(GeUncutConfig.class);
 	}
 
+	private boolean linked() {
+		return !config.apiToken().trim().isEmpty();
+	}
+
 	private void onFill(OfferDelta delta) {
 		log.debug("event=fill_observed item={} side={} quantity={} price_each={} slot={}",
 				delta.getItemId(), delta.getSide(), delta.getQuantity(), delta.getPriceEach(), delta.getSlot());
 		if (delta.getSide() == OfferDelta.Side.BUY) {
 			buyLimits.recordBuy(delta.getItemId(), delta.getQuantity(), delta.getOccurredAt());
 		}
-		tradeSync.accept(delta);
+		// Only transmit trades when linked; an unlinked player has no account to sync
+		// to and the buy limit above is already tracked locally.
+		if (linked()) {
+			tradeSync.accept(delta);
+		}
 	}
 
 	private void refreshFlips() {
 		// Capture the panel so a fetch that resolves after a disable/re-enable can't
 		// write its stale result into the fresh panel from the next startUp.
 		FlipsPanel target = panel;
+		boolean linked = linked();
 		SwingUtilities.invokeLater(() -> target.showStatus("Scanning..."));
 		refreshPositions();
 		flips.fetch(target.selectedScan(), target.selectedRisk(),
@@ -205,8 +225,7 @@ public class GeUncutPlugin extends Plugin {
 					if (target != panel) {
 						return;
 					}
-					target.setLinked(true);
-					target.showFlips(list);
+					target.showFlips(list, linked);
 				}),
 				failure -> SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
@@ -223,7 +242,7 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void openItem(int itemId) {
-		LinkBrowser.browse(config.apiBase() + "/items/" + itemId);
+		LinkBrowser.browse(GeUncutConfig.API_BASE + "/items/" + itemId);
 	}
 
 	private void refreshPositions() {

@@ -6,7 +6,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.List;
 
 import app.geuncut.api.ApiFailure;
-import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.service.impl.LinkServiceImpl;
 import net.runelite.client.config.ConfigManager;
@@ -38,9 +37,7 @@ public class LinkServiceTest {
 		api = new MockGeUncutApi();
 		configManager = mock(ConfigManager.class);
 		executor = mock(ScheduledExecutorService.class);
-		GeUncutConfig config = new GeUncutConfig() {
-		};
-		service = new LinkServiceImpl(api, config, configManager, executor);
+		service = new LinkServiceImpl(api, configManager, executor);
 
 		api.session = LinkSession.builder()
 				.userCode("ABCD-1234")

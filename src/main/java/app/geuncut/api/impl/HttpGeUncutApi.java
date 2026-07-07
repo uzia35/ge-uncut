@@ -50,9 +50,16 @@ public class HttpGeUncutApi implements GeUncutApi {
 	private final Gson gson;
 	private final GeUncutConfig config;
 	private final ScheduledExecutorService executor;
+	private final String baseUrl;
 
 	@Inject
 	public HttpGeUncutApi(OkHttpClient http, Gson gson, GeUncutConfig config, ScheduledExecutorService executor) {
+		this(http, gson, config, executor, GeUncutConfig.API_BASE);
+	}
+
+	// Explicit base URL; the injected constructor above pins it to API_BASE. Lets a
+	// test point the transport at a local MockWebServer.
+	public HttpGeUncutApi(OkHttpClient http, Gson gson, GeUncutConfig config, ScheduledExecutorService executor, String baseUrl) {
 		// Plugin-scoped client derived from RuneLite's shared instance: same
 		// connection pool and dispatcher, but the auth interceptor only ever
 		// sees this plugin's requests.
@@ -60,6 +67,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 		this.gson = gson;
 		this.config = config;
 		this.executor = executor;
+		this.baseUrl = baseUrl;
 	}
 
 	private Response authorize(Interceptor.Chain chain) throws IOException {
@@ -78,19 +86,8 @@ public class HttpGeUncutApi implements GeUncutApi {
 		return request.url().encodedPath().startsWith("/api/plugin/link/");
 	}
 
-	// Null when apiBase is blank/malformed (self-host typo), so callers surface it as
-	// an ApiFailure rather than throwing out of the request-building thread. Trailing
-	// slashes are trimmed so "host/" + "/path" never yields a "//".
 	private HttpUrl resolve(String path) {
-		String base = config.apiBase();
-		if (base == null) {
-			return null;
-		}
-		base = base.trim();
-		while (base.endsWith("/")) {
-			base = base.substring(0, base.length() - 1);
-		}
-		return HttpUrl.parse(base + path);
+		return HttpUrl.parse(baseUrl + path);
 	}
 
 	@Override

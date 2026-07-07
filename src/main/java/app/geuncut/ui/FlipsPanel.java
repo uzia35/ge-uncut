@@ -47,6 +47,7 @@ public class FlipsPanel extends PluginPanel {
 	private final IntConsumer onOpenItem;
 
 	private final JLabel linkStatus = new JLabel();
+	private final JLabel unlinkLink = text("Unlink", Theme.FAINT, Theme.SMALL);
 	private final JLabel allTimeValue = statValue("—");
 	private final JLabel statsSubtitle = new JLabel("", SwingConstants.CENTER);
 	private final JLabel openValue = statValue("—");
@@ -63,13 +64,14 @@ public class FlipsPanel extends PluginPanel {
 
 	private final FlatSelect scanPicker = new FlatSelect(
 			new String[] { "Standard", "Fast Fill", "High Volume" },
-			new String[] { "standard", "fast", "value" }, 0);
+			new String[] { "standard", "fast", "value" }, 2);
 	private final FlatSelect riskPicker = new FlatSelect(new String[] { "Conservative", "Balanced", "Aggressive" }, 1);
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
+	private final JLabel upsell = text("Link to unlock members flips ↗", Theme.INFO, Theme.SMALL);
 
-	public FlipsPanel(Runnable onRefresh, Runnable onLink, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
+	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
 		this.iconLoader = iconLoader;
 		this.onOpenItem = onOpenItem;
 
@@ -108,12 +110,23 @@ public class FlipsPanel extends PluginPanel {
 
 		column.add(sectionHeader("Flip finder", null));
 		column.add(strut(4));
-		JLabel finderHint = text("Click any item → geuncut.app ↗", Theme.FAINT, Theme.SMALL);
+		JLabel finderHint = text("Tap an item for full details ↗", Theme.FAINT, Theme.SMALL);
 		finderHint.setAlignmentX(Component.LEFT_ALIGNMENT);
 		column.add(finderHint);
 		column.add(strut(6));
 		column.add(buildFinderBar(onRefresh));
 		column.add(strut(6));
+		upsell.setAlignmentX(Component.LEFT_ALIGNMENT);
+		upsell.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+		upsell.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		upsell.setVisible(false);
+		upsell.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onLink.run();
+			}
+		});
+		column.add(upsell);
 		finderStatus.setForeground(Theme.MUTED);
 		finderStatus.setFont(Theme.BODY);
 		finderStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -121,6 +134,14 @@ public class FlipsPanel extends PluginPanel {
 		column.add(wrapList(finderList));
 
 		linkButton.addActionListener(event -> onLink.run());
+		unlinkLink.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		unlinkLink.setVisible(false);
+		unlinkLink.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onUnlink.run();
+			}
+		});
 		scanPicker.setOnChange(onRefresh);
 		riskPicker.setOnChange(onRefresh);
 
@@ -142,6 +163,8 @@ public class FlipsPanel extends PluginPanel {
 		linkStatus.setText(linked
 				? "<html><span style='color:#2ec27e'>&#9679;</span> <span style='color:#9a9aa4'>Linked</span></html>"
 				: "<html><span style='color:#9a9aa4'>Not linked</span></html>");
+		// Unlink is only meaningful, and only offered, while an account is linked.
+		unlinkLink.setVisible(linked);
 	}
 
 	public void showOffers(List<GeOffer> offers, Map<Integer, String> itemNames) {
@@ -178,8 +201,12 @@ public class FlipsPanel extends PluginPanel {
 		repaint();
 	}
 
-	public void showFlips(List<Flip> flips) {
+	public void showFlips(List<Flip> flips, boolean linked) {
 		List<Flip> safe = flips != null ? flips : Collections.emptyList();
+		setLinked(linked);
+		// Unlinked callers see the free (non-members) tier, so invite them to link
+		// for the members-item flips rather than gating the panel behind an account.
+		upsell.setVisible(!linked);
 		finderStatus.setText("");
 		finderStatus.setVisible(false);
 		finderList.removeAll();
@@ -196,6 +223,7 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showStatus(String message) {
+		upsell.setVisible(false);
 		finderStatus.setVisible(true);
 		finderStatus.setText(message);
 		finderList.removeAll();
@@ -205,6 +233,7 @@ public class FlipsPanel extends PluginPanel {
 
 	public void showLinkPrompt() {
 		setLinked(false);
+		upsell.setVisible(false);
 		finderStatus.setVisible(true);
 		finderStatus.setText("<html><div style='text-align:center'>Connect your geuncut.app account to see flips and track trades automatically.</div></html>");
 		linkButton.setText("Link account");
@@ -215,6 +244,7 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showLinkCode(String code) {
+		upsell.setVisible(false);
 		finderStatus.setVisible(true);
 		finderStatus.setText("<html><div style='text-align:center'>Go to <b>geuncut.app/link</b> and enter<br>"
 				+ "<span style='font-size:16px;letter-spacing:2px'><b>" + code + "</b></span><br>Waiting for you to confirm...</div></html>");
@@ -241,8 +271,14 @@ public class FlipsPanel extends PluginPanel {
 		brand.add(name, BorderLayout.CENTER);
 
 		linkStatus.setFont(Theme.SMALL);
+		JPanel status = new JPanel();
+		status.setLayout(new BoxLayout(status, BoxLayout.X_AXIS));
+		status.setBackground(Theme.SURFACE);
+		status.add(linkStatus);
+		status.add(Box.createHorizontalStrut(8));
+		status.add(unlinkLink);
 		header.add(brand, BorderLayout.WEST);
-		header.add(linkStatus, BorderLayout.EAST);
+		header.add(status, BorderLayout.EAST);
 		return header;
 	}
 

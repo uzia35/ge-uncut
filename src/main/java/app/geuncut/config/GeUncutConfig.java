@@ -3,27 +3,20 @@ package app.geuncut.config;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
-import net.runelite.client.config.ConfigSection;
 
 @ConfigGroup(GeUncutConfig.GROUP)
 public interface GeUncutConfig extends Config {
 	String GROUP = "geuncut";
 
-	@ConfigSection(name = "Account", description = "Connection to your geuncut.app account", position = 0)
-	String accountSection = "account";
+	// A constant, not a config method: a non-@ConfigItem method on a Config proxy
+	// resolves to null and logs a warning, so the base URL lives here instead.
+	String API_BASE = "https://geuncut.app";
 
-	@ConfigItem(keyName = "apiToken", name = "API token", description = "Personal token from geuncut.app Settings. The plugin never sees your password.", secret = true, position = 1, section = accountSection)
+	// Written by the panel's link flow, read by the transport. Hidden so it never
+	// appears in the config panel or is edited by hand; the panel is where you link,
+	// unlink, and see account status. It is the only stored value the plugin keeps.
+	@ConfigItem(keyName = "apiToken", name = "API token", description = "Set automatically when you link your account", secret = true, hidden = true, position = 1)
 	default String apiToken() {
 		return "";
-	}
-
-	@ConfigItem(keyName = "syncTrades", name = "Sync my GE trades", description = "Report your own offer fills to geuncut.app so flips track themselves in My Flips", position = 2, section = accountSection)
-	default boolean syncTrades() {
-		return true;
-	}
-
-	@ConfigItem(keyName = "apiBase", name = "API base URL", description = "Only change this if you self-host", position = 3, section = accountSection)
-	default String apiBase() {
-		return "https://geuncut.app";
 	}
 }

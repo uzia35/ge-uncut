@@ -10,7 +10,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 
 import app.geuncut.api.GeUncutApi;
-import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.service.OfferSyncService;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +27,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 	private static final int FLUSH_SECONDS = 10;
 
 	private final GeUncutApi api;
-	private final GeUncutConfig config;
 	private final Map<Integer, GeOffer> slots = new HashMap<>();
 
 	private String lastAccountHash;
@@ -36,10 +34,9 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 	private boolean flushInFlight;
 
 	@Inject
-	public OfferSyncServiceImpl(GeUncutApi api, GeUncutConfig config, ScheduledExecutorService executor) {
+	public OfferSyncServiceImpl(GeUncutApi api, ScheduledExecutorService executor) {
 		super(executor, FLUSH_SECONDS);
 		this.api = api;
-		this.config = config;
 	}
 
 	@Override
@@ -55,9 +52,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 	@Override
 	public void record(int slot, int itemId, GrandExchangeOfferState state,
 			int quantitySold, int totalQuantity, int price, Instant now) {
-		if (!config.syncTrades()) {
-			return;
-		}
 		synchronized (slots) {
 			// Captured while a game event is firing, so it is always the hash of
 			// the logged-in account even if the flush tick lands after a logout.

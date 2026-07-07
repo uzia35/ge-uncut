@@ -27,7 +27,6 @@ public class LinkServiceImpl implements LinkService {
 	private static final int POLL_SECONDS = 5;
 
 	private final GeUncutApi api;
-	private final GeUncutConfig config;
 	private final ConfigManager configManager;
 	private final ScheduledExecutorService executor;
 
@@ -36,10 +35,8 @@ public class LinkServiceImpl implements LinkService {
 	private boolean starting;
 
 	@Inject
-	public LinkServiceImpl(GeUncutApi api, GeUncutConfig config, ConfigManager configManager,
-			ScheduledExecutorService executor) {
+	public LinkServiceImpl(GeUncutApi api, ConfigManager configManager, ScheduledExecutorService executor) {
 		this.api = api;
-		this.config = config;
 		this.configManager = configManager;
 		this.executor = executor;
 	}
@@ -56,7 +53,7 @@ public class LinkServiceImpl implements LinkService {
 	@Override
 	public synchronized void openClaimPage() {
 		if (session != null) {
-			LinkBrowser.browse(config.apiBase() + "/link?code=" + session.getUserCode());
+			LinkBrowser.browse(GeUncutConfig.API_BASE + "/link?code=" + session.getUserCode());
 		}
 	}
 
