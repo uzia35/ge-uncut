@@ -20,20 +20,26 @@ import javax.swing.SwingUtilities;
  * a click opens a dark popup of the options.
  */
 class FlatSelect extends RoundedPanel {
-	private final String[] options;
+	private final String[] labels;
+	private final String[] values;
 	private final JLabel valueLabel;
 	private int selectedIndex;
 	private Runnable onChange = () -> {
 	};
 
 	FlatSelect(String[] options, int selectedIndex) {
+		this(options, options, selectedIndex);
+	}
+
+	FlatSelect(String[] labels, String[] values, int selectedIndex) {
 		super(7, Theme.RAISED, Theme.LINE);
-		this.options = options;
+		this.labels = labels;
+		this.values = values;
 		this.selectedIndex = selectedIndex;
 		setLayout(new BorderLayout(6, 0));
 		setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 18));
 
-		valueLabel = new JLabel(options[selectedIndex]);
+		valueLabel = new JLabel(labels[selectedIndex]);
 		valueLabel.setForeground(Theme.INK);
 		valueLabel.setFont(Theme.BODY);
 		add(valueLabel, BorderLayout.CENTER);
@@ -78,15 +84,15 @@ class FlatSelect extends RoundedPanel {
 	}
 
 	String selectedValue() {
-		return options[selectedIndex];
+		return values[selectedIndex];
 	}
 
 	private void showMenu() {
 		JPopupMenu menu = new JPopupMenu();
 		menu.setBackground(Theme.RAISED);
 		menu.setBorder(BorderFactory.createLineBorder(Theme.LINE_STRONG));
-		for (int i = 0; i < options.length; i++) {
-			JMenuItem item = new JMenuItem(options[i]);
+		for (int i = 0; i < labels.length; i++) {
+			JMenuItem item = new JMenuItem(labels[i]);
 			item.setBackground(Theme.RAISED);
 			item.setForeground(i == selectedIndex ? Theme.WHITE : Theme.INK);
 			item.setFont(Theme.BODY);
@@ -103,7 +109,7 @@ class FlatSelect extends RoundedPanel {
 			return;
 		}
 		selectedIndex = index;
-		valueLabel.setText(options[index]);
+		valueLabel.setText(labels[index]);
 		onChange.run();
 	}
 }

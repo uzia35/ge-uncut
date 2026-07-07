@@ -55,6 +55,7 @@ final class Theme {
 	static final Font SECTION = INTER_SEMI.deriveFont(10.5f);
 	static final Font NUM = MONO.deriveFont(12f);
 	static final Font NUM_BOLD = MONO_SEMI.deriveFont(12f);
+	static final Font NUM_LG = MONO_SEMI.deriveFont(14f);
 	static final Font NUM_SMALL = MONO.deriveFont(11f);
 	static final Font NUM_TINY = MONO.deriveFont(9.5f);
 	static final Font NUM_HERO = MONO_SEMI.deriveFont(20f);
