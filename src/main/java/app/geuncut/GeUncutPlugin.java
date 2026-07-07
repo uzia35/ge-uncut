@@ -42,6 +42,7 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -80,6 +81,9 @@ public class GeUncutPlugin extends Plugin {
 
 	@Inject
 	private GeUncutConfig config;
+
+	@Inject
+	private ConfigManager configManager;
 
 	@Inject
 	private ClientToolbar clientToolbar;
@@ -144,6 +148,21 @@ public class GeUncutPlugin extends Plugin {
 	public void onGameStateChanged(GameStateChanged event) {
 		if (event.getGameState() == GameState.LOGIN_SCREEN || event.getGameState() == GameState.HOPPING) {
 			offerTracker.reset();
+		}
+	}
+
+	// "Unlink account" is an action, not a setting: clear the stored token, reset the
+	// toggle back off, and refresh the panel to the unlinked (free-tier) view.
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event) {
+		if (!GeUncutConfig.GROUP.equals(event.getGroup()) || !"unlink".equals(event.getKey())) {
+			return;
+		}
+		if (config.unlink()) {
+			link.cancel();
+			configManager.unsetConfiguration(GeUncutConfig.GROUP, "apiToken");
+			configManager.setConfiguration(GeUncutConfig.GROUP, "unlink", false);
+			SwingUtilities.invokeLater(this::refreshFlips);
 		}
 	}
 

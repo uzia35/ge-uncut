@@ -25,9 +25,15 @@ public interface GeUncutConfig extends Config {
 		return true;
 	}
 
-	// Hidden: only self-hosters change this, and they can set it in RuneLite's
-	// settings file directly, so it does not need a slot in the config panel.
-	@ConfigItem(keyName = "apiBase", name = "API base URL", description = "Only change this if you self-host", hidden = true, position = 3, section = accountSection)
+	// RuneLite config has no button type, so this is an action toggle: ticking it
+	// clears the stored token (the plugin resets it to off). See GeUncutPlugin.
+	@ConfigItem(keyName = "unlink", name = "Unlink account", description = "Disconnect this device from your geuncut.app account", position = 3, section = accountSection)
+	default boolean unlink() {
+		return false;
+	}
+
+	// Not a config item, so it never appears in the panel and can't be changed:
+	// this is a single-owner product with one backend.
 	default String apiBase() {
 		return "https://geuncut.app";
 	}
