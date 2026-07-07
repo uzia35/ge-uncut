@@ -64,12 +64,12 @@ public class FlipsPanel extends PluginPanel {
 
 	private final FlatSelect scanPicker = new FlatSelect(
 			new String[] { "Standard", "Fast Fill", "High Volume" },
-			new String[] { "standard", "fast", "value" }, 0);
+			new String[] { "standard", "fast", "value" }, 2);
 	private final FlatSelect riskPicker = new FlatSelect(new String[] { "Conservative", "Balanced", "Aggressive" }, 1);
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
-	private final JLabel upsell = text("Link for members-item flips ↗", Theme.INFO, Theme.SMALL);
+	private final JLabel upsell = text("Link to unlock members flips ↗", Theme.INFO, Theme.SMALL);
 
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
 		this.iconLoader = iconLoader;
