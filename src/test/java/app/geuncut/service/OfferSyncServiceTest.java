@@ -6,7 +6,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import app.geuncut.api.ApiFailure;
-import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.service.impl.OfferSyncServiceImpl;
 import net.runelite.api.GrandExchangeOfferState;
@@ -28,19 +27,12 @@ public class OfferSyncServiceTest {
 	private MockGeUncutApi api;
 	private OfferSyncService service;
 	private Runnable flushTick;
-	private boolean syncEnabled = true;
 
 	@Before
 	public void setUp() {
 		api = new MockGeUncutApi();
 		ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
-		GeUncutConfig config = new GeUncutConfig() {
-			@Override
-			public boolean syncTrades() {
-				return syncEnabled;
-			}
-		};
-		service = new OfferSyncServiceImpl(api, config, executor);
+		service = new OfferSyncServiceImpl(api, executor);
 		service.start(() -> "acct-1");
 
 		ArgumentCaptor<Runnable> tick = ArgumentCaptor.forClass(Runnable.class);
@@ -125,16 +117,6 @@ public class OfferSyncServiceTest {
 
 		flushTick.run();
 		assertTrue(api.postedOffers.isEmpty());
-	}
-
-	@Test
-	public void syncDisabledRecordsNothing() {
-		syncEnabled = false;
-		service.record(0, 561, GrandExchangeOfferState.BUYING, 0, 100, 128, T0);
-		flushTick.run();
-
-		assertTrue(api.postedOffers.isEmpty());
-		assertTrue(service.current().isEmpty());
 	}
 
 	@Test

@@ -232,7 +232,7 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void openItem(int itemId) {
-		LinkBrowser.browse(config.apiBase() + "/items/" + itemId);
+		LinkBrowser.browse(GeUncutConfig.API_BASE + "/items/" + itemId);
 	}
 
 	private void refreshPositions() {

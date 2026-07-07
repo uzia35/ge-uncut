@@ -6,7 +6,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import app.geuncut.api.ApiFailure;
-import app.geuncut.config.GeUncutConfig;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.impl.TradeSyncServiceImpl;
 import org.junit.Before;
@@ -27,19 +26,12 @@ public class TradeSyncServiceTest {
 	private ScheduledExecutorService executor;
 	private TradeSyncService service;
 	private Runnable flushTick;
-	private boolean syncEnabled = true;
 
 	@Before
 	public void setUp() {
 		api = new MockGeUncutApi();
 		executor = mock(ScheduledExecutorService.class);
-		GeUncutConfig config = new GeUncutConfig() {
-			@Override
-			public boolean syncTrades() {
-				return syncEnabled;
-			}
-		};
-		service = new TradeSyncServiceImpl(api, config, executor);
+		service = new TradeSyncServiceImpl(api, executor);
 		service.start(() -> "acct-1");
 
 		ArgumentCaptor<Runnable> tick = ArgumentCaptor.forClass(Runnable.class);
@@ -79,14 +71,6 @@ public class TradeSyncServiceTest {
 
 	@Test
 	public void emptyQueueDoesNotPost() {
-		flushTick.run();
-		assertTrue(api.postedBatches.isEmpty());
-	}
-
-	@Test
-	public void syncDisabledDropsFills() {
-		syncEnabled = false;
-		service.accept(buy(3));
 		flushTick.run();
 		assertTrue(api.postedBatches.isEmpty());
 	}

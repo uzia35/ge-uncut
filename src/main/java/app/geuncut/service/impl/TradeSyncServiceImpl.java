@@ -9,7 +9,6 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 
 import app.geuncut.api.GeUncutApi;
-import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.TradeSyncService;
@@ -27,14 +26,12 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 	private static final int MAX_QUEUED = 200;
 
 	private final GeUncutApi api;
-	private final GeUncutConfig config;
 	private final Deque<GeTradeEvent> queue = new ArrayDeque<>();
 
 	@Inject
-	public TradeSyncServiceImpl(GeUncutApi api, GeUncutConfig config, ScheduledExecutorService executor) {
+	public TradeSyncServiceImpl(GeUncutApi api, ScheduledExecutorService executor) {
 		super(executor, FLUSH_SECONDS);
 		this.api = api;
-		this.config = config;
 	}
 
 	@Override
@@ -47,9 +44,6 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 
 	@Override
 	public void accept(OfferDelta delta) {
-		if (!config.syncTrades()) {
-			return;
-		}
 		GeTradeEvent payload = toPayload(delta);
 		synchronized (queue) {
 			if (queue.size() >= MAX_QUEUED) {
