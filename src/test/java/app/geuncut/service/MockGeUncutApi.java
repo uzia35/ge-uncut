@@ -31,6 +31,7 @@ class MockGeUncutApi implements GeUncutApi {
 	final List<List<GeTradeEvent>> postedBatches = new ArrayList<>();
 	final List<List<GeOffer>> postedOffers = new ArrayList<>();
 	String lastOffersAccountHash;
+	String lastOffersSyncedAt;
 	int pollCount;
 
 	private Runnable pendingPostFailure;
@@ -81,13 +82,14 @@ class MockGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void postOffers(String accountHash, List<GeOffer> offers, Runnable onSuccess, Consumer<ApiFailure> onError) {
+	public void postOffers(String accountHash, List<GeOffer> offers, String syncedAt, Runnable onSuccess, Consumer<ApiFailure> onError) {
 		if (failNextOffers) {
 			failNextOffers = false;
 			onError.accept(failure);
 			return;
 		}
 		lastOffersAccountHash = accountHash;
+		lastOffersSyncedAt = syncedAt;
 		postedOffers.add(new ArrayList<>(offers));
 		onSuccess.run();
 	}

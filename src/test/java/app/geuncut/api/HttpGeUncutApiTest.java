@@ -271,7 +271,7 @@ public class HttpGeUncutApiTest {
 				.build());
 
 		CountDownLatch done = new CountDownLatch(1);
-		api.postOffers("acct-1", offers, done::countDown, error -> done.countDown());
+		api.postOffers("acct-1", offers, "2026-07-06T03:00:05Z", done::countDown, error -> done.countDown());
 
 		assertTrue(done.await(2, TimeUnit.SECONDS));
 		RecordedRequest recorded = server.takeRequest();
@@ -280,6 +280,7 @@ public class HttpGeUncutApiTest {
 		assertEquals("Bearer " + TOKEN, recorded.getHeader("Authorization"));
 		String body = recorded.getBody().readUtf8();
 		assertTrue(body.contains("\"account_hash\":\"acct-1\""));
+		assertTrue(body.contains("\"synced_at\":\"2026-07-06T03:00:05Z\""));
 		assertTrue(body.contains("\"item_id\":561"));
 		assertTrue(body.contains("\"quantity_filled\":40"));
 		assertTrue(body.contains("\"quantity_total\":100"));

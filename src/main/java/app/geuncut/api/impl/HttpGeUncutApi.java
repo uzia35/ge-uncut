@@ -136,7 +136,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void postOffers(String accountHash, List<GeOffer> offers, Runnable onSuccess, Consumer<ApiFailure> onError) {
+	public void postOffers(String accountHash, List<GeOffer> offers, String syncedAt, Runnable onSuccess, Consumer<ApiFailure> onError) {
 		HttpUrl url = resolve("/api/plugin/offers");
 		if (url == null) {
 			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
@@ -144,6 +144,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 		}
 		JsonObject payload = new JsonObject();
 		payload.addProperty("account_hash", accountHash);
+		payload.addProperty("synced_at", syncedAt);
 		payload.add("offers", gson.toJsonTree(offers));
 		Request request = new Request.Builder()
 				.url(url)

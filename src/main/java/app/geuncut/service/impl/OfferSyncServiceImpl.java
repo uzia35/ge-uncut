@@ -93,6 +93,7 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 	protected void flush() {
 		String hash;
 		List<GeOffer> snapshot;
+		String syncedAt;
 		synchronized (slots) {
 			// flushInFlight serializes the async posts: a slow/retrying request must
 			// never be overtaken by a newer one, or a stale snapshot could land last.
@@ -101,10 +102,12 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 			}
 			hash = lastAccountHash;
 			snapshot = new ArrayList<>(slots.values());
+			// Monotonic snapshot time so the server can reject an out-of-order post.
+			syncedAt = Instant.now().toString();
 			dirty = false;
 			flushInFlight = true;
 		}
-		api.postOffers(hash, snapshot,
+		api.postOffers(hash, snapshot, syncedAt,
 				() -> {
 					synchronized (slots) {
 						flushInFlight = false;
