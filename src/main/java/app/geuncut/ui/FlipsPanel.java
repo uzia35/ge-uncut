@@ -68,6 +68,7 @@ public class FlipsPanel extends PluginPanel {
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
+	private final JLabel upsell = text("Link for members-item flips ↗", Theme.INFO, Theme.SMALL);
 
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
 		this.iconLoader = iconLoader;
@@ -108,12 +109,23 @@ public class FlipsPanel extends PluginPanel {
 
 		column.add(sectionHeader("Flip finder", null));
 		column.add(strut(4));
-		JLabel finderHint = text("Click any item → geuncut.app ↗", Theme.FAINT, Theme.SMALL);
+		JLabel finderHint = text("Tap an item for full details ↗", Theme.FAINT, Theme.SMALL);
 		finderHint.setAlignmentX(Component.LEFT_ALIGNMENT);
 		column.add(finderHint);
 		column.add(strut(6));
 		column.add(buildFinderBar(onRefresh));
 		column.add(strut(6));
+		upsell.setAlignmentX(Component.LEFT_ALIGNMENT);
+		upsell.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+		upsell.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		upsell.setVisible(false);
+		upsell.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onLink.run();
+			}
+		});
+		column.add(upsell);
 		finderStatus.setForeground(Theme.MUTED);
 		finderStatus.setFont(Theme.BODY);
 		finderStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -178,8 +190,12 @@ public class FlipsPanel extends PluginPanel {
 		repaint();
 	}
 
-	public void showFlips(List<Flip> flips) {
+	public void showFlips(List<Flip> flips, boolean linked) {
 		List<Flip> safe = flips != null ? flips : Collections.emptyList();
+		setLinked(linked);
+		// Unlinked callers see the free (non-members) tier, so invite them to link
+		// for the members-item flips rather than gating the panel behind an account.
+		upsell.setVisible(!linked);
 		finderStatus.setText("");
 		finderStatus.setVisible(false);
 		finderList.removeAll();
@@ -196,6 +212,7 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showStatus(String message) {
+		upsell.setVisible(false);
 		finderStatus.setVisible(true);
 		finderStatus.setText(message);
 		finderList.removeAll();
@@ -205,6 +222,7 @@ public class FlipsPanel extends PluginPanel {
 
 	public void showLinkPrompt() {
 		setLinked(false);
+		upsell.setVisible(false);
 		finderStatus.setVisible(true);
 		finderStatus.setText("<html><div style='text-align:center'>Connect your geuncut.app account to see flips and track trades automatically.</div></html>");
 		linkButton.setText("Link account");
@@ -215,6 +233,7 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showLinkCode(String code) {
+		upsell.setVisible(false);
 		finderStatus.setVisible(true);
 		finderStatus.setText("<html><div style='text-align:center'>Go to <b>geuncut.app/link</b> and enter<br>"
 				+ "<span style='font-size:16px;letter-spacing:2px'><b>" + code + "</b></span><br>Waiting for you to confirm...</div></html>");

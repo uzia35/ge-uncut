@@ -198,6 +198,7 @@ public class GeUncutPlugin extends Plugin {
 		// Capture the panel so a fetch that resolves after a disable/re-enable can't
 		// write its stale result into the fresh panel from the next startUp.
 		FlipsPanel target = panel;
+		boolean linked = !config.apiToken().trim().isEmpty();
 		SwingUtilities.invokeLater(() -> target.showStatus("Scanning..."));
 		refreshPositions();
 		flips.fetch(target.selectedScan(), target.selectedRisk(),
@@ -205,8 +206,7 @@ public class GeUncutPlugin extends Plugin {
 					if (target != panel) {
 						return;
 					}
-					target.setLinked(true);
-					target.showFlips(list);
+					target.showFlips(list, linked);
 				}),
 				failure -> SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
