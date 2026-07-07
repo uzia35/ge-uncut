@@ -1,8 +1,8 @@
 # GE Uncut
 
 A live flip finder for the Grand Exchange, in a RuneLite side panel. It surfaces
-flips from [geuncut.app](https://geuncut.app), tracks your realized profit from
-your own GE offers, and shows rolling buy-limit timers.
+ranked flips, tracks your realized profit from your own GE offers, and shows
+rolling buy-limit timers.
 
 ## Features
 
