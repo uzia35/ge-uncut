@@ -42,7 +42,6 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.eventbus.Subscribe;
-import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -114,7 +113,7 @@ public class GeUncutPlugin extends Plugin {
 
 	@Override
 	protected void startUp() {
-		panel = new FlipsPanel(this::refreshFlips, this::linkAccount,
+		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, this::unlinkAccount,
 				new ItemIconLoader(okHttpClient, itemManager), this::openItem);
 		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
 		navButton = NavigationButton.builder()
@@ -151,19 +150,10 @@ public class GeUncutPlugin extends Plugin {
 		}
 	}
 
-	// "Unlink account" is an action, not a setting: clear the stored token, reset the
-	// toggle back off, and refresh the panel to the unlinked (free-tier) view.
-	@Subscribe
-	public void onConfigChanged(ConfigChanged event) {
-		if (!GeUncutConfig.GROUP.equals(event.getGroup()) || !"unlink".equals(event.getKey())) {
-			return;
-		}
-		if (config.unlink()) {
-			link.cancel();
-			configManager.unsetConfiguration(GeUncutConfig.GROUP, "apiToken");
-			configManager.setConfiguration(GeUncutConfig.GROUP, "unlink", false);
-			SwingUtilities.invokeLater(this::refreshFlips);
-		}
+	private void unlinkAccount() {
+		link.cancel();
+		configManager.unsetConfiguration(GeUncutConfig.GROUP, "apiToken");
+		refreshFlips();
 	}
 
 	@Subscribe
