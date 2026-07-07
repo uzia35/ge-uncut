@@ -3,8 +3,9 @@ package app.geuncut.ui;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 import javax.swing.JLabel;
@@ -26,9 +27,19 @@ import okhttp3.Response;
  * never sent to the wiki.
  */
 public class ItemIconLoader {
+	private static final int MAX_CACHE = 512;
+
 	private final OkHttpClient http;
 	private final ItemManager itemManager;
-	private final Map<String, ImageIcon> cache = new ConcurrentHashMap<>();
+	// Keyed by itemId, not name: noted/unnoted variants share a name but not an id.
+	// Bounded LRU so a long session browsing many items cannot grow it without limit.
+	private final Map<Integer, ImageIcon> cache = Collections.synchronizedMap(
+			new LinkedHashMap<Integer, ImageIcon>(64, 0.75f, true) {
+				@Override
+				protected boolean removeEldestEntry(Map.Entry<Integer, ImageIcon> eldest) {
+					return size() > MAX_CACHE;
+				}
+			});
 
 	public ItemIconLoader(OkHttpClient http, ItemManager itemManager) {
 		this.http = http;
@@ -41,7 +52,7 @@ public class ItemIconLoader {
 		if (name == null || name.trim().isEmpty()) {
 			return;
 		}
-		ImageIcon cached = cache.get(name);
+		ImageIcon cached = cache.get(itemId);
 		if (cached != null) {
 			label.setIcon(cached);
 			return;
@@ -63,7 +74,7 @@ public class ItemIconLoader {
 						return;
 					}
 					ImageIcon icon = new ImageIcon(fit(image, size));
-					cache.put(name, icon);
+					cache.put(itemId, icon);
 					SwingUtilities.invokeLater(() -> label.setIcon(icon));
 				} catch (IOException unreadable) {
 					// Keep the sprite.

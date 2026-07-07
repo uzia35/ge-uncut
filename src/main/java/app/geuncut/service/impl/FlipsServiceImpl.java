@@ -1,6 +1,7 @@
 package app.geuncut.service.impl;
 
 import java.util.function.Consumer;
+import java.util.Collections;
 import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -24,6 +25,8 @@ public class FlipsServiceImpl implements FlipsService {
 
 	@Override
 	public void fetch(String scanType, String risk, Consumer<List<Flip>> onSuccess, Consumer<ApiFailure> onError) {
-		api.fetchFlips(scanType, risk, response -> onSuccess.accept(response.getFlips()), onError);
+		api.fetchFlips(scanType, risk,
+				response -> onSuccess.accept(response.getFlips() != null ? response.getFlips() : Collections.emptyList()),
+				onError);
 	}
 }

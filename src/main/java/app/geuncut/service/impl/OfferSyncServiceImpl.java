@@ -33,6 +33,7 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 
 	private String lastAccountHash;
 	private boolean dirty;
+	private boolean flushInFlight;
 
 	@Inject
 	public OfferSyncServiceImpl(GeUncutApi api, GeUncutConfig config, ScheduledExecutorService executor) {
@@ -43,9 +44,11 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 
 	@Override
 	protected void onStop() {
+		flush();
 		synchronized (slots) {
 			slots.clear();
 			dirty = false;
+			flushInFlight = false;
 		}
 	}
 
@@ -90,26 +93,40 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 	protected void flush() {
 		String hash;
 		List<GeOffer> snapshot;
+		String syncedAt;
 		synchronized (slots) {
-			if (!dirty || lastAccountHash == null) {
+			// flushInFlight serializes the async posts: a slow/retrying request must
+			// never be overtaken by a newer one, or a stale snapshot could land last.
+			if (flushInFlight || !dirty || lastAccountHash == null) {
 				return;
 			}
 			hash = lastAccountHash;
 			snapshot = new ArrayList<>(slots.values());
+			// Monotonic snapshot time so the server can reject an out-of-order post.
+			syncedAt = Instant.now().toString();
 			dirty = false;
+			flushInFlight = true;
 		}
-		api.postOffers(hash, snapshot,
-				() -> log.debug("event=offer_sync_flushed count={}", snapshot.size()),
+		api.postOffers(hash, snapshot, syncedAt,
+				() -> {
+					synchronized (slots) {
+						flushInFlight = false;
+					}
+					log.debug("event=offer_sync_flushed count={}", snapshot.size());
+				},
 				failure -> {
+					synchronized (slots) {
+						flushInFlight = false;
+						if (!failure.isUnauthorized()) {
+							dirty = true;
+						}
+					}
 					if (failure.isUnauthorized()) {
 						// Not linked: retrying re-hits the same rejection every tick.
 						log.warn("event=offer_sync_unauthorized offers={}", snapshot.size());
-						return;
-					}
-					log.debug("event=offer_sync_requeued offers={} kind={} status={} reason=\"{}\"",
-							snapshot.size(), failure.getKind(), failure.getStatusCode(), failure.getMessage());
-					synchronized (slots) {
-						dirty = true;
+					} else {
+						log.debug("event=offer_sync_requeued offers={} kind={} status={} reason=\"{}\"",
+								snapshot.size(), failure.getKind(), failure.getStatusCode(), failure.getMessage());
 					}
 				});
 	}

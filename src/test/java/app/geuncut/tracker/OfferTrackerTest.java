@@ -97,6 +97,26 @@ public class OfferTrackerTest {
 	}
 
 	@Test
+	public void reusedSlotWhoseFirstEventAlreadyFilledIsCounted() {
+		tracker.onOfferChanged(0, TBOW, BUYING, 0, 0, T0);
+		tracker.onOfferChanged(0, TBOW, BOUGHT, 8, 8_000_000, T0);
+		tracker.onOfferChanged(0, TBOW, EMPTY, 0, 0, T0);
+
+		Optional<OfferDelta> fill = tracker.onOfferChanged(0, 4151, BUYING, 5, 5_000_000, T0);
+		assertTrue(fill.isPresent());
+		assertEquals(5, fill.get().getQuantity());
+		assertEquals(1_000_000, fill.get().getPriceEach());
+	}
+
+	@Test
+	public void largeSpendComputesAnExactUnitPrice() {
+		tracker.onOfferChanged(1, TBOW, BUYING, 0, 0, T0);
+		Optional<OfferDelta> fill = tracker.onOfferChanged(1, TBOW, BOUGHT, 1, 1_500_000_001, T0);
+		assertTrue(fill.isPresent());
+		assertEquals(1_500_000_001, fill.get().getPriceEach());
+	}
+
+	@Test
 	public void slotReuseWithDifferentItemStartsClean() {
 		tracker.onOfferChanged(0, TBOW, BUYING, 0, 0, T0);
 		tracker.onOfferChanged(0, TBOW, BOUGHT, 8, 8_000_000, T0);

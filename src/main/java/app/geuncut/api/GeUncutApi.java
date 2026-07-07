@@ -24,7 +24,7 @@ public interface GeUncutApi {
 
 	void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError);
 
-	void postOffers(String accountHash, List<GeOffer> offers, Runnable onSuccess, Consumer<ApiFailure> onError);
+	void postOffers(String accountHash, List<GeOffer> offers, String syncedAt, Runnable onSuccess, Consumer<ApiFailure> onError);
 
 	void startLink(Consumer<LinkSession> onSuccess, Consumer<ApiFailure> onError);
 

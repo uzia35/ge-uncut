@@ -10,6 +10,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.text.NumberFormat;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.IntConsumer;
@@ -18,11 +19,14 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
+import app.geuncut.dto.DemandTrend;
+import app.geuncut.dto.Fill;
 import app.geuncut.dto.Flip;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.Position;
@@ -57,7 +61,9 @@ public class FlipsPanel extends PluginPanel {
 	private final JPanel activeList = listPanel();
 	private final JLabel activeCount = new JLabel("0");
 
-	private final FlatSelect scanPicker = new FlatSelect(new String[] { "standard", "fast", "value" }, 0);
+	private final FlatSelect scanPicker = new FlatSelect(
+			new String[] { "Standard", "Fast Fill", "High Volume" },
+			new String[] { "standard", "fast", "value" }, 0);
 	private final FlatSelect riskPicker = new FlatSelect(new String[] { "Conservative", "Balanced", "Aggressive" }, 1);
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
@@ -80,23 +86,25 @@ public class FlipsPanel extends PluginPanel {
 		column.add(buildStats());
 		column.add(strut(14));
 
+		// The section spacing is a bottom border, not a separate strut, so a hidden
+		// section leaves no orphaned gap (e.g. an unlinked account with no offers).
 		offersSection.setLayout(new BorderLayout());
 		offersSection.setBackground(Theme.SURFACE);
 		offersSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		offersSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
 		offersSection.add(sectionHeader("Working offers", offersCount), BorderLayout.NORTH);
 		offersSection.add(wrapList(offersList), BorderLayout.CENTER);
 		offersSection.setVisible(false);
 		column.add(offersSection);
-		column.add(strut(14));
 
 		activeSection.setLayout(new BorderLayout());
 		activeSection.setBackground(Theme.SURFACE);
 		activeSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		activeSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
 		activeSection.add(sectionHeader("Active flips", activeCount), BorderLayout.NORTH);
 		activeSection.add(wrapList(activeList), BorderLayout.CENTER);
 		activeSection.setVisible(false);
 		column.add(activeSection);
-		column.add(strut(14));
 
 		column.add(sectionHeader("Flip finder", null));
 		column.add(strut(4));
@@ -142,7 +150,7 @@ public class FlipsPanel extends PluginPanel {
 		offersList.removeAll();
 		for (GeOffer offer : offers) {
 			String name = itemNames.getOrDefault(offer.getItemId(), "Item " + offer.getItemId());
-			offersList.add(offerCard(offer, name));
+			addCard(offersList, offerCard(offer, name));
 		}
 		offersSection.setVisible(!offers.isEmpty());
 		revalidate();
@@ -150,16 +158,20 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showActiveFlips(PositionsResponse response) {
-		PositionsSummary summary = response.getSummary();
+		// A degraded 200 can omit summary/positions; treat absence as an empty state
+		// rather than NPEing the render.
+		PositionsSummary summary = response.getSummary() != null
+				? response.getSummary() : PositionsSummary.builder().build();
 		setStat(allTimeValue, summary.getTotalRealized());
 		setStat(todayValue, summary.getTodayRealized());
 		setStat(openValue, summary.getOpenUnrealized());
 		statsSubtitle.setText(subtitleText(summary));
-		List<Position> positions = response.getPositions();
+		List<Position> positions = response.getPositions() != null
+				? response.getPositions() : Collections.emptyList();
 		activeCount.setText(Integer.toString(positions.size()));
 		activeList.removeAll();
 		for (Position position : positions) {
-			activeList.add(activeFlipCard(position));
+			addCard(activeList, activeFlipCard(position));
 		}
 		activeSection.setVisible(!positions.isEmpty());
 		revalidate();
@@ -167,14 +179,15 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showFlips(List<Flip> flips) {
+		List<Flip> safe = flips != null ? flips : Collections.emptyList();
 		finderStatus.setText("");
 		finderStatus.setVisible(false);
 		finderList.removeAll();
-		int shown = Math.min(flips.size(), 10);
-		for (Flip flip : flips.subList(0, shown)) {
-			finderList.add(finderCard(flip));
+		int shown = Math.min(safe.size(), 10);
+		for (Flip flip : safe.subList(0, shown)) {
+			addCard(finderList, finderCard(flip));
 		}
-		if (flips.isEmpty()) {
+		if (safe.isEmpty()) {
 			finderStatus.setVisible(true);
 			finderStatus.setText("No flips match your settings right now");
 		}
@@ -196,7 +209,7 @@ public class FlipsPanel extends PluginPanel {
 		finderStatus.setText("<html><div style='text-align:center'>Connect your geuncut.app account to see flips and track trades automatically.</div></html>");
 		linkButton.setText("Link account");
 		finderList.removeAll();
-		finderList.add(linkButton);
+		addCard(finderList, linkButton);
 		revalidate();
 		repaint();
 	}
@@ -207,7 +220,7 @@ public class FlipsPanel extends PluginPanel {
 				+ "<span style='font-size:16px;letter-spacing:2px'><b>" + code + "</b></span><br>Waiting for you to confirm...</div></html>");
 		linkButton.setText("Open geuncut.app/link");
 		finderList.removeAll();
-		finderList.add(linkButton);
+		addCard(finderList, linkButton);
 		revalidate();
 		repaint();
 	}
@@ -312,7 +325,7 @@ public class FlipsPanel extends PluginPanel {
 		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 
 		boolean buy = "buy".equals(offer.getSide());
-		JLabel nameLabel = text(name, Theme.WHITE, Theme.BODY_BOLD);
+		JLabel nameLabel = nameLabel(name);
 		nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		body.add(nameLabel);
 		body.add(Box.createVerticalStrut(6));
@@ -349,33 +362,131 @@ public class FlipsPanel extends PluginPanel {
 		body.setOpaque(false);
 		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 
-		// Name on its own line so long names are never clipped.
-		JLabel name = text(flip.getName(), Theme.WHITE, Theme.BODY_BOLD);
-		name.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(name);
-		body.add(Box.createVerticalStrut(4));
+		addLeft(body, nameLabel(flip.getName()));
 
-		// One number per line, each labelled, then profit with the ROI badge.
-		JLabel buyLine = text("Buy " + GP.format(flip.getQuantity()) + " @ " + GP.format(flip.getBuyPrice()), Theme.MUTED, Theme.NUM_SMALL);
-		buyLine.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(buyLine);
-		body.add(Box.createVerticalStrut(2));
+		String meta = metaLine(flip);
+		if (meta != null) {
+			body.add(Box.createVerticalStrut(2));
+			addLeft(body, text(meta, Theme.FAINT, Theme.SMALL));
+		}
 
-		JLabel sellLine = text("Sell @ " + GP.format(flip.getTargetSellPrice()), Theme.MUTED, Theme.NUM_SMALL);
-		sellLine.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(sellLine);
-		body.add(Box.createVerticalStrut(5));
+		Pill demand = demandPill(flip.getDemandTrend());
+		if (demand != null) {
+			body.add(Box.createVerticalStrut(4));
+			addLeft(body, demand);
+		}
 
-		JPanel profitLine = new JPanel(new BorderLayout(6, 0));
-		profitLine.setOpaque(false);
-		profitLine.add(text("+" + shortGp(flip.getTotalProfit()), Theme.UP, Theme.NUM_BOLD), BorderLayout.WEST);
-		profitLine.add(pill("ROI " + trimNum(flip.getRoiPerDay()) + "%", Theme.UP), BorderLayout.EAST);
-		profitLine.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(profitLine);
+		body.add(Box.createVerticalStrut(8));
+		addLeft(body, text("Buy " + GP.format(flip.getQuantity()) + " @ " + GP.format(flip.getBuyPrice()), Theme.INK, Theme.NUM_SMALL));
+		body.add(Box.createVerticalStrut(3));
+
+		addLeft(body, text("Sell @ " + GP.format(flip.getTargetSellPrice()), Theme.INK, Theme.NUM_SMALL));
+		body.add(Box.createVerticalStrut(3));
+		addLeft(body, text("+" + shortGp(flip.getProfitPerItem()) + "/ea after tax", Theme.UP, Theme.NUM_SMALL));
+
+		body.add(Box.createVerticalStrut(9));
+		addLeft(body, divider());
+		body.add(Box.createVerticalStrut(9));
+		JPanel stats = new JPanel(new BorderLayout());
+		stats.setOpaque(false);
+		stats.add(statMini("Profit", text("+" + shortGp(flip.getTotalProfit()), Theme.UP, Theme.NUM_LG),
+				Component.LEFT_ALIGNMENT), BorderLayout.WEST);
+		stats.add(statMini("ROI / day", text(trimNum(flip.getRoiPerDay()) + "%", Theme.INK, Theme.NUM_BOLD),
+				Component.RIGHT_ALIGNMENT), BorderLayout.EAST);
+		addLeft(body, stats);
+
+		body.add(Box.createVerticalStrut(8));
+		addLeft(body, text("Buy " + fillTime(flip.getBuyFill()) + " · Sell " + fillTime(flip.getSellFill()), Theme.FAINT, Theme.SMALL));
 
 		card.add(body, BorderLayout.CENTER);
 		clickable(card, flip.getItemId());
 		return card;
+	}
+
+	private static void addLeft(JPanel body, JComponent child) {
+		child.setAlignmentX(Component.LEFT_ALIGNMENT);
+		body.add(child);
+	}
+
+	private static String metaLine(Flip flip) {
+		String margin = marginLabel(flip);
+		String hold = flip.getHorizon() != null ? "hold ≤ " + flip.getHorizon().getRecommendedDays() + "d" : null;
+		if (margin != null && hold != null) {
+			return margin + " · " + hold;
+		}
+		return margin != null ? margin : hold;
+	}
+
+	private static String marginLabel(Flip flip) {
+		if ("fast".equals(flip.getStrategy()) && flip.getSpreadPct() != null) {
+			return trimNum(flip.getSpreadPct()) + "% margin";
+		}
+		if (flip.getEntryDiscountPct() != null) {
+			return trimNum(flip.getEntryDiscountPct()) + "% below";
+		}
+		if (flip.getSpreadPct() != null) {
+			return trimNum(flip.getSpreadPct()) + "% margin";
+		}
+		return null;
+	}
+
+	private Pill demandPill(DemandTrend trend) {
+		if (trend == null || trend.getDirection() == null) {
+			return null;
+		}
+		switch (trend.getDirection()) {
+			case RISING:
+				return pill("Demand rising", Theme.UP);
+			case FALLING:
+				return pill("Demand falling", Theme.DOWN);
+			default:
+				return null;
+		}
+	}
+
+	private static String fillTime(Fill fill) {
+		if (fill == null) {
+			return "—";
+		}
+		if (fill.getWorstCaseHours() != null) {
+			return fmtHoursShort(fill.getWorstCaseHours());
+		}
+		return fill.getSpeed() != null ? fill.getSpeed() : "—";
+	}
+
+	private static String fmtHoursShort(double hours) {
+		double minutes = hours * 60;
+		if (minutes < 1) {
+			return "<1m";
+		}
+		if (minutes < 90) {
+			return "~" + Math.round(minutes) + "m";
+		}
+		if (hours < 24) {
+			return "~" + trimNum(hours) + "h";
+		}
+		return "~" + trimNum(hours / 24) + "d";
+	}
+
+	private static JComponent divider() {
+		JPanel line = new JPanel();
+		line.setBackground(Theme.LINE);
+		line.setPreferredSize(new Dimension(10, 1));
+		line.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+		return line;
+	}
+
+	private JPanel statMini(String label, JLabel value, float align) {
+		JPanel col = new JPanel();
+		col.setOpaque(false);
+		col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
+		JLabel caption = text(label.toUpperCase(), Theme.FAINT, Theme.SMALL);
+		caption.setAlignmentX(align);
+		value.setAlignmentX(align);
+		col.add(caption);
+		col.add(Box.createVerticalStrut(2));
+		col.add(value);
+		return col;
 	}
 
 	private RoundedPanel activeFlipCard(Position position) {
@@ -388,7 +499,7 @@ public class FlipsPanel extends PluginPanel {
 
 		JPanel line1 = new JPanel(new BorderLayout(6, 0));
 		line1.setOpaque(false);
-		line1.add(text(position.getName(), Theme.WHITE, Theme.BODY_BOLD), BorderLayout.CENTER);
+		line1.add(nameLabel(position.getName()), BorderLayout.CENTER);
 		if (isSell(position.getPhase())) {
 			line1.add(pill("SELL", Theme.AMBER), BorderLayout.EAST);
 		}
@@ -543,9 +654,34 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private static JPanel listPanel() {
-		JPanel list = new JPanel(new GridLayout(0, 1, 0, 6));
+		// BoxLayout, not GridLayout: cards must size to their own content. GridLayout
+		// stretched every card to the tallest one, leaving whitespace under short ones.
+		JPanel list = new JPanel();
+		list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
 		list.setBackground(Theme.SURFACE);
 		return list;
+	}
+
+	// Add a full-width card, capped to its own height so the vertical box never
+	// stretches it, with a 6px gap above every card after the first.
+	private static void addCard(JPanel list, JComponent card) {
+		if (list.getComponentCount() > 0) {
+			list.add(Box.createVerticalStrut(6));
+		}
+		card.setAlignmentX(Component.LEFT_ALIGNMENT);
+		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
+		list.add(card);
+	}
+
+	// Item name that never widens the card past the panel: a long name clips (with
+	// the full name on hover) instead of forcing a minimum width wider than 225px.
+	private JLabel nameLabel(String name) {
+		JLabel label = text(name, Theme.WHITE, Theme.BODY_BOLD);
+		label.setToolTipText(name);
+		int height = label.getPreferredSize().height;
+		label.setMinimumSize(new Dimension(0, height));
+		label.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+		return label;
 	}
 
 	private static JLabel text(String value, java.awt.Color color, java.awt.Font font) {

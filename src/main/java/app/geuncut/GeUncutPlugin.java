@@ -38,6 +38,7 @@ import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.ItemComposition;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.eventbus.Subscribe;
@@ -67,6 +68,9 @@ public class GeUncutPlugin extends Plugin {
 
 	@Inject
 	private Client client;
+
+	@Inject
+	private ClientThread clientThread;
 
 	@Inject
 	private ItemManager itemManager;
@@ -128,8 +132,12 @@ public class GeUncutPlugin extends Plugin {
 		tradeSync.stop();
 		offerSync.stop();
 		clientToolbar.removeNavigation(navButton);
-		offerTracker.reset();
-		buyLimits.reset();
+		// The trackers are only ever mutated on the client thread; hop the resets
+		// there too so shutDown (which may run off it) can't race an offer event.
+		clientThread.invoke(() -> {
+			offerTracker.reset();
+			buyLimits.reset();
+		});
 	}
 
 	@Subscribe
@@ -187,20 +195,29 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshFlips() {
-		SwingUtilities.invokeLater(() -> panel.showStatus("Scanning..."));
+		// Capture the panel so a fetch that resolves after a disable/re-enable can't
+		// write its stale result into the fresh panel from the next startUp.
+		FlipsPanel target = panel;
+		SwingUtilities.invokeLater(() -> target.showStatus("Scanning..."));
 		refreshPositions();
-		flips.fetch(panel.selectedScan(), panel.selectedRisk(),
+		flips.fetch(target.selectedScan(), target.selectedRisk(),
 				list -> SwingUtilities.invokeLater(() -> {
-					panel.setLinked(true);
-					panel.showFlips(list);
+					if (target != panel) {
+						return;
+					}
+					target.setLinked(true);
+					target.showFlips(list);
 				}),
 				failure -> SwingUtilities.invokeLater(() -> {
+					if (target != panel) {
+						return;
+					}
 					// Unauthorized means unlinked (never paired, revoked, or the
 					// token aged out): offer pairing instead of an error message.
 					if (failure.isUnauthorized()) {
-						panel.showLinkPrompt();
+						target.showLinkPrompt();
 					} else {
-						panel.showStatus(failure.getMessage());
+						target.showStatus(failure.getMessage());
 					}
 				}));
 	}
@@ -212,8 +229,13 @@ public class GeUncutPlugin extends Plugin {
 	private void refreshPositions() {
 		// Best-effort: an unlinked or offline fetch leaves the last known flips in
 		// place; the flip scan above is what surfaces the link prompt.
+		FlipsPanel target = panel;
 		positions.fetch(
-				response -> SwingUtilities.invokeLater(() -> panel.showActiveFlips(response)),
+				response -> SwingUtilities.invokeLater(() -> {
+					if (target == panel) {
+						target.showActiveFlips(response);
+					}
+				}),
 				failure -> log.debug("event=positions_fetch_failed kind={} status={}",
 						failure.getKind(), failure.getStatusCode()));
 	}
@@ -225,7 +247,9 @@ public class GeUncutPlugin extends Plugin {
 		}
 		link.begin(
 				code -> SwingUtilities.invokeLater(() -> panel.showLinkCode(code)),
-				this::refreshFlips,
+				// onLinked fires on an OkHttp thread; hop to the EDT before refreshFlips
+				// reads the panel's picker state, as the other two callbacks already do.
+				() -> SwingUtilities.invokeLater(this::refreshFlips),
 				failure -> SwingUtilities.invokeLater(() -> panel.showStatus(failure.getMessage())));
 	}
 }

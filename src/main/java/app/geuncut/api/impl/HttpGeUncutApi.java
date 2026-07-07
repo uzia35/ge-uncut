@@ -20,6 +20,7 @@ import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.PositionsResponse;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -30,6 +31,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 /**
  * HTTP transport to geuncut.app. Nothing but HTTP lives here; payload shapes
@@ -39,6 +41,7 @@ import okhttp3.Response;
 @Singleton
 public class HttpGeUncutApi implements GeUncutApi {
 	private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+	private static final int HTTP_TOO_MANY_REQUESTS = 429;
 	private static final int MAX_ATTEMPTS = 3;
 	private static final long RETRY_BASE_DELAY_MS = 300;
 	private static final long RETRY_JITTER_MS = 150;
@@ -75,10 +78,29 @@ public class HttpGeUncutApi implements GeUncutApi {
 		return request.url().encodedPath().startsWith("/api/plugin/link/");
 	}
 
+	// Null when apiBase is blank/malformed (self-host typo), so callers surface it as
+	// an ApiFailure rather than throwing out of the request-building thread. Trailing
+	// slashes are trimmed so "host/" + "/path" never yields a "//".
+	private HttpUrl resolve(String path) {
+		String base = config.apiBase();
+		if (base == null) {
+			return null;
+		}
+		base = base.trim();
+		while (base.endsWith("/")) {
+			base = base.substring(0, base.length() - 1);
+		}
+		return HttpUrl.parse(base + path);
+	}
+
 	@Override
 	public void fetchFlips(String scanType, String risk, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
-		HttpUrl.Builder url = HttpUrl.parse(config.apiBase() + "/api/plugin/flips").newBuilder()
-				.addQueryParameter("scan_type", scanType);
+		HttpUrl base = resolve("/api/plugin/flips");
+		if (base == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		HttpUrl.Builder url = base.newBuilder().addQueryParameter("scan_type", scanType);
 		if (risk != null && !risk.isEmpty()) {
 			url.addQueryParameter("risk", risk);
 		}
@@ -88,31 +110,44 @@ public class HttpGeUncutApi implements GeUncutApi {
 
 	@Override
 	public void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError) {
-		Request request = new Request.Builder()
-				.url(config.apiBase() + "/api/plugin/positions")
-				.get()
-				.build();
+		HttpUrl url = resolve("/api/plugin/positions");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		Request request = new Request.Builder().url(url).get().build();
 		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, PositionsResponse.class)));
 	}
 
 	@Override
 	public void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/ge-events");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
 		JsonObject payload = new JsonObject();
 		payload.add("events", gson.toJsonTree(events));
 		Request request = new Request.Builder()
-				.url(config.apiBase() + "/api/plugin/ge-events")
+				.url(url)
 				.post(RequestBody.create(JSON, payload.toString()))
 				.build();
 		enqueue(request, onError, body -> onSuccess.run());
 	}
 
 	@Override
-	public void postOffers(String accountHash, List<GeOffer> offers, Runnable onSuccess, Consumer<ApiFailure> onError) {
+	public void postOffers(String accountHash, List<GeOffer> offers, String syncedAt, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/offers");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
 		JsonObject payload = new JsonObject();
 		payload.addProperty("account_hash", accountHash);
+		payload.addProperty("synced_at", syncedAt);
 		payload.add("offers", gson.toJsonTree(offers));
 		Request request = new Request.Builder()
-				.url(config.apiBase() + "/api/plugin/offers")
+				.url(url)
 				.post(RequestBody.create(JSON, payload.toString()))
 				.build();
 		enqueue(request, onError, body -> onSuccess.run());
@@ -120,8 +155,13 @@ public class HttpGeUncutApi implements GeUncutApi {
 
 	@Override
 	public void startLink(Consumer<LinkSession> onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/link/start");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
 		Request request = new Request.Builder()
-				.url(config.apiBase() + "/api/plugin/link/start")
+				.url(url)
 				.post(RequestBody.create(JSON, "{}"))
 				.build();
 		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, LinkSession.class)));
@@ -129,18 +169,28 @@ public class HttpGeUncutApi implements GeUncutApi {
 
 	@Override
 	public void pollLink(String deviceCode, Consumer<String> onToken, Runnable onPending, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/link/poll");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
 		JsonObject payload = new JsonObject();
 		payload.addProperty("device_code", deviceCode);
 		Request request = new Request.Builder()
-				.url(config.apiBase() + "/api/plugin/link/poll")
+				.url(url)
 				.post(RequestBody.create(JSON, payload.toString()))
 				.build();
 		enqueue(request, onError, body -> {
 			JsonObject parsed = gson.fromJson(body, JsonObject.class);
+			if (parsed == null || !parsed.has("pending")) {
+				throw new JsonParseException("missing 'pending' in link poll response");
+			}
 			if (parsed.get("pending").getAsBoolean()) {
 				onPending.run();
-			} else {
+			} else if (parsed.has("token")) {
 				onToken.accept(parsed.get("token").getAsString());
+			} else {
+				throw new JsonParseException("missing 'token' in link poll response");
 			}
 		});
 	}
@@ -174,8 +224,15 @@ public class HttpGeUncutApi implements GeUncutApi {
 						fail(ApiFailure.http(statusCode, "geuncut.app error " + statusCode));
 						return;
 					}
-					onBody.accept(managedResponse.body().string());
-				} catch (Exception exception) {
+					ResponseBody responseBody = managedResponse.body();
+					if (responseBody == null) {
+						fail(ApiFailure.network("Empty response from geuncut.app"));
+						return;
+					}
+					// Only the read + parse are guarded here; a bug in the caller's own
+					// success handler must propagate, not be masked as a transport error.
+					onBody.accept(responseBody.string());
+				} catch (IOException | JsonParseException exception) {
 					log.debug("event=api_response_unreadable path={} error={}",
 							request.url().encodedPath(), exception.toString());
 					fail(ApiFailure.network("Unexpected response from geuncut.app"));
@@ -207,7 +264,8 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	private static boolean isTransient(int statusCode) {
-		return statusCode == HttpURLConnection.HTTP_BAD_GATEWAY
+		return statusCode == HTTP_TOO_MANY_REQUESTS
+				|| statusCode == HttpURLConnection.HTTP_BAD_GATEWAY
 				|| statusCode == HttpURLConnection.HTTP_UNAVAILABLE
 				|| statusCode == HttpURLConnection.HTTP_GATEWAY_TIMEOUT;
 	}

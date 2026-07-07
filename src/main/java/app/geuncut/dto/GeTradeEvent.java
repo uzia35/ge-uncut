@@ -23,7 +23,7 @@ public class GeTradeEvent {
 	@SerializedName("price_each")
 	private final int priceEach;
 
-	private final Integer slot;
+	private final int slot;
 
 	@SerializedName("occurred_at")
 	private final String occurredAt;
