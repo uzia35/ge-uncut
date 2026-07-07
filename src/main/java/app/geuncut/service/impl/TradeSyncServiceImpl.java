@@ -84,6 +84,11 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 						for (int index = batch.size() - 1; index >= 0; index--) {
 							queue.addFirst(batch.get(index));
 						}
+						// New fills may have arrived while the POST was in flight, so
+						// re-apply the cap here too, dropping oldest first.
+						while (queue.size() > MAX_QUEUED) {
+							queue.removeFirst();
+						}
 					}
 				});
 	}

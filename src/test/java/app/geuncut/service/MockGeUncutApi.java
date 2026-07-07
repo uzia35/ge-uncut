@@ -19,6 +19,8 @@ import app.geuncut.dto.PositionsResponse;
 class MockGeUncutApi implements GeUncutApi {
 	boolean failNextPost;
 	boolean failNextOffers;
+	boolean deferNextPost;
+	boolean deferNextPoll;
 	String linkToken;
 	boolean linkPending = true;
 	ApiFailure failure = ApiFailure.network("boom");
@@ -30,6 +32,9 @@ class MockGeUncutApi implements GeUncutApi {
 	final List<List<GeOffer>> postedOffers = new ArrayList<>();
 	String lastOffersAccountHash;
 	int pollCount;
+
+	private Runnable pendingPostFailure;
+	private Runnable pendingPoll;
 
 	@Override
 	public void fetchFlips(String scanType, String risk, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
@@ -51,6 +56,11 @@ class MockGeUncutApi implements GeUncutApi {
 
 	@Override
 	public void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		if (deferNextPost) {
+			deferNextPost = false;
+			pendingPostFailure = () -> onError.accept(failure);
+			return;
+		}
 		if (failNextPost) {
 			failNextPost = false;
 			onError.accept(failure);
@@ -58,6 +68,16 @@ class MockGeUncutApi implements GeUncutApi {
 		}
 		postedBatches.add(new ArrayList<>(events));
 		onSuccess.run();
+	}
+
+	// Fire a post outcome that postGeEvents held back (deferNextPost), so a test can
+	// let accept() calls interleave between a flush's clear and its failure callback.
+	void firePendingPostFailure() {
+		Runnable held = pendingPostFailure;
+		pendingPostFailure = null;
+		if (held != null) {
+			held.run();
+		}
 	}
 
 	@Override
@@ -84,6 +104,25 @@ class MockGeUncutApi implements GeUncutApi {
 	@Override
 	public void pollLink(String deviceCode, Consumer<String> onToken, Runnable onPending, Consumer<ApiFailure> onError) {
 		pollCount++;
+		if (deferNextPoll) {
+			deferNextPoll = false;
+			pendingPoll = () -> deliverPoll(onToken, onPending, onError);
+			return;
+		}
+		deliverPoll(onToken, onPending, onError);
+	}
+
+	// Fire a poll outcome that pollLink held back (deferNextPoll), so a test can cancel
+	// and restart a session before the stale poll's response lands.
+	void firePendingPoll() {
+		Runnable held = pendingPoll;
+		pendingPoll = null;
+		if (held != null) {
+			held.run();
+		}
+	}
+
+	private void deliverPoll(Consumer<String> onToken, Runnable onPending, Consumer<ApiFailure> onError) {
 		if (linkToken != null) {
 			onToken.accept(linkToken);
 		} else if (linkPending) {

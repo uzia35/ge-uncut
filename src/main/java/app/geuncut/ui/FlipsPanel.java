@@ -10,6 +10,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.text.NumberFormat;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.function.IntConsumer;
@@ -85,23 +86,25 @@ public class FlipsPanel extends PluginPanel {
 		column.add(buildStats());
 		column.add(strut(14));
 
+		// The section spacing is a bottom border, not a separate strut, so a hidden
+		// section leaves no orphaned gap (e.g. an unlinked account with no offers).
 		offersSection.setLayout(new BorderLayout());
 		offersSection.setBackground(Theme.SURFACE);
 		offersSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		offersSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
 		offersSection.add(sectionHeader("Working offers", offersCount), BorderLayout.NORTH);
 		offersSection.add(wrapList(offersList), BorderLayout.CENTER);
 		offersSection.setVisible(false);
 		column.add(offersSection);
-		column.add(strut(14));
 
 		activeSection.setLayout(new BorderLayout());
 		activeSection.setBackground(Theme.SURFACE);
 		activeSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		activeSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
 		activeSection.add(sectionHeader("Active flips", activeCount), BorderLayout.NORTH);
 		activeSection.add(wrapList(activeList), BorderLayout.CENTER);
 		activeSection.setVisible(false);
 		column.add(activeSection);
-		column.add(strut(14));
 
 		column.add(sectionHeader("Flip finder", null));
 		column.add(strut(4));
@@ -147,7 +150,7 @@ public class FlipsPanel extends PluginPanel {
 		offersList.removeAll();
 		for (GeOffer offer : offers) {
 			String name = itemNames.getOrDefault(offer.getItemId(), "Item " + offer.getItemId());
-			offersList.add(offerCard(offer, name));
+			addCard(offersList, offerCard(offer, name));
 		}
 		offersSection.setVisible(!offers.isEmpty());
 		revalidate();
@@ -155,16 +158,20 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showActiveFlips(PositionsResponse response) {
-		PositionsSummary summary = response.getSummary();
+		// A degraded 200 can omit summary/positions; treat absence as an empty state
+		// rather than NPEing the render.
+		PositionsSummary summary = response.getSummary() != null
+				? response.getSummary() : PositionsSummary.builder().build();
 		setStat(allTimeValue, summary.getTotalRealized());
 		setStat(todayValue, summary.getTodayRealized());
 		setStat(openValue, summary.getOpenUnrealized());
 		statsSubtitle.setText(subtitleText(summary));
-		List<Position> positions = response.getPositions();
+		List<Position> positions = response.getPositions() != null
+				? response.getPositions() : Collections.emptyList();
 		activeCount.setText(Integer.toString(positions.size()));
 		activeList.removeAll();
 		for (Position position : positions) {
-			activeList.add(activeFlipCard(position));
+			addCard(activeList, activeFlipCard(position));
 		}
 		activeSection.setVisible(!positions.isEmpty());
 		revalidate();
@@ -172,14 +179,15 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showFlips(List<Flip> flips) {
+		List<Flip> safe = flips != null ? flips : Collections.emptyList();
 		finderStatus.setText("");
 		finderStatus.setVisible(false);
 		finderList.removeAll();
-		int shown = Math.min(flips.size(), 10);
-		for (Flip flip : flips.subList(0, shown)) {
-			finderList.add(finderCard(flip));
+		int shown = Math.min(safe.size(), 10);
+		for (Flip flip : safe.subList(0, shown)) {
+			addCard(finderList, finderCard(flip));
 		}
-		if (flips.isEmpty()) {
+		if (safe.isEmpty()) {
 			finderStatus.setVisible(true);
 			finderStatus.setText("No flips match your settings right now");
 		}
@@ -201,7 +209,7 @@ public class FlipsPanel extends PluginPanel {
 		finderStatus.setText("<html><div style='text-align:center'>Connect your geuncut.app account to see flips and track trades automatically.</div></html>");
 		linkButton.setText("Link account");
 		finderList.removeAll();
-		finderList.add(linkButton);
+		addCard(finderList, linkButton);
 		revalidate();
 		repaint();
 	}
@@ -212,7 +220,7 @@ public class FlipsPanel extends PluginPanel {
 				+ "<span style='font-size:16px;letter-spacing:2px'><b>" + code + "</b></span><br>Waiting for you to confirm...</div></html>");
 		linkButton.setText("Open geuncut.app/link");
 		finderList.removeAll();
-		finderList.add(linkButton);
+		addCard(finderList, linkButton);
 		revalidate();
 		repaint();
 	}
@@ -317,7 +325,7 @@ public class FlipsPanel extends PluginPanel {
 		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 
 		boolean buy = "buy".equals(offer.getSide());
-		JLabel nameLabel = text(name, Theme.WHITE, Theme.BODY_BOLD);
+		JLabel nameLabel = nameLabel(name);
 		nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		body.add(nameLabel);
 		body.add(Box.createVerticalStrut(6));
@@ -354,7 +362,7 @@ public class FlipsPanel extends PluginPanel {
 		body.setOpaque(false);
 		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
 
-		addLeft(body, text(flip.getName(), Theme.WHITE, Theme.BODY_BOLD));
+		addLeft(body, nameLabel(flip.getName()));
 
 		String meta = metaLine(flip);
 		if (meta != null) {
@@ -491,7 +499,7 @@ public class FlipsPanel extends PluginPanel {
 
 		JPanel line1 = new JPanel(new BorderLayout(6, 0));
 		line1.setOpaque(false);
-		line1.add(text(position.getName(), Theme.WHITE, Theme.BODY_BOLD), BorderLayout.CENTER);
+		line1.add(nameLabel(position.getName()), BorderLayout.CENTER);
 		if (isSell(position.getPhase())) {
 			line1.add(pill("SELL", Theme.AMBER), BorderLayout.EAST);
 		}
@@ -646,9 +654,34 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private static JPanel listPanel() {
-		JPanel list = new JPanel(new GridLayout(0, 1, 0, 6));
+		// BoxLayout, not GridLayout: cards must size to their own content. GridLayout
+		// stretched every card to the tallest one, leaving whitespace under short ones.
+		JPanel list = new JPanel();
+		list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
 		list.setBackground(Theme.SURFACE);
 		return list;
+	}
+
+	// Add a full-width card, capped to its own height so the vertical box never
+	// stretches it, with a 6px gap above every card after the first.
+	private static void addCard(JPanel list, JComponent card) {
+		if (list.getComponentCount() > 0) {
+			list.add(Box.createVerticalStrut(6));
+		}
+		card.setAlignmentX(Component.LEFT_ALIGNMENT);
+		card.setMaximumSize(new Dimension(Integer.MAX_VALUE, card.getPreferredSize().height));
+		list.add(card);
+	}
+
+	// Item name that never widens the card past the panel: a long name clips (with
+	// the full name on hover) instead of forcing a minimum width wider than 225px.
+	private JLabel nameLabel(String name) {
+		JLabel label = text(name, Theme.WHITE, Theme.BODY_BOLD);
+		label.setToolTipText(name);
+		int height = label.getPreferredSize().height;
+		label.setMinimumSize(new Dimension(0, height));
+		label.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+		return label;
 	}
 
 	private static JLabel text(String value, java.awt.Color color, java.awt.Font font) {

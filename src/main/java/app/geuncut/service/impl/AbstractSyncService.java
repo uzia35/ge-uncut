@@ -16,8 +16,8 @@ abstract class AbstractSyncService implements SyncService {
 	private final ScheduledExecutorService executor;
 	private final int flushIntervalSeconds;
 
-	private ScheduledFuture<?> flusher;
-	private Supplier<String> accountHashSupplier;
+	private volatile ScheduledFuture<?> flusher;
+	private volatile Supplier<String> accountHashSupplier;
 
 	protected AbstractSyncService(ScheduledExecutorService executor, int flushIntervalSeconds) {
 		this.executor = executor;
@@ -27,6 +27,10 @@ abstract class AbstractSyncService implements SyncService {
 	@Override
 	public final void start(Supplier<String> accountHashSupplier) {
 		this.accountHashSupplier = accountHashSupplier;
+		// Guard against a start without an intervening stop leaking a second loop.
+		if (flusher != null) {
+			flusher.cancel(false);
+		}
 		flusher = executor.scheduleWithFixedDelay(
 				this::flush, flushIntervalSeconds, flushIntervalSeconds, TimeUnit.SECONDS);
 	}

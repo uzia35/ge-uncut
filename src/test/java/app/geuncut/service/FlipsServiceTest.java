@@ -11,8 +11,22 @@ import app.geuncut.service.impl.FlipsServiceImpl;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class FlipsServiceTest {
+	@Test
+	public void nullFlipListSurfacesAsEmpty() {
+		MockGeUncutApi api = new MockGeUncutApi();
+		api.flipsResponse = FlipsResponse.builder().build();
+
+		List<List<Flip>> received = new ArrayList<>();
+		new FlipsServiceImpl(api).fetch("standard", "balanced", received::add, error -> {
+		});
+
+		assertEquals(1, received.size());
+		assertTrue(received.get(0).isEmpty());
+	}
+
 	@Test
 	public void fetchUnwrapsTheFlipList() {
 		MockGeUncutApi api = new MockGeUncutApi();

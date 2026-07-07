@@ -114,4 +114,28 @@ public class LinkServiceTest {
 		service.cancel();
 		assertFalse(service.isPairing());
 	}
+
+	@Test
+	public void staleSessionPollNeverWritesAToken() {
+		Runnable stalePoll = begin();
+		api.deferNextPoll = true;
+		stalePoll.run();
+
+		// User abandons session 1 and starts a fresh session 2.
+		service.cancel();
+		api.session = LinkSession.builder()
+				.userCode("WXYZ-9999")
+				.deviceCode("device-2")
+				.expiresInSeconds(600)
+				.build();
+		service.begin(shownCodes::add, () -> linkedCalls++, errors::add);
+
+		// The abandoned session-1 poll finally delivers a token.
+		api.linkToken = "stale-token";
+		api.firePendingPoll();
+
+		verify(configManager, never()).setConfiguration(any(), any(), any(String.class));
+		assertEquals(0, linkedCalls);
+		assertTrue(service.isPairing());
+	}
 }

@@ -33,6 +33,7 @@ public class LinkServiceImpl implements LinkService {
 
 	private LinkSession session;
 	private ScheduledFuture<?> poller;
+	private boolean starting;
 
 	@Inject
 	public LinkServiceImpl(GeUncutApi api, GeUncutConfig config, ConfigManager configManager,
@@ -66,9 +67,14 @@ public class LinkServiceImpl implements LinkService {
 				openClaimPage();
 				return;
 			}
+			if (starting) {
+				return;
+			}
+			starting = true;
 		}
 		api.startLink(started -> {
 			synchronized (this) {
+				starting = false;
 				if (session != null) {
 					return;
 				}
@@ -78,7 +84,12 @@ public class LinkServiceImpl implements LinkService {
 			}
 			log.debug("event=link_started expires_in={}s", started.getExpiresInSeconds());
 			onCode.accept(started.getUserCode());
-		}, onError);
+		}, failure -> {
+			synchronized (this) {
+				starting = false;
+			}
+			onError.accept(failure);
+		});
 	}
 
 	@Override
@@ -91,15 +102,20 @@ public class LinkServiceImpl implements LinkService {
 	}
 
 	private void poll(Runnable onLinked, Consumer<ApiFailure> onError) {
-		String deviceCode;
+		LinkSession active;
 		synchronized (this) {
 			if (session == null) {
 				return;
 			}
-			deviceCode = session.getDeviceCode();
+			active = session;
 		}
-		api.pollLink(deviceCode,
+		api.pollLink(active.getDeviceCode(),
 				token -> {
+					synchronized (this) {
+						if (session != active) {
+							return;
+						}
+					}
 					configManager.setConfiguration(GeUncutConfig.GROUP, "apiToken", token);
 					log.debug("event=link_completed");
 					cancel();
@@ -108,6 +124,11 @@ public class LinkServiceImpl implements LinkService {
 				() -> {
 				},
 				failure -> {
+					synchronized (this) {
+						if (session != active) {
+							return;
+						}
+					}
 					log.debug("event=link_poll_stopped kind={} status={} message=\"{}\"",
 							failure.getKind(), failure.getStatusCode(), failure.getMessage());
 					cancel();

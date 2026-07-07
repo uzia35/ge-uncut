@@ -116,6 +116,24 @@ public class TradeSyncServiceTest {
 	}
 
 	@Test
+	public void requeueDoesNotGrowTheQueueBeyondCap() {
+		for (int quantity = 1; quantity <= 200; quantity++) {
+			service.accept(buy(quantity));
+		}
+		// Hold the flush's POST so accepts can interleave the way a real outage allows.
+		api.deferNextPost = true;
+		flushTick.run();
+		for (int quantity = 201; quantity <= 400; quantity++) {
+			service.accept(buy(quantity));
+		}
+		api.firePendingPostFailure();
+
+		flushTick.run();
+		assertEquals(1, api.postedBatches.size());
+		assertEquals(200, api.postedBatches.get(0).size());
+	}
+
+	@Test
 	public void idempotencyKeyIsStableForTheSameFill() {
 		service.accept(buy(3));
 		flushTick.run();
