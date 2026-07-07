@@ -25,7 +25,9 @@ public interface GeUncutConfig extends Config {
 		return true;
 	}
 
-	@ConfigItem(keyName = "apiBase", name = "API base URL", description = "Only change this if you self-host", position = 3, section = accountSection)
+	// Hidden: only self-hosters change this, and they can set it in RuneLite's
+	// settings file directly, so it does not need a slot in the config panel.
+	@ConfigItem(keyName = "apiBase", name = "API base URL", description = "Only change this if you self-host", hidden = true, position = 3, section = accountSection)
 	default String apiBase() {
 		return "https://geuncut.app";
 	}
