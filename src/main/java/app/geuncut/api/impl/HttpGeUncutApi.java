@@ -211,8 +211,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
 			return;
 		}
-		// Carry the token explicitly: the caller clears it from config for a responsive
-		// unlink, so by the time this async request runs the interceptor has none to add.
+		// Token passed explicitly: config is already cleared, so the interceptor can't add it.
 		Request request = new Request.Builder()
 				.url(url)
 				.header("Authorization", "Bearer " + token)

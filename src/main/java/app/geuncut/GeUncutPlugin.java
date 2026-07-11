@@ -159,9 +159,7 @@ public class GeUncutPlugin extends Plugin {
 		link.cancel();
 		String token = config.apiToken().trim();
 		if (!token.isEmpty()) {
-			// Best-effort server revoke so the token dies and the site's linked-device
-			// list matches. The local token clears regardless, so an offline unlink
-			// still unlinks; a failed revoke is logged, not surfaced.
+			// Best-effort server revoke so the site's device list matches; the local token clears regardless.
 			api.unlinkAccount(token, () -> {}, failure ->
 					log.debug("event=unlink_revoke_failed status={} message=\"{}\"",
 							failure.getStatusCode(), failure.getMessage()));

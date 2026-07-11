@@ -15,9 +15,7 @@ final class Theme {
 	private Theme() {
 	}
 
-	// Aligned with RuneLite's native panel palette (ColorScheme.DARK_GRAY_COLOR is
-	// #282828) so the panel sits in the client with the same weight as the default
-	// plugins, instead of the website's near-black.
+	// RuneLite's native panel grey (ColorScheme.DARK_GRAY_COLOR, #282828) so it matches the default plugins.
 	static final Color SURFACE = new Color(0x28, 0x28, 0x28);
 	static final Color RAISED = new Color(0x33, 0x33, 0x33);
 	static final Color HOVER = new Color(0x3E, 0x3E, 0x3E);

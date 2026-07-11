@@ -19,10 +19,8 @@ import javax.swing.Timer;
 import app.geuncut.dto.MoverEntry;
 
 /**
- * Shows a page of movers (icon, name, change%) and, when there are more than fit
- * on a page, fades to the next page on a timer. The transition is an alpha
- * dip-out then dip-in, not a scroll, so nothing moves per frame and there is no
- * motion to stutter.
+ * A paged list of movers (icon, name, change%). Extra pages fade in and out on a
+ * timer, an alpha dip rather than a scroll, so nothing moves per frame.
  */
 class MoversRotator extends JComponent {
 	private static final int PAGE = 5;
@@ -132,8 +130,7 @@ class MoversRotator extends JComponent {
 		g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 		g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 		if (fadingFrom >= 0) {
-			// Dip-out the old page for the first half, dip-in the new page for the
-			// second, so the two never overlap (which would smear the text).
+			// Dip the old page out, then the new one in; they never overlap (no text smear).
 			double progress = (nowNanos() - fadeStartNanos) / (FADE_MS * 1_000_000.0);
 			progress = Math.max(0.0, Math.min(1.0, progress));
 			if (progress < 0.5) {

@@ -83,8 +83,7 @@ public class FlipsPanel extends PluginPanel {
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
 		this.iconLoader = iconLoader;
 		this.onOpenItem = onOpenItem;
-		// Row icons are the plain inventory sprites (no network); the loader repaints
-		// the strip when a sprite finishes decoding.
+		// Row icons are inventory sprites (no network); the loader repaints as they decode.
 		gainers = new MoversRotator(Theme.NUM_SMALL, Theme.UP, iconLoader::sprite);
 		losers = new MoversRotator(Theme.NUM_SMALL, Theme.DOWN, iconLoader::sprite);
 
@@ -101,9 +100,7 @@ public class FlipsPanel extends PluginPanel {
 		column.add(buildStats());
 		column.add(strut(14));
 
-		// Today's GE movers: top risers and fallers by day change. Public, so it fills
-		// in for linked and unlinked players alike. Each group pages through its full
-		// list on a timer rather than scrolling, so nothing moves per frame.
+		// Today's movers: risers and fallers, public so it fills in linked or not. Each group pages, it does not scroll.
 		moversSection.setLayout(new BorderLayout());
 		moversSection.setBackground(Theme.SURFACE);
 		moversSection.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -247,8 +244,7 @@ public class FlipsPanel extends PluginPanel {
 		List<MoverEntry> fallers = movers != null ? movers.getFallers() : null;
 		gainers.setEntries(risers);
 		losers.setEntries(fallers);
-		// Hide an empty group (and its label) so a one-sided day leaves no dangling
-		// header; hide the whole section only when neither side has anything.
+		// Hide an empty group so a one-sided day leaves no dangling header.
 		boolean hasGainers = risers != null && !risers.isEmpty();
 		boolean hasLosers = fallers != null && !fallers.isEmpty();
 		gainersGroup.setVisible(hasGainers);
@@ -362,10 +358,8 @@ public class FlipsPanel extends PluginPanel {
 		card.setBorder(BorderFactory.createEmptyBorder(11, 12, 11, 12));
 		card.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		// Headline trio: the three numbers a flipper glances at first. The rest of
-		// the portfolio breakdown sits under a divider so the top stays scannable.
-		// NUM_BOLD (not the larger NUM_LG) so a wide value like +999.9M still fits the
-		// narrow three-up tiles.
+		// Headline trio; the fuller breakdown sits under the divider. NUM_BOLD not
+		// NUM_LG so a wide value like +999.9M fits the narrow tiles.
 		JPanel trio = new JPanel(new GridLayout(1, 3, 8, 0));
 		trio.setOpaque(false);
 		trio.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -388,7 +382,6 @@ public class FlipsPanel extends PluginPanel {
 		return stats;
 	}
 
-	// One headline KPI: faint caption over a centred value.
 	private JPanel statTile(String caption, JLabel value) {
 		JPanel tile = new JPanel();
 		tile.setOpaque(false);
@@ -402,7 +395,6 @@ public class FlipsPanel extends PluginPanel {
 		return tile;
 	}
 
-	// One secondary metric: label left, value right.
 	private JPanel statLine(String label, JLabel value) {
 		JPanel row = new JPanel(new BorderLayout());
 		row.setOpaque(false);

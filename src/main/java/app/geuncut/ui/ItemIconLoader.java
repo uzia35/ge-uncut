@@ -47,9 +47,7 @@ public class ItemIconLoader {
 		this.itemManager = itemManager;
 	}
 
-	// The in-game inventory sprite for an item, no network. RuneLite decodes and
-	// caches it; the returned image may still be blank, so onLoaded fires (on the
-	// EDT) once it arrives so the caller can repaint.
+	// In-game inventory sprite, no network; onLoaded fires (on the EDT) once it decodes.
 	Image sprite(int itemId, Runnable onLoaded) {
 		AsyncBufferedImage image = itemManager.getImage(itemId);
 		image.onLoaded(() -> SwingUtilities.invokeLater(onLoaded));
