@@ -10,6 +10,7 @@ import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
+import app.geuncut.dto.Movers;
 import app.geuncut.dto.PositionsResponse;
 
 /**
@@ -22,11 +23,13 @@ class MockGeUncutApi implements GeUncutApi {
 	boolean deferNextPost;
 	boolean deferNextPoll;
 	String linkToken;
+	String unlinkedToken;
 	boolean linkPending = true;
 	ApiFailure failure = ApiFailure.network("boom");
 	LinkSession session;
 	FlipsResponse flipsResponse;
 	PositionsResponse positionsResponse;
+	Movers moversResponse;
 
 	final List<List<GeTradeEvent>> postedBatches = new ArrayList<>();
 	final List<List<GeOffer>> postedOffers = new ArrayList<>();
@@ -50,6 +53,15 @@ class MockGeUncutApi implements GeUncutApi {
 	public void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError) {
 		if (positionsResponse != null) {
 			onSuccess.accept(positionsResponse);
+		} else {
+			onError.accept(failure);
+		}
+	}
+
+	@Override
+	public void fetchMovers(Consumer<Movers> onSuccess, Consumer<ApiFailure> onError) {
+		if (moversResponse != null) {
+			onSuccess.accept(moversResponse);
 		} else {
 			onError.accept(failure);
 		}
@@ -122,6 +134,12 @@ class MockGeUncutApi implements GeUncutApi {
 		if (held != null) {
 			held.run();
 		}
+	}
+
+	@Override
+	public void unlinkAccount(String token, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		unlinkedToken = token;
+		onSuccess.run();
 	}
 
 	private void deliverPoll(Consumer<String> onToken, Runnable onPending, Consumer<ApiFailure> onError) {

@@ -79,6 +79,9 @@ public class GeUncutPlugin extends Plugin {
 	private OkHttpClient okHttpClient;
 
 	@Inject
+	private GeUncutApi api;
+
+	@Inject
 	private GeUncutConfig config;
 
 	@Inject
@@ -113,7 +116,7 @@ public class GeUncutPlugin extends Plugin {
 
 	@Override
 	protected void startUp() {
-		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, this::unlinkAccount,
+		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, this::unlinkAccount, this::openMovers,
 				new ItemIconLoader(okHttpClient, itemManager), this::openItem);
 		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
 		navButton = NavigationButton.builder()
@@ -154,6 +157,15 @@ public class GeUncutPlugin extends Plugin {
 
 	private void unlinkAccount() {
 		link.cancel();
+		String token = config.apiToken().trim();
+		if (!token.isEmpty()) {
+			// Best-effort server revoke so the token dies and the site's linked-device
+			// list matches. The local token clears regardless, so an offline unlink
+			// still unlinks; a failed revoke is logged, not surfaced.
+			api.unlinkAccount(token, () -> {}, failure ->
+					log.debug("event=unlink_revoke_failed status={} message=\"{}\"",
+							failure.getStatusCode(), failure.getMessage()));
+		}
 		configManager.unsetConfiguration(GeUncutConfig.GROUP, "apiToken");
 		refreshFlips();
 	}
@@ -220,6 +232,7 @@ public class GeUncutPlugin extends Plugin {
 		boolean linked = linked();
 		SwingUtilities.invokeLater(() -> target.showStatus("Scanning..."));
 		refreshPositions();
+		refreshMovers();
 		flips.fetch(target.selectedScan(), target.selectedRisk(),
 				list -> SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
@@ -245,6 +258,10 @@ public class GeUncutPlugin extends Plugin {
 		LinkBrowser.browse(GeUncutConfig.API_BASE + "/items/" + itemId);
 	}
 
+	private void openMovers() {
+		LinkBrowser.browse(GeUncutConfig.API_BASE + "/movers");
+	}
+
 	private void refreshPositions() {
 		// Best-effort: an unlinked or offline fetch leaves the last known flips in
 		// place; the flip scan above is what surfaces the link prompt.
@@ -256,6 +273,19 @@ public class GeUncutPlugin extends Plugin {
 					}
 				}),
 				failure -> log.debug("event=positions_fetch_failed kind={} status={}",
+						failure.getKind(), failure.getStatusCode()));
+	}
+
+	private void refreshMovers() {
+		// Public feed, so it fills in linked or not; best-effort like positions.
+		FlipsPanel target = panel;
+		api.fetchMovers(
+				movers -> SwingUtilities.invokeLater(() -> {
+					if (target == panel) {
+						target.showMovers(movers);
+					}
+				}),
+				failure -> log.debug("event=movers_fetch_failed kind={} status={}",
 						failure.getKind(), failure.getStatusCode()));
 	}
 

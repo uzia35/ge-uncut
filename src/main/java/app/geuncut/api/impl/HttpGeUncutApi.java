@@ -17,6 +17,7 @@ import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
+import app.geuncut.dto.Movers;
 import app.geuncut.dto.PositionsResponse;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -117,6 +118,17 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
+	public void fetchMovers(Consumer<Movers> onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/movers");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		Request request = new Request.Builder().url(url).get().build();
+		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, Movers.class)));
+	}
+
+	@Override
 	public void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError) {
 		HttpUrl url = resolve("/api/plugin/ge-events");
 		if (url == null) {
@@ -190,6 +202,23 @@ public class HttpGeUncutApi implements GeUncutApi {
 				throw new JsonParseException("missing 'token' in link poll response");
 			}
 		});
+	}
+
+	@Override
+	public void unlinkAccount(String token, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/link");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		// Carry the token explicitly: the caller clears it from config for a responsive
+		// unlink, so by the time this async request runs the interceptor has none to add.
+		Request request = new Request.Builder()
+				.url(url)
+				.header("Authorization", "Bearer " + token)
+				.delete()
+				.build();
+		enqueue(request, onError, body -> onSuccess.run());
 	}
 
 	private void enqueue(Request request, Consumer<ApiFailure> onError, Consumer<String> onBody) {

@@ -7,6 +7,7 @@ import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
+import app.geuncut.dto.Movers;
 import app.geuncut.dto.PositionsResponse;
 
 /**
@@ -22,6 +23,9 @@ public interface GeUncutApi {
 
 	void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError);
 
+	// Today's GE movers for the panel. Anonymous (public), so it works while unlinked.
+	void fetchMovers(Consumer<Movers> onSuccess, Consumer<ApiFailure> onError);
+
 	void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError);
 
 	void postOffers(String accountHash, List<GeOffer> offers, String syncedAt, Runnable onSuccess, Consumer<ApiFailure> onError);
@@ -29,4 +33,8 @@ public interface GeUncutApi {
 	void startLink(Consumer<LinkSession> onSuccess, Consumer<ApiFailure> onError);
 
 	void pollLink(String deviceCode, Consumer<String> onToken, Runnable onPending, Consumer<ApiFailure> onError);
+
+	// Revoke the given token server-side (called on Unlink). Taken explicitly because
+	// the caller clears it from config first, so the auth interceptor can no longer add it.
+	void unlinkAccount(String token, Runnable onSuccess, Consumer<ApiFailure> onError);
 }

@@ -15,12 +15,15 @@ final class Theme {
 	private Theme() {
 	}
 
-	static final Color SURFACE = new Color(0x14, 0x14, 0x16);
-	static final Color RAISED = new Color(0x1B, 0x1B, 0x1F);
-	static final Color HOVER = new Color(0x24, 0x24, 0x2A);
-	static final Color TRACK = new Color(0x0E, 0x0E, 0x10);
-	static final Color LINE = new Color(0x26, 0x26, 0x2A);
-	static final Color LINE_STRONG = new Color(0x36, 0x36, 0x3C);
+	// Aligned with RuneLite's native panel palette (ColorScheme.DARK_GRAY_COLOR is
+	// #282828) so the panel sits in the client with the same weight as the default
+	// plugins, instead of the website's near-black.
+	static final Color SURFACE = new Color(0x28, 0x28, 0x28);
+	static final Color RAISED = new Color(0x33, 0x33, 0x33);
+	static final Color HOVER = new Color(0x3E, 0x3E, 0x3E);
+	static final Color TRACK = new Color(0x1E, 0x1E, 0x1E);
+	static final Color LINE = new Color(0x3A, 0x3A, 0x3A);
+	static final Color LINE_STRONG = new Color(0x4A, 0x4A, 0x4A);
 
 	static final Color INK = new Color(0xED, 0xED, 0xF0);
 	static final Color WHITE = new Color(0xFF, 0xFF, 0xFF);

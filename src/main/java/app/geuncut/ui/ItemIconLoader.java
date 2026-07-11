@@ -12,6 +12,7 @@ import javax.swing.JLabel;
 import javax.swing.SwingUtilities;
 
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.util.AsyncBufferedImage;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
@@ -44,6 +45,15 @@ public class ItemIconLoader {
 	public ItemIconLoader(OkHttpClient http, ItemManager itemManager) {
 		this.http = http;
 		this.itemManager = itemManager;
+	}
+
+	// The in-game inventory sprite for an item, no network. RuneLite decodes and
+	// caches it; the returned image may still be blank, so onLoaded fires (on the
+	// EDT) once it arrives so the caller can repaint.
+	Image sprite(int itemId, Runnable onLoaded) {
+		AsyncBufferedImage image = itemManager.getImage(itemId);
+		image.onLoaded(() -> SwingUtilities.invokeLater(onLoaded));
+		return image;
 	}
 
 	void load(int itemId, String name, JLabel label, int size) {
