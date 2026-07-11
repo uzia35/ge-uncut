@@ -1,57 +1,91 @@
 # GE Uncut
 
-A live flip finder for the Grand Exchange, in a RuneLite side panel. It surfaces
-ranked flips, tracks your realized profit from your own GE offers, and shows
-rolling buy-limit timers.
+**Find profitable OSRS flips in seconds, track your profit automatically, and never miss a buy-limit reset. Right inside RuneLite.**
 
-## Features
+Free. Privacy-first. Backed by the full [geuncut.app](https://geuncut.app) toolkit.
 
-- **Flip finder** — a ranked list of flips (buy price, quantity, sell target,
-  after-tax margin, ROI/day, demand trend, and realistic fill times), refreshed
-  on demand. Works without an account: non-members (F2P) flips are free; linking
-  an account adds members-item flips.
-- **Working offers** — a live mirror of your current GE slots with fill progress,
-  tracked entirely on your own client.
-- **Profit tracking** — when you link an account, your own offer fills are
-  reported so flips track themselves in "My Flips" on geuncut.app.
-- **Buy-limit timers** — a rolling 4-hour per-item buy-limit counter, kept
-  client-side.
+<!-- PANEL SCREENSHOT (hero): the RuneLite side panel, linked, showing the ranked
+     flips and working offers. Capture from your client and save it here. -->
+![The GE Uncut panel in RuneLite](docs/screenshots/panel-flips.png)
 
-## Linking an account (optional)
+---
 
-The plugin is fully usable without an account. Linking is only needed for
-members-item flips and cross-device profit tracking. It uses a pairing code:
-click **Link account** in the panel, enter the short code shown at
-`geuncut.app/link`, and a personal token is delivered and stored automatically.
-The plugin never sees your RuneScape or geuncut.app password. Click **Unlink**
-in the panel header to disconnect and clear the token.
+## Flips that actually fill, ranked for your gold
 
-## Data & privacy
+A live, ranked list of what is worth flipping right now: buy price, quantity, after-tax margin, ROI per day, demand trend, and realistic fill times. Free-to-play flips need no account. Link one to unlock members items.
 
-**Nothing is sent to any server until you link an account.** Unlinked, the plugin
-only fetches the public flip list (the same anonymous scan the geuncut.app
-website serves) and does its buy-limit and working-offers tracking locally.
+![Flip Finder](docs/screenshots/flip-finder.png)
 
-Once linked, the plugin talks to `geuncut.app` only, over HTTPS, using your
-personal token. It sends:
+## The GE Uncut Assistant does the digging
 
-- **Your OSRS account hash** — the client's non-reversible account identifier,
-  used to attribute your offers and fills to your account. Not your username.
-- **Your GE offer fills** — item id, quantity, price, side, slot, and timestamp
-  of each of your own trades, so your flips track themselves in My Flips.
-- **A snapshot of your current GE offers** — the live slot state (item, prices,
-  fill progress) for the working-offers view on the website.
+Ask "what should I flip right now?" and the GE Uncut Assistant tailors picks to your bankroll and membership, in plain English. It reads live prices, item history, the public track record, and OSRS wiki facts, then hands you the answer.
 
-The exact endpoints, all under `https://geuncut.app/api/plugin/`, are: `flips`
-(the scan; anonymous or personalized), `positions` (your open flips), `ge-events`
-(your fills), `offers` (your current slot snapshot), and `link/start` + `link/poll`
-(pairing). No credentials are ever transmitted, and no data leaves the client
-while unlinked.
+Try asking:
+
+- *"Find me a fast flip, I have 5M and I'm free-to-play"*
+- *"How is the strategy doing this week?"*
+- *"Show my open positions"*
+- *"What's the price history for a Twisted bow?"*
+- *"How does the GE tax and buy limit work?"*
+
+![GE Uncut Assistant](docs/screenshots/assistant.png)
+
+## Know the market before it moves
+
+|  |  |
+|:--:|:--:|
+| ![GE Movers](docs/screenshots/movers.png) | ![Market news](docs/screenshots/news.png) |
+| **GE Movers:** the day's biggest risers, fallers, and volume spikes | **Market news:** game updates scored for the items likely to move |
+
+Every update is mapped to the specific items it moves, scored by direction and confidence, right on the item's page.
+
+![News impact on an item](docs/screenshots/item-news.png)
+
+## Proof, not promises
+
+Every signal we publish is scored against real prices later, wins and losses alike. The whole record is public, so you can see exactly how the strategy performs.
+
+![Public track record](docs/screenshots/track-record.png)
+
+And it goes item by item. Every flip carries its own forward-tested record, so you can see how the item you are about to buy has actually performed.
+
+![Per-item forward-test results](docs/screenshots/item-forward-test.png)
+
+## Deep data on every item
+
+Live spread, daily volume, buy and sell flow, and full price history for any tradeable item.
+
+![Item price history](docs/screenshots/item-chart.png)
+
+## Built for your phone too
+
+The entire toolkit is fully responsive, so you can scan flips, check movers, and ask the assistant from anywhere.
+
+|  |  |  |
+|:--:|:--:|:--:|
+| ![Mobile flip finder](docs/screenshots/m-flip-finder.png) | ![Mobile price chart](docs/screenshots/m-item-chart.png) | ![Mobile assistant](docs/screenshots/m-assistant.png) |
+
+---
+
+## Automatic profit tracking
+
+Link your account and the plugin reports your own GE offer fills, so every flip tracks itself in "My Flips" on geuncut.app. No spreadsheets, no manual entry. It also mirrors your live GE slots (working offers) and runs a rolling 4-hour buy-limit timer for every item.
+
+![My Flips: profit tracked automatically from your own offers](docs/screenshots/my-flips.png)
+
+## Linking (optional)
+
+Fully usable without an account. Linking adds members-item flips and cross-device profit tracking. Click **Link account**, enter the short code shown at `geuncut.app/link`, and you are connected. The plugin never sees your RuneScape or geuncut.app password. **Unlink** revokes the token on the server and clears it from the client, so an unlinked device stops resolving immediately.
+
+## Privacy
+
+**Nothing is sent to any server until you link an account.** Unlinked, the plugin only fetches the public flip list (the same anonymous scan the website serves) and does its buy-limit and working-offers tracking locally.
+
+Once linked, the plugin talks to `geuncut.app` only, over HTTPS, using your personal token. It sends your non-reversible OSRS account hash (used to attribute your offers, not your username), your own GE offer fills, and a snapshot of your current GE slots. No credentials are ever transmitted. Every endpoint lives under `https://geuncut.app/api/plugin/`: `flips`, `positions`, `ge-events`, `offers`, `link/start`, `link/poll`, and `link` (unlink).
 
 ## Building
 
-Standard RuneLite external plugin. `./gradlew build` to compile and test;
-`./gradlew run` launches a developer-mode client with the plugin loaded.
+Standard RuneLite external plugin. `./gradlew build` compiles and tests; `./gradlew run` launches a developer-mode client with the plugin loaded.
 
 ## License
 

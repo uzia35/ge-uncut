@@ -29,6 +29,8 @@ import app.geuncut.dto.DemandTrend;
 import app.geuncut.dto.Fill;
 import app.geuncut.dto.Flip;
 import app.geuncut.dto.GeOffer;
+import app.geuncut.dto.MoverEntry;
+import app.geuncut.dto.Movers;
 import app.geuncut.dto.Position;
 import app.geuncut.dto.PositionsResponse;
 import app.geuncut.dto.PositionsSummary;
@@ -48,11 +50,18 @@ public class FlipsPanel extends PluginPanel {
 
 	private final JLabel linkStatus = new JLabel();
 	private final JLabel unlinkLink = text("Unlink", Theme.FAINT, Theme.SMALL);
-	private final JLabel allTimeValue = statValue("—");
-	private final JLabel statsSubtitle = new JLabel("", SwingConstants.CENTER);
-	private final JLabel openValue = statValue("—");
-	private final JLabel slotsValue = statValue("0/8");
-	private final JLabel todayValue = statValue("—");
+	private final JLabel allTimeValue = statValue("0");
+	private final JLabel todayValue = statValue("0");
+	private final JLabel winValue = statValue("—");
+	private final JLabel unrealizedValue = statValue("0");
+	private final JLabel roiValue = statValue("—");
+	private final JLabel flipsValue = statValue("0");
+
+	private final JPanel moversSection = new JPanel();
+	private final JPanel gainersGroup = new JPanel();
+	private final JPanel losersGroup = new JPanel();
+	private final MoversRotator gainers;
+	private final MoversRotator losers;
 
 	private final JPanel offersSection = new JPanel();
 	private final JPanel offersList = listPanel();
@@ -69,11 +78,14 @@ public class FlipsPanel extends PluginPanel {
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
-	private final JLabel upsell = text("Link to unlock members flips ↗", Theme.INFO, Theme.SMALL);
+	private final JLabel upsell = text("Link to unlock members flips ↗", Theme.MUTED, Theme.SMALL);
 
-	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
+	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
 		this.iconLoader = iconLoader;
 		this.onOpenItem = onOpenItem;
+		// Row icons are inventory sprites (no network); the loader repaints as they decode.
+		gainers = new MoversRotator(Theme.NUM_SMALL, Theme.UP, iconLoader::sprite);
+		losers = new MoversRotator(Theme.NUM_SMALL, Theme.DOWN, iconLoader::sprite);
 
 		setLayout(new BorderLayout());
 		setBackground(Theme.SURFACE);
@@ -87,6 +99,31 @@ public class FlipsPanel extends PluginPanel {
 		column.add(strut(12));
 		column.add(buildStats());
 		column.add(strut(14));
+
+		// Today's movers: risers and fallers, public so it fills in linked or not. Each group pages, it does not scroll.
+		moversSection.setLayout(new BorderLayout());
+		moversSection.setBackground(Theme.SURFACE);
+		moversSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		moversSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
+		JPanel moversHeader = sectionHeader("Today's movers ↗", null);
+		installRecursively(moversHeader, new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onOpenMovers.run();
+			}
+		});
+		moversSection.add(moversHeader, BorderLayout.NORTH);
+		buildMoverGroup(gainersGroup, "Gainers", gainers, 0);
+		buildMoverGroup(losersGroup, "Losers", losers, 8);
+		JPanel moversBody = new JPanel();
+		moversBody.setLayout(new BoxLayout(moversBody, BoxLayout.Y_AXIS));
+		moversBody.setBackground(Theme.SURFACE);
+		moversBody.setAlignmentX(Component.LEFT_ALIGNMENT);
+		moversBody.add(gainersGroup);
+		moversBody.add(losersGroup);
+		moversSection.add(moversBody, BorderLayout.CENTER);
+		moversSection.setVisible(false);
+		column.add(moversSection);
 
 		// The section spacing is a bottom border, not a separate strut, so a hidden
 		// section leaves no orphaned gap (e.g. an unlinked account with no offers).
@@ -115,9 +152,9 @@ public class FlipsPanel extends PluginPanel {
 		column.add(finderHint);
 		column.add(strut(6));
 		column.add(buildFinderBar(onRefresh));
-		column.add(strut(6));
+		column.add(strut(10));
 		upsell.setAlignmentX(Component.LEFT_ALIGNMENT);
-		upsell.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+		upsell.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
 		upsell.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		upsell.setVisible(false);
 		upsell.addMouseListener(new MouseAdapter() {
@@ -168,7 +205,6 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showOffers(List<GeOffer> offers, Map<Integer, String> itemNames) {
-		slotsValue.setText(offers.size() + "/8");
 		offersCount.setText(Integer.toString(offers.size()));
 		offersList.removeAll();
 		for (GeOffer offer : offers) {
@@ -187,8 +223,10 @@ public class FlipsPanel extends PluginPanel {
 				? response.getSummary() : PositionsSummary.builder().build();
 		setStat(allTimeValue, summary.getTotalRealized());
 		setStat(todayValue, summary.getTodayRealized());
-		setStat(openValue, summary.getOpenUnrealized());
-		statsSubtitle.setText(subtitleText(summary));
+		setStat(unrealizedValue, summary.getOpenUnrealized());
+		winValue.setText(summary.getWinRate() != null ? Math.round(summary.getWinRate()) + "%" : "—");
+		setPct(roiValue, summary.getAvgRoi());
+		flipsValue.setText(Integer.toString(summary.getFlips()));
 		List<Position> positions = response.getPositions() != null
 				? response.getPositions() : Collections.emptyList();
 		activeCount.setText(Integer.toString(positions.size()));
@@ -199,6 +237,39 @@ public class FlipsPanel extends PluginPanel {
 		activeSection.setVisible(!positions.isEmpty());
 		revalidate();
 		repaint();
+	}
+
+	// Back to the zeros-and-dashes empty state; the positions fetch 401s once
+	// unlinked, so it can never clear the previous account's numbers itself.
+	public void clearAccountData() {
+		showActiveFlips(PositionsResponse.builder().build());
+	}
+
+	public void showMovers(Movers movers) {
+		List<MoverEntry> risers = movers != null ? movers.getRisers() : null;
+		List<MoverEntry> fallers = movers != null ? movers.getFallers() : null;
+		gainers.setEntries(risers);
+		losers.setEntries(fallers);
+		// Hide an empty group so a one-sided day leaves no dangling header.
+		boolean hasGainers = risers != null && !risers.isEmpty();
+		boolean hasLosers = fallers != null && !fallers.isEmpty();
+		gainersGroup.setVisible(hasGainers);
+		losersGroup.setVisible(hasLosers);
+		moversSection.setVisible(hasGainers || hasLosers);
+		revalidate();
+		repaint();
+	}
+
+	private void buildMoverGroup(JPanel group, String label, MoversRotator rotator, int topGap) {
+		group.setLayout(new BoxLayout(group, BoxLayout.Y_AXIS));
+		group.setBackground(Theme.SURFACE);
+		group.setAlignmentX(Component.LEFT_ALIGNMENT);
+		group.setBorder(BorderFactory.createEmptyBorder(topGap, 0, 0, 0));
+		JLabel heading = text(label, Theme.FAINT, Theme.SECTION);
+		heading.setAlignmentX(Component.LEFT_ALIGNMENT);
+		heading.setBorder(BorderFactory.createEmptyBorder(0, 0, 3, 0));
+		group.add(heading);
+		group.add(rotator);
 	}
 
 	public void showFlips(List<Flip> flips, boolean linked) {
@@ -288,35 +359,58 @@ public class FlipsPanel extends PluginPanel {
 		stats.setBackground(Theme.SURFACE);
 		stats.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		// Hero: lifetime realized profit, with a win-rate / flips subtitle. This
-		// is the number a flipper actually cares about, not a single session.
-		RoundedPanel hero = new RoundedPanel(8, Theme.RAISED, Theme.LINE);
-		hero.setLayout(new BoxLayout(hero, BoxLayout.Y_AXIS));
-		hero.setBorder(BorderFactory.createEmptyBorder(9, 10, 9, 10));
-		hero.setAlignmentX(Component.LEFT_ALIGNMENT);
-		JLabel heroLabel = text("ALL-TIME PROFIT", Theme.FAINT, Theme.SMALL);
-		heroLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-		allTimeValue.setFont(Theme.NUM_HERO);
-		allTimeValue.setAlignmentX(Component.CENTER_ALIGNMENT);
-		statsSubtitle.setForeground(Theme.MUTED);
-		statsSubtitle.setFont(Theme.NUM_TINY);
-		statsSubtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
-		hero.add(heroLabel);
-		hero.add(Box.createVerticalStrut(2));
-		hero.add(allTimeValue);
-		hero.add(Box.createVerticalStrut(3));
-		hero.add(statsSubtitle);
-		stats.add(hero);
-		stats.add(Box.createVerticalStrut(7));
+		RoundedPanel card = new RoundedPanel(8, Theme.RAISED, Theme.LINE);
+		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+		card.setBorder(BorderFactory.createEmptyBorder(11, 12, 11, 12));
+		card.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		JPanel row = new JPanel(new GridLayout(1, 3, 7, 0));
-		row.setBackground(Theme.SURFACE);
-		row.setAlignmentX(Component.LEFT_ALIGNMENT);
-		row.add(statCell("Today", todayValue));
-		row.add(statCell("Open", openValue));
-		row.add(statCell("Slots", slotsValue));
-		stats.add(row);
+		// Headline trio; the fuller breakdown sits under the divider. NUM_BOLD not
+		// NUM_LG so a wide value like +999.9M fits the narrow tiles.
+		JPanel trio = new JPanel(new GridLayout(1, 3, 8, 0));
+		trio.setOpaque(false);
+		trio.setAlignmentX(Component.LEFT_ALIGNMENT);
+		trio.add(statTile("ALL-TIME", allTimeValue));
+		trio.add(statTile("TODAY", todayValue));
+		trio.add(statTile("WIN RATE", winValue));
+		card.add(trio);
+
+		card.add(Box.createVerticalStrut(11));
+		card.add(divider());
+		card.add(Box.createVerticalStrut(9));
+
+		card.add(statLine("Open P/L", unrealizedValue));
+		card.add(Box.createVerticalStrut(6));
+		card.add(statLine("Avg ROI", roiValue));
+		card.add(Box.createVerticalStrut(6));
+		card.add(statLine("Flips", flipsValue));
+
+		stats.add(card);
 		return stats;
+	}
+
+	private JPanel statTile(String caption, JLabel value) {
+		JPanel tile = new JPanel();
+		tile.setOpaque(false);
+		tile.setLayout(new BoxLayout(tile, BoxLayout.Y_AXIS));
+		JLabel label = text(caption, Theme.FAINT, Theme.SECTION);
+		label.setAlignmentX(Component.CENTER_ALIGNMENT);
+		value.setAlignmentX(Component.CENTER_ALIGNMENT);
+		tile.add(label);
+		tile.add(Box.createVerticalStrut(3));
+		tile.add(value);
+		return tile;
+	}
+
+	private JPanel statLine(String label, JLabel value) {
+		JPanel row = new JPanel(new BorderLayout());
+		row.setOpaque(false);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+		value.setFont(Theme.NUM);
+		value.setHorizontalAlignment(SwingConstants.RIGHT);
+		row.add(text(label, Theme.MUTED, Theme.BODY), BorderLayout.WEST);
+		row.add(value, BorderLayout.EAST);
+		return row;
 	}
 
 	private JPanel buildFinderBar(Runnable onRefresh) {
@@ -661,19 +755,6 @@ public class FlipsPanel extends PluginPanel {
 		return header;
 	}
 
-	private RoundedPanel statCell(String label, JLabel value) {
-		RoundedPanel cell = new RoundedPanel(7, Theme.RAISED, Theme.LINE);
-		cell.setLayout(new BoxLayout(cell, BoxLayout.Y_AXIS));
-		cell.setBorder(BorderFactory.createEmptyBorder(8, 4, 8, 4));
-		JLabel labelText = text(label.toUpperCase(), Theme.FAINT, Theme.SMALL);
-		labelText.setAlignmentX(Component.CENTER_ALIGNMENT);
-		value.setAlignmentX(Component.CENTER_ALIGNMENT);
-		cell.add(labelText);
-		cell.add(Box.createVerticalStrut(3));
-		cell.add(value);
-		return cell;
-	}
-
 	private static JLabel statValue(String text) {
 		JLabel label = new JLabel(text, SwingConstants.CENTER);
 		label.setForeground(Theme.WHITE);
@@ -743,21 +824,6 @@ public class FlipsPanel extends PluginPanel {
 		return Box.createVerticalStrut(height);
 	}
 
-	private static String subtitleText(PositionsSummary summary) {
-		if (summary.getFlips() == 0) {
-			return "no closed flips yet";
-		}
-		StringBuilder builder = new StringBuilder();
-		if (summary.getWinRate() != null) {
-			builder.append(Math.round(summary.getWinRate())).append("% win · ");
-		}
-		builder.append(summary.getFlips()).append(summary.getFlips() == 1 ? " flip" : " flips");
-		if (summary.getAvgRoi() != null) {
-			builder.append(" · ").append(signedPct(summary.getAvgRoi())).append(" avg");
-		}
-		return builder.toString();
-	}
-
 	private static boolean isSell(String phase) {
 		return "sell".equals(phase) || "exit".equals(phase);
 	}
@@ -772,6 +838,16 @@ public class FlipsPanel extends PluginPanel {
 		} else {
 			label.setText("−" + shortGp(-value));
 			label.setForeground(Theme.DOWN);
+		}
+	}
+
+	private static void setPct(JLabel label, Double value) {
+		if (value == null) {
+			label.setText("—");
+			label.setForeground(Theme.MUTED);
+		} else {
+			label.setText(signedPct(value));
+			label.setForeground(value >= 0 ? Theme.UP : Theme.DOWN);
 		}
 	}
 

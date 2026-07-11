@@ -16,6 +16,7 @@ import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
+import app.geuncut.dto.Movers;
 import app.geuncut.dto.PositionsResponse;
 import com.google.gson.Gson;
 import okhttp3.OkHttpClient;
@@ -331,5 +332,46 @@ public class HttpGeUncutApiTest {
 		RecordedRequest second = server.takeRequest();
 		assertEquals("/api/plugin/link/poll", second.getPath());
 		assertTrue(second.getBody().readUtf8().contains("\"device_code\":\"device-secret\""));
+	}
+
+	@Test
+	public void fetchMoversParsesRisersAndFallers() throws Exception {
+		// volume_spikes stays in the body: fields the panel doesn't use must be ignored, not fatal.
+		server.enqueue(new MockResponse().setBody(
+				"{\"risers\":[{\"name\":\"Ranger gloves\",\"change_pct\":51.4}],"
+						+ "\"fallers\":[{\"name\":\"Raw summer pie\",\"change_pct\":-37.0}],"
+						+ "\"volume_spikes\":[{\"name\":\"Chocolate cake\",\"volume_ratio\":88.6}]}"));
+
+		AtomicReference<Movers> received = new AtomicReference<>();
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchMovers(movers -> {
+			received.set(movers);
+			done.countDown();
+		}, error -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		Movers movers = received.get();
+		assertEquals("Ranger gloves", movers.getRisers().get(0).getName());
+		assertEquals(51.4, movers.getRisers().get(0).getChangePct(), 0.001);
+		assertEquals("Raw summer pie", movers.getFallers().get(0).getName());
+		assertEquals(-37.0, movers.getFallers().get(0).getChangePct(), 0.001);
+
+		RecordedRequest recorded = server.takeRequest();
+		assertEquals("GET", recorded.getMethod());
+		assertEquals("/api/plugin/movers", recorded.getPath());
+	}
+
+	@Test
+	public void unlinkAccountDeletesWithBearerAndHandlesNoContent() throws Exception {
+		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_NO_CONTENT));
+
+		CountDownLatch done = new CountDownLatch(1);
+		api.unlinkAccount(TOKEN, done::countDown, error -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		RecordedRequest recorded = server.takeRequest();
+		assertEquals("DELETE", recorded.getMethod());
+		assertEquals("/api/plugin/link", recorded.getPath());
+		assertEquals("Bearer " + TOKEN, recorded.getHeader("Authorization"));
 	}
 }
