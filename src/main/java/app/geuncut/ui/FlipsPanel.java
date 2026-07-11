@@ -91,7 +91,9 @@ public class FlipsPanel extends PluginPanel {
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
-	private final JLabel upsell = text("Link to unlock members flips ↗", Theme.MUTED, Theme.SMALL);
+	// A real button, full width: the old faint one-line label was invisible, and
+	// linking is the product's main ask of an unlinked user.
+	private final JButton upsell = styledButton("Link account — unlock members flips");
 	private List<Flip> lastFlips = Collections.emptyList();
 
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers,
@@ -181,16 +183,12 @@ public class FlipsPanel extends PluginPanel {
 		column.add(buildFinderBar(onRefresh));
 		column.add(strut(10));
 		upsell.setAlignmentX(Component.LEFT_ALIGNMENT);
-		upsell.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+		upsell.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
 		upsell.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		upsell.setVisible(false);
-		upsell.addMouseListener(new MouseAdapter() {
-			@Override
-			public void mouseClicked(MouseEvent event) {
-				onLink.run();
-			}
-		});
+		upsell.addActionListener(event -> onLink.run());
 		column.add(upsell);
+		column.add(strut(10));
 		finderStatus.setForeground(Theme.MUTED);
 		finderStatus.setFont(Theme.BODY);
 		finderStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -566,7 +564,9 @@ public class FlipsPanel extends PluginPanel {
 
 		addLeft(body, nameLabel(flip.getName()));
 
-		String meta = metaLine(flip);
+		// Margin only up here — the hold window moved down beside the fill times,
+		// where it has room; with both, this line truncated on the narrow panel.
+		String meta = marginLabel(flip);
 		if (meta != null) {
 			body.add(Box.createVerticalStrut(2));
 			addLeft(body, text(meta, Theme.FAINT, Theme.SMALL));
@@ -598,9 +598,20 @@ public class FlipsPanel extends PluginPanel {
 		addLeft(body, stats);
 
 		body.add(Box.createVerticalStrut(8));
-		// Spelled out like the website's card ("TIME TO BUY / TIME TO SELL"); the old
-		// "Buy ~3.2h · Sell ~11.2h" read as prices, not fill-time estimates.
-		addLeft(body, text("Time to buy " + fillTime(flip.getBuyFill()) + " · sell " + fillTime(flip.getSellFill()), Theme.FAINT, Theme.SMALL));
+		// The website card's labeled tiles ("TIME TO BUY / TIME TO SELL"), values in
+		// the number font and ink — the old faint one-liner truncated and was hard
+		// to read. Hold window sits between them when the scan has one.
+		JPanel times = new JPanel(new BorderLayout());
+		times.setOpaque(false);
+		times.add(statMini("Time to buy", text(fillTime(flip.getBuyFill()), Theme.INK, Theme.NUM_SMALL),
+				Component.LEFT_ALIGNMENT), BorderLayout.WEST);
+		if (flip.getHorizon() != null) {
+			times.add(statMini("Hold", text("≤ " + flip.getHorizon().getRecommendedDays() + "d", Theme.INK, Theme.NUM_SMALL),
+					Component.CENTER_ALIGNMENT), BorderLayout.CENTER);
+		}
+		times.add(statMini("Time to sell", text(fillTime(flip.getSellFill()), Theme.INK, Theme.NUM_SMALL),
+				Component.RIGHT_ALIGNMENT), BorderLayout.EAST);
+		addLeft(body, times);
 
 		card.add(body, BorderLayout.CENTER);
 		clickable(card, flip.getItemId());
@@ -610,15 +621,6 @@ public class FlipsPanel extends PluginPanel {
 	private static void addLeft(JPanel body, JComponent child) {
 		child.setAlignmentX(Component.LEFT_ALIGNMENT);
 		body.add(child);
-	}
-
-	private static String metaLine(Flip flip) {
-		String margin = marginLabel(flip);
-		String hold = flip.getHorizon() != null ? "hold ≤ " + flip.getHorizon().getRecommendedDays() + "d" : null;
-		if (margin != null && hold != null) {
-			return margin + " · " + hold;
-		}
-		return margin != null ? margin : hold;
 	}
 
 	private static String marginLabel(Flip flip) {
