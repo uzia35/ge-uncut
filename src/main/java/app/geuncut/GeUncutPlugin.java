@@ -117,7 +117,7 @@ public class GeUncutPlugin extends Plugin {
 	@Override
 	protected void startUp() {
 		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, this::unlinkAccount, this::openMovers,
-				new ItemIconLoader(okHttpClient, itemManager), this::openItem);
+				this::openMyFlips, new ItemIconLoader(okHttpClient, itemManager), this::openItem);
 		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
 		navButton = NavigationButton.builder()
 				.tooltip("GE Uncut")
@@ -233,7 +233,7 @@ public class GeUncutPlugin extends Plugin {
 		SwingUtilities.invokeLater(() -> target.showStatus("Scanning..."));
 		refreshPositions();
 		refreshMovers();
-		flips.fetch(target.selectedScan(), target.selectedRisk(),
+		flips.fetch(target.selectedScan(), target.selectedRisk(), target.selectedCapital(),
 				list -> SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
 						return;
@@ -260,6 +260,10 @@ public class GeUncutPlugin extends Plugin {
 
 	private void openMovers() {
 		LinkBrowser.browse(GeUncutConfig.API_BASE + "/movers");
+	}
+
+	private void openMyFlips() {
+		LinkBrowser.browse(GeUncutConfig.API_BASE + "/positions");
 	}
 
 	private void refreshPositions() {

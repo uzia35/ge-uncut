@@ -24,7 +24,7 @@ import app.geuncut.dto.MoverEntry;
  */
 class MoversRotator extends JComponent {
 	private static final int PAGE = 5;
-	private static final int DWELL_MS = 4500;
+	private static final int DWELL_MS = 10_000;
 	private static final int FADE_MS = 650;
 	private static final int TICK_MS = 16;
 	private static final int ROW_HEIGHT = 22;

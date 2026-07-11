@@ -19,7 +19,8 @@ import app.geuncut.dto.PositionsResponse;
  * ApiFailure.
  */
 public interface GeUncutApi {
-	void fetchFlips(String scanType, String risk, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
+	// capital null = no override; the server sizes the scan from the saved profile.
+	void fetchFlips(String scanType, String risk, Long capital, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
 
 	void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError);
 
