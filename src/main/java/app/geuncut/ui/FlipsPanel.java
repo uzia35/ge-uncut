@@ -54,7 +54,8 @@ public class FlipsPanel extends PluginPanel {
 	// The header's always-visible pairing entry point; the in-list "Link account"
 	// button only appears on a 401, which made linking invisible day to day.
 	private final JLabel linkLink = text("Link ↗", Theme.INFO, Theme.SMALL);
-	private final JLabel webHint = text("Your flips sync to geuncut.app — follow them on the web ↗", Theme.FAINT, Theme.SMALL);
+	// Short enough that the ~242px panel never clips it (verified by the render test).
+	private final JLabel webHint = text("Follow your flips on geuncut.app ↗", Theme.FAINT, Theme.SMALL);
 	private final JLabel allTimeValue = statValue("0");
 	private final JLabel todayValue = statValue("0");
 	private final JLabel winValue = statValue("—");
@@ -92,8 +93,9 @@ public class FlipsPanel extends PluginPanel {
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
 	// A real button, full width: the old faint one-line label was invisible, and
-	// linking is the product's main ask of an unlinked user.
-	private final JButton upsell = styledButton("Link account — unlock members flips");
+	// linking is the product's main ask of an unlinked user. Short enough that the
+	// ~225px panel never truncates it.
+	private final JButton upsell = styledButton("Unlock members flips");
 	private List<Flip> lastFlips = Collections.emptyList();
 
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers,
@@ -598,24 +600,30 @@ public class FlipsPanel extends PluginPanel {
 		addLeft(body, stats);
 
 		body.add(Box.createVerticalStrut(8));
-		// The website card's labeled tiles ("TIME TO BUY / TIME TO SELL"), values in
-		// the number font and ink — the old faint one-liner truncated and was hard
-		// to read. Hold window sits between them when the scan has one.
-		JPanel times = new JPanel(new BorderLayout());
-		times.setOpaque(false);
-		times.add(statMini("Time to buy", text(fillTime(flip.getBuyFill()), Theme.INK, Theme.NUM_SMALL),
-				Component.LEFT_ALIGNMENT), BorderLayout.WEST);
+		// One labeled row per number (label left, ink value right), the stats-card
+		// pattern — side-by-side caption tiles don't fit 225px and clipped to "…".
+		addLeft(body, labeledValue("Time to buy", fillTime(flip.getBuyFill())));
+		body.add(Box.createVerticalStrut(3));
+		addLeft(body, labeledValue("Time to sell", fillTime(flip.getSellFill())));
 		if (flip.getHorizon() != null) {
-			times.add(statMini("Hold", text("≤ " + flip.getHorizon().getRecommendedDays() + "d", Theme.INK, Theme.NUM_SMALL),
-					Component.CENTER_ALIGNMENT), BorderLayout.CENTER);
+			body.add(Box.createVerticalStrut(3));
+			addLeft(body, labeledValue("Hold up to", flip.getHorizon().getRecommendedDays() + "d"));
 		}
-		times.add(statMini("Time to sell", text(fillTime(flip.getSellFill()), Theme.INK, Theme.NUM_SMALL),
-				Component.RIGHT_ALIGNMENT), BorderLayout.EAST);
-		addLeft(body, times);
 
 		card.add(body, BorderLayout.CENTER);
 		clickable(card, flip.getItemId());
 		return card;
+	}
+
+	private JPanel labeledValue(String label, String value) {
+		JPanel row = new JPanel(new BorderLayout());
+		row.setOpaque(false);
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16));
+		row.add(text(label, Theme.MUTED, Theme.SMALL), BorderLayout.WEST);
+		JLabel number = text(value, Theme.INK, Theme.NUM_SMALL);
+		number.setHorizontalAlignment(SwingConstants.RIGHT);
+		row.add(number, BorderLayout.EAST);
+		return row;
 	}
 
 	private static void addLeft(JPanel body, JComponent child) {
