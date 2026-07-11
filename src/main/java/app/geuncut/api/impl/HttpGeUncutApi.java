@@ -92,7 +92,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void fetchFlips(String scanType, String risk, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
+	public void fetchFlips(String scanType, String risk, Long capital, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
 		HttpUrl base = resolve("/api/plugin/flips");
 		if (base == null) {
 			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
@@ -101,6 +101,9 @@ public class HttpGeUncutApi implements GeUncutApi {
 		HttpUrl.Builder url = base.newBuilder().addQueryParameter("scan_type", scanType);
 		if (risk != null && !risk.isEmpty()) {
 			url.addQueryParameter("risk", risk);
+		}
+		if (capital != null && capital > 0) {
+			url.addQueryParameter("capital", Long.toString(capital));
 		}
 		Request request = new Request.Builder().url(url.build()).get().build();
 		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, FlipsResponse.class)));

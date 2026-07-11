@@ -10,6 +10,7 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.text.NumberFormat;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +51,10 @@ public class FlipsPanel extends PluginPanel {
 
 	private final JLabel linkStatus = new JLabel();
 	private final JLabel unlinkLink = text("Unlink", Theme.FAINT, Theme.SMALL);
+	// The header's always-visible pairing entry point; the in-list "Link account"
+	// button only appears on a 401, which made linking invisible day to day.
+	private final JLabel linkLink = text("Link ↗", Theme.INFO, Theme.SMALL);
+	private final JLabel webHint = text("Your flips sync to geuncut.app — follow them on the web ↗", Theme.FAINT, Theme.SMALL);
 	private final JLabel allTimeValue = statValue("0");
 	private final JLabel todayValue = statValue("0");
 	private final JLabel winValue = statValue("—");
@@ -75,12 +80,22 @@ public class FlipsPanel extends PluginPanel {
 			new String[] { "Standard", "Fast Fill", "High Volume" },
 			new String[] { "standard", "fast", "value" }, 2);
 	private final FlatSelect riskPicker = new FlatSelect(new String[] { "Conservative", "Balanced", "Aggressive" }, 1);
+	// Mirrors the website's scan settings. "My capital" sends nothing so the saved
+	// profile (or the app default) sizes the scan; a preset overrides this scan only.
+	private final FlatSelect capitalPicker = new FlatSelect(
+			new String[] { "My capital", "1M gp", "10M gp", "50M gp", "100M gp", "500M gp", "1B gp" },
+			new String[] { "", "1000000", "10000000", "50000000", "100000000", "500000000", "1000000000" }, 0);
+	private final FlatSelect accountPicker = new FlatSelect(
+			new String[] { "All items", "Members", "Free-to-play" },
+			new String[] { "all", "members", "f2p" }, 0);
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
 	private final JLabel upsell = text("Link to unlock members flips ↗", Theme.MUTED, Theme.SMALL);
+	private List<Flip> lastFlips = Collections.emptyList();
 
-	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
+	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers,
+			Runnable onOpenWeb, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
 		this.iconLoader = iconLoader;
 		this.onOpenItem = onOpenItem;
 		// Row icons are inventory sprites (no network); the loader repaints as they decode.
@@ -98,7 +113,19 @@ public class FlipsPanel extends PluginPanel {
 		column.add(buildHeader());
 		column.add(strut(12));
 		column.add(buildStats());
-		column.add(strut(14));
+		column.add(strut(6));
+		// Linked-only nudge: the numbers above live on the website too.
+		webHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+		webHint.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		webHint.setVisible(false);
+		webHint.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onOpenWeb.run();
+			}
+		});
+		column.add(webHint);
+		column.add(strut(8));
 
 		// Today's movers: risers and fallers, public so it fills in linked or not. Each group pages, it does not scroll.
 		moversSection.setLayout(new BorderLayout());
@@ -179,8 +206,19 @@ public class FlipsPanel extends PluginPanel {
 				onUnlink.run();
 			}
 		});
+		linkLink.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		linkLink.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onLink.run();
+			}
+		});
 		scanPicker.setOnChange(onRefresh);
 		riskPicker.setOnChange(onRefresh);
+		// Capital re-sizes the scan server-side; the account filter is client-side
+		// over the flips already fetched, so switching it is instant.
+		capitalPicker.setOnChange(onRefresh);
+		accountPicker.setOnChange(this::renderFlips);
 
 		add(column, BorderLayout.NORTH);
 		setLinked(true);
@@ -196,12 +234,21 @@ public class FlipsPanel extends PluginPanel {
 		return riskPicker.selectedValue().toLowerCase();
 	}
 
+	/** Null means "My capital": no override, the saved profile / app default sizes the scan. */
+	public Long selectedCapital() {
+		String value = capitalPicker.selectedValue();
+		return value.isEmpty() ? null : Long.valueOf(value);
+	}
+
 	public void setLinked(boolean linked) {
 		linkStatus.setText(linked
 				? "<html><span style='color:#2ec27e'>&#9679;</span> <span style='color:#9a9aa4'>Linked</span></html>"
 				: "<html><span style='color:#9a9aa4'>Not linked</span></html>");
-		// Unlink is only meaningful, and only offered, while an account is linked.
+		// Unlink is only meaningful, and only offered, while an account is linked;
+		// its header spot shows the pairing entry point the rest of the time.
 		unlinkLink.setVisible(linked);
+		linkLink.setVisible(!linked);
+		webHint.setVisible(linked);
 	}
 
 	public void showOffers(List<GeOffer> offers, Map<Integer, String> itemNames) {
@@ -273,21 +320,41 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showFlips(List<Flip> flips, boolean linked) {
-		List<Flip> safe = flips != null ? flips : Collections.emptyList();
+		lastFlips = flips != null ? flips : Collections.emptyList();
 		setLinked(linked);
 		// Unlinked callers see the free (non-members) tier, so invite them to link
 		// for the members-item flips rather than gating the panel behind an account.
 		upsell.setVisible(!linked);
+		renderFlips();
+	}
+
+	private void renderFlips() {
 		finderStatus.setText("");
 		finderStatus.setVisible(false);
 		finderList.removeAll();
-		int shown = Math.min(safe.size(), 10);
-		for (Flip flip : safe.subList(0, shown)) {
+		// Same membership rule as the website's filter: unknown membership shows
+		// only under "All items", so the F2P view never leaks a members item.
+		String account = accountPicker.selectedValue();
+		List<Flip> shown = new ArrayList<>();
+		for (Flip flip : lastFlips) {
+			if ("members".equals(account) && !Boolean.TRUE.equals(flip.getMembers())) {
+				continue;
+			}
+			if ("f2p".equals(account) && !Boolean.FALSE.equals(flip.getMembers())) {
+				continue;
+			}
+			shown.add(flip);
+		}
+		// Every qualifying flip renders, ranked by the scan. The old top-10 cap
+		// buried whole classes of flips (F2P items rank far down a linked scan).
+		for (Flip flip : shown) {
 			addCard(finderList, finderCard(flip));
 		}
-		if (safe.isEmpty()) {
+		if (shown.isEmpty()) {
 			finderStatus.setVisible(true);
-			finderStatus.setText("No flips match your settings right now");
+			finderStatus.setText(lastFlips.isEmpty()
+					? "No flips match your settings right now"
+					: "No " + ("f2p".equals(account) ? "free-to-play" : "members") + " flips in this scan right now");
 		}
 		revalidate();
 		repaint();
@@ -348,6 +415,7 @@ public class FlipsPanel extends PluginPanel {
 		status.add(linkStatus);
 		status.add(Box.createHorizontalStrut(8));
 		status.add(unlinkLink);
+		status.add(linkLink);
 		header.add(brand, BorderLayout.WEST);
 		header.add(status, BorderLayout.EAST);
 		return header;
@@ -418,14 +486,18 @@ public class FlipsPanel extends PluginPanel {
 		bar.setBackground(Theme.SURFACE);
 		bar.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		// Two equal-width dropdowns stacked, with one refresh button beside them
-		// spanning both rows, so scan and risk line up instead of one being short.
+		// Equal-width dropdowns stacked (the website's scan settings, one per row),
+		// with one refresh button beside them spanning the column.
 		JPanel pickers = new JPanel();
 		pickers.setLayout(new BoxLayout(pickers, BoxLayout.Y_AXIS));
 		pickers.setBackground(Theme.SURFACE);
 		pickers.add(scanPicker);
 		pickers.add(Box.createVerticalStrut(6));
 		pickers.add(riskPicker);
+		pickers.add(Box.createVerticalStrut(6));
+		pickers.add(capitalPicker);
+		pickers.add(Box.createVerticalStrut(6));
+		pickers.add(accountPicker);
 
 		bar.add(pickers, BorderLayout.CENTER);
 		bar.add(flatButton("↻", onRefresh), BorderLayout.EAST);
@@ -526,7 +598,9 @@ public class FlipsPanel extends PluginPanel {
 		addLeft(body, stats);
 
 		body.add(Box.createVerticalStrut(8));
-		addLeft(body, text("Buy " + fillTime(flip.getBuyFill()) + " · Sell " + fillTime(flip.getSellFill()), Theme.FAINT, Theme.SMALL));
+		// Spelled out like the website's card ("TIME TO BUY / TIME TO SELL"); the old
+		// "Buy ~3.2h · Sell ~11.2h" read as prices, not fill-time estimates.
+		addLeft(body, text("Time to buy " + fillTime(flip.getBuyFill()) + " · sell " + fillTime(flip.getSellFill()), Theme.FAINT, Theme.SMALL));
 
 		card.add(body, BorderLayout.CENTER);
 		clickable(card, flip.getItemId());
@@ -552,7 +626,10 @@ public class FlipsPanel extends PluginPanel {
 			return trimNum(flip.getSpreadPct()) + "% margin";
 		}
 		if (flip.getEntryDiscountPct() != null) {
-			return trimNum(flip.getEntryDiscountPct()) + "% below";
+			// High Volume measures its discount against its own sell target, not the
+			// item's typical price — same wording split as the website's card.
+			String baseline = "value".equals(flip.getStrategy()) ? "% below target" : "% below typical";
+			return trimNum(flip.getEntryDiscountPct()) + baseline;
 		}
 		if (flip.getSpreadPct() != null) {
 			return trimNum(flip.getSpreadPct()) + "% margin";

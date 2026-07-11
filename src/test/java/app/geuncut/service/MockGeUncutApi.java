@@ -41,7 +41,7 @@ class MockGeUncutApi implements GeUncutApi {
 	private Runnable pendingPoll;
 
 	@Override
-	public void fetchFlips(String scanType, String risk, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
+	public void fetchFlips(String scanType, String risk, Long capital, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
 		if (flipsResponse != null) {
 			onSuccess.accept(flipsResponse);
 		} else {
