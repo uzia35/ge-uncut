@@ -97,6 +97,11 @@ public class FlipsPanel extends PluginPanel {
 	// the action (link), not just the reward. Width-checked by the render test.
 	private final JButton upsell = styledButton("Link to unlock members flips");
 	private List<Flip> lastFlips = Collections.emptyList();
+	// True while the finder area shows a status/prompt (Scanning…, link prompt,
+	// pairing code) instead of flips. The account picker re-renders client-side
+	// via renderFlips, which must not wipe a prompt and paint stale flips — an
+	// unlinked user could otherwise be left with no visible way to link at all.
+	private boolean promptShowing;
 
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers,
 			Runnable onOpenWeb, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
@@ -222,6 +227,10 @@ public class FlipsPanel extends PluginPanel {
 
 		add(column, BorderLayout.NORTH);
 		setLinked(true);
+		// The header starts optimistically "Linked", but the web-hint nudge waits
+		// for a confirmed link (the first flips response), so an unlinked user
+		// never sees "Follow your flips" flash at startup.
+		webHint.setVisible(false);
 	}
 
 	// ---- public updates (call on the EDT) ------------------------------------
@@ -321,6 +330,7 @@ public class FlipsPanel extends PluginPanel {
 
 	public void showFlips(List<Flip> flips, boolean linked) {
 		lastFlips = flips != null ? flips : Collections.emptyList();
+		promptShowing = false;
 		setLinked(linked);
 		// Unlinked callers see the free (non-members) tier, so invite them to link
 		// for the members-item flips rather than gating the panel behind an account.
@@ -328,7 +338,11 @@ public class FlipsPanel extends PluginPanel {
 		renderFlips();
 	}
 
-	private void renderFlips() {
+	// Package-private so the render harness can assert the prompt guard.
+	void renderFlips() {
+		if (promptShowing) {
+			return;
+		}
 		finderStatus.setText("");
 		finderStatus.setVisible(false);
 		finderList.removeAll();
@@ -361,6 +375,7 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showStatus(String message) {
+		promptShowing = true;
 		upsell.setVisible(false);
 		finderStatus.setVisible(true);
 		finderStatus.setText(message);
@@ -370,6 +385,7 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showLinkPrompt() {
+		promptShowing = true;
 		setLinked(false);
 		upsell.setVisible(false);
 		finderStatus.setVisible(true);
@@ -382,6 +398,7 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showLinkCode(String code) {
+		promptShowing = true;
 		upsell.setVisible(false);
 		finderStatus.setVisible(true);
 		finderStatus.setText("<html><div style='text-align:center'>Go to <b>geuncut.app/link</b> and enter<br>"

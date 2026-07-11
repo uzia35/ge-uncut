@@ -72,6 +72,42 @@ public class FlipsPanelRenderTest {
 		assertTrue(countDistinctColors(unlinked) > 8);
 	}
 
+	@Test
+	public void linkPromptSurvivesAccountFilterChanges() throws Exception {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem);
+		panel.showLinkPrompt();
+		// Warm-up paint: an <html> JLabel's wrapped height only settles after a
+		// pass at its constrained width; without this, consecutive paints clip
+		// different lines and the comparison below is noise.
+		paint(panel);
+		BufferedImage before = paint(panel);
+		write(before, "panel-link-prompt.png");
+
+		// The account picker's client-side re-render must not wipe the prompt and
+		// paint stale flips — the pixels must be identical after the guard no-ops.
+		panel.renderFlips();
+		BufferedImage after = paint(panel);
+		assertTrue(pixelsEqual(before, after));
+	}
+
+	private static boolean pixelsEqual(BufferedImage a, BufferedImage b) {
+		if (a.getWidth() != b.getWidth() || a.getHeight() != b.getHeight()) {
+			return false;
+		}
+		for (int y = 0; y < a.getHeight(); y++) {
+			for (int x = 0; x < a.getWidth(); x++) {
+				if (a.getRGB(x, y) != b.getRGB(x, y)) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
 	private static BufferedImage paint(FlipsPanel panel) {
 		panel.setSize(PANEL_WIDTH, Math.max(panel.getPreferredSize().height, 400));
 		layoutTree(panel);
