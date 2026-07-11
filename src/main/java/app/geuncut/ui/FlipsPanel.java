@@ -93,9 +93,9 @@ public class FlipsPanel extends PluginPanel {
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
 	// A real button, full width: the old faint one-line label was invisible, and
-	// linking is the product's main ask of an unlinked user. Short enough that the
-	// ~225px panel never truncates it.
-	private final JButton upsell = styledButton("Unlock members flips");
+	// linking is the product's main ask of an unlinked user — the label must name
+	// the action (link), not just the reward. Width-checked by the render test.
+	private final JButton upsell = styledButton("Link to unlock members flips");
 	private List<Flip> lastFlips = Collections.emptyList();
 
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers,
