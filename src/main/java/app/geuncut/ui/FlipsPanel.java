@@ -239,6 +239,12 @@ public class FlipsPanel extends PluginPanel {
 		repaint();
 	}
 
+	// Back to the zeros-and-dashes empty state; the positions fetch 401s once
+	// unlinked, so it can never clear the previous account's numbers itself.
+	public void clearAccountData() {
+		showActiveFlips(PositionsResponse.builder().build());
+	}
+
 	public void showMovers(Movers movers) {
 		List<MoverEntry> risers = movers != null ? movers.getRisers() : null;
 		List<MoverEntry> fallers = movers != null ? movers.getFallers() : null;

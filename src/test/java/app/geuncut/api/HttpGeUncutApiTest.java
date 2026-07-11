@@ -335,7 +335,8 @@ public class HttpGeUncutApiTest {
 	}
 
 	@Test
-	public void fetchMoversParsesRisersFallersAndSpikes() throws Exception {
+	public void fetchMoversParsesRisersAndFallers() throws Exception {
+		// volume_spikes stays in the body: fields the panel doesn't use must be ignored, not fatal.
 		server.enqueue(new MockResponse().setBody(
 				"{\"risers\":[{\"name\":\"Ranger gloves\",\"change_pct\":51.4}],"
 						+ "\"fallers\":[{\"name\":\"Raw summer pie\",\"change_pct\":-37.0}],"
@@ -353,7 +354,7 @@ public class HttpGeUncutApiTest {
 		assertEquals("Ranger gloves", movers.getRisers().get(0).getName());
 		assertEquals(51.4, movers.getRisers().get(0).getChangePct(), 0.001);
 		assertEquals("Raw summer pie", movers.getFallers().get(0).getName());
-		assertEquals(Double.valueOf(88.6), movers.getVolumeSpikes().get(0).getVolumeRatio());
+		assertEquals(-37.0, movers.getFallers().get(0).getChangePct(), 0.001);
 
 		RecordedRequest recorded = server.takeRequest();
 		assertEquals("GET", recorded.getMethod());

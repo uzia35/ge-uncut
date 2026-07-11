@@ -165,6 +165,8 @@ public class GeUncutPlugin extends Plugin {
 							failure.getStatusCode(), failure.getMessage()));
 		}
 		configManager.unsetConfiguration(GeUncutConfig.GROUP, "apiToken");
+		FlipsPanel target = panel;
+		SwingUtilities.invokeLater(target::clearAccountData);
 		refreshFlips();
 	}
 

@@ -12,7 +12,4 @@ public class MoverEntry {
 
 	@SerializedName("change_pct")
 	private final double changePct;
-
-	@SerializedName("volume_ratio")
-	private final Double volumeRatio;
 }

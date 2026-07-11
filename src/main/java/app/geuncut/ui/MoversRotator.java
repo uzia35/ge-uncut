@@ -62,6 +62,11 @@ class MoversRotator extends JComponent {
 		rows.clear();
 		if (next != null) {
 			for (MoverEntry entry : next) {
+				// A malformed feed entry (Gson leaves an absent name null) must not
+				// NPE every paint of the strip.
+				if (entry == null || entry.getName() == null) {
+					continue;
+				}
 				Row row = new Row(entry.getName(), String.format("%+.1f%%", entry.getChangePct()));
 				// Fetch the sprite once here (not per paint) so onLoaded is registered once.
 				row.icon = icons.icon(entry.getItemId(), this::repaint);
@@ -110,6 +115,18 @@ class MoversRotator extends JComponent {
 	// Overridable clock so the harness can drive the fade deterministically.
 	long nowNanos() {
 		return System.nanoTime();
+	}
+
+	@Override
+	public void addNotify() {
+		super.addNotify();
+		// Re-added after a panel switch (removeNotify stopped the timer). Restart
+		// the dwell from now so the page doesn't fade the instant it reappears.
+		if (totalPages() > 1 && !timer.isRunning()) {
+			fadingFrom = -1;
+			pageShownNanos = nowNanos();
+			timer.start();
+		}
 	}
 
 	@Override
