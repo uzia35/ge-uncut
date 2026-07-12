@@ -45,7 +45,6 @@ public class Flip {
 	@SerializedName("demand_trend")
 	private final DemandTrend demandTrend;
 
-	// True members item, false F2P, null unknown — drives the panel's account filter.
 	private final Boolean members;
 
 	@SerializedName("buy_fill")

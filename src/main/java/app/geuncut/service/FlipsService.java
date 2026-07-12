@@ -11,6 +11,5 @@ import app.geuncut.dto.Flip;
  * unauthorized ApiFailure; there is no client-side link state to consult.
  */
 public interface FlipsService {
-	// capital null = no override; the saved profile / app default sizes the scan.
 	void fetch(String scanType, String risk, Long capital, Consumer<List<Flip>> onSuccess, Consumer<ApiFailure> onError);
 }
