@@ -15,12 +15,6 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertTrue;
 
-/**
- * Offscreen render harness: builds the real panel from Gson-parsed fixture JSON
- * (the exact shape the API serves), paints it headlessly, and writes PNGs to
- * build/preview/ for eyeballing layout changes before they ship. Also a smoke
- * test that the panel constructs and paints without a client.
- */
 public class FlipsPanelRenderTest {
 	private static final int PANEL_WIDTH = 242;
 
@@ -37,7 +31,6 @@ public class FlipsPanelRenderTest {
 			"\"buy_fill\":{\"worst_case_hours\":108.0},\"sell_fill\":{\"worst_case_hours\":74.4}}" +
 			"]}";
 
-	/** Icon loader that never touches RuneLite: a flat placeholder sprite. */
 	private static ItemIconLoader stubIcons() {
 		return new ItemIconLoader(null, null) {
 			@Override
@@ -47,7 +40,6 @@ public class FlipsPanelRenderTest {
 
 			@Override
 			void load(int itemId, String name, javax.swing.JLabel label, int size) {
-				// No sprite service in tests; the label simply stays iconless.
 			}
 		};
 	}
@@ -68,7 +60,6 @@ public class FlipsPanelRenderTest {
 		panel.showFlips(response.getFlips(), true);
 		write(paint(panel), "panel-linked.png");
 
-		// Not a blank canvas: something actually painted beyond the background.
 		assertTrue(countDistinctColors(unlinked) > 8);
 	}
 
@@ -80,15 +71,10 @@ public class FlipsPanelRenderTest {
 		};
 		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem);
 		panel.showLinkPrompt();
-		// Warm-up paint: an <html> JLabel's wrapped height only settles after a
-		// pass at its constrained width; without this, consecutive paints clip
-		// different lines and the comparison below is noise.
 		paint(panel);
 		BufferedImage before = paint(panel);
 		write(before, "panel-link-prompt.png");
 
-		// The account picker's client-side re-render must not wipe the prompt and
-		// paint stale flips — the pixels must be identical after the guard no-ops.
 		panel.renderFlips();
 		BufferedImage after = paint(panel);
 		assertTrue(pixelsEqual(before, after));
