@@ -109,4 +109,87 @@ public class GeHistoryParserTest {
 		assertTrue(GeHistoryParser.parse(null).isEmpty());
 		assertTrue(GeHistoryParser.parse(container()).isEmpty());
 	}
+
+	@Test
+	public void rowWithUnparseablePriceIsSkippedNotGuessed() {
+		Widget container = container(
+				text("Sold:"),
+				item(22124, 100),
+				text("some coins = garbage each"),
+				text("Bought:"),
+				item(385, 50),
+				text("40,000 coins = 800 each"));
+
+		List<GeHistoryRow> rows = GeHistoryParser.parse(container);
+
+		assertEquals(1, rows.size());
+		assertEquals(385, rows.get(0).getItemId());
+	}
+
+	@Test
+	public void nextRowNeverBleedsIntoAPartialOne() {
+		Widget container = container(
+				text("Sold:"),
+				item(22124, 100),
+				text("Bought:"),
+				item(385, 50),
+				text("40,000 coins = 800 each"));
+
+		List<GeHistoryRow> rows = GeHistoryParser.parse(container);
+
+		assertEquals(1, rows.size());
+		assertEquals("buy", rows.get(0).getSide());
+		assertEquals(385, rows.get(0).getItemId());
+		assertEquals(800, rows.get(0).getPriceEach());
+	}
+
+	@Test
+	public void fillerChildrenBeyondScanLimitDropTheRow() {
+		Widget[] children = new Widget[12];
+		children[0] = text("Sold:");
+		for (int index = 1; index < 10; index++) {
+			children[index] = text("");
+		}
+		children[10] = item(22124, 100);
+		children[11] = text("2,000,000 coins = 20,000 each");
+
+		assertTrue(GeHistoryParser.parse(container(children)).isEmpty());
+	}
+
+	@Test
+	public void zeroQuantityItemWidgetDefaultsToOne() {
+		Widget container = container(
+				text("Bought:"),
+				item(20997, 0),
+				text("1,400,000,000 coins"));
+
+		List<GeHistoryRow> rows = GeHistoryParser.parse(container);
+
+		assertEquals(1, rows.size());
+		assertEquals(1, rows.get(0).getQuantity());
+	}
+
+	@Test
+	public void fullHistoryWindowOfMixedRowsParsesEveryEntry() {
+		Widget[] children = new Widget[8 * 4];
+		for (int entry = 0; entry < 8; entry++) {
+			int base = entry * 4;
+			boolean sell = entry % 2 == 0;
+			children[base] = text(sell ? "Sold:" : "Bought:");
+			children[base + 1] = text("Item " + entry + "<br>x 10");
+			children[base + 2] = item(1_000 + entry, 10);
+			children[base + 3] = text(sell
+					? "10,000 coins (10,205 - 205) = 1,000 each"
+					: "10,000 coins = 1,000 each");
+		}
+
+		List<GeHistoryRow> rows = GeHistoryParser.parse(container(children));
+
+		assertEquals(8, rows.size());
+		for (int entry = 0; entry < 8; entry++) {
+			assertEquals(1_000 + entry, rows.get(entry).getItemId());
+			assertEquals(entry % 2 == 0 ? "sell" : "buy", rows.get(entry).getSide());
+			assertEquals(1_000, rows.get(entry).getPriceEach());
+		}
+	}
 }
