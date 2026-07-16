@@ -523,10 +523,12 @@ public class FlipsPanel extends PluginPanel {
 
 		double fraction = offer.getQuantityTotal() > 0
 				? (double) offer.getQuantityFilled() / offer.getQuantityTotal() : 0;
+		boolean soldOut = !buy && offer.getQuantityTotal() > 0
+				&& offer.getQuantityFilled() >= offer.getQuantityTotal();
 		JPanel barRow = new JPanel(new BorderLayout(7, 0));
 		barRow.setOpaque(false);
-		barRow.add(buy ? pill("BUY", Theme.INFO) : pill("SELL", Theme.AMBER), BorderLayout.WEST);
-		FillBar progress = new FillBar(fraction, buy ? Theme.INFO : Theme.AMBER);
+		barRow.add(buy ? pill("BUY", Theme.INFO) : pill("SELL", soldOut ? Theme.UP : Theme.AMBER), BorderLayout.WEST);
+		FillBar progress = new FillBar(fraction, buy ? Theme.INFO : (soldOut ? Theme.UP : Theme.AMBER));
 		progress.setPreferredSize(new Dimension(10, 6));
 		barRow.add(progress, BorderLayout.CENTER);
 		barRow.setAlignmentX(Component.LEFT_ALIGNMENT);

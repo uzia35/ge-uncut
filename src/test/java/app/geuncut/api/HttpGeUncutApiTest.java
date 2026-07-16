@@ -13,6 +13,7 @@ import app.geuncut.api.impl.HttpGeUncutApi;
 import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.Flip;
 import app.geuncut.dto.FlipsResponse;
+import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
@@ -232,6 +233,33 @@ public class HttpGeUncutApiTest {
 		assertTrue(body.contains("\"idempotency_key\""));
 		assertTrue(body.contains("\"price_each\":1480000000"));
 		assertTrue(body.contains("\"occurred_at\":\"2026-07-05T12:00:00Z\""));
+	}
+
+	@Test
+	public void postGeHistorySendsRowsAndAuthenticates() throws Exception {
+		server.enqueue(new MockResponse().setBody("{}"));
+
+		List<GeHistoryRow> rows = Collections.singletonList(GeHistoryRow.builder()
+				.itemId(22124)
+				.side("sell")
+				.quantity(5000)
+				.priceEach(21070)
+				.build());
+
+		CountDownLatch done = new CountDownLatch(1);
+		api.postGeHistory("acct-1", rows, done::countDown, error -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		RecordedRequest recorded = server.takeRequest();
+		assertEquals("POST", recorded.getMethod());
+		assertEquals("/api/plugin/ge-history", recorded.getPath());
+		assertEquals("Bearer " + TOKEN, recorded.getHeader("Authorization"));
+		String body = recorded.getBody().readUtf8();
+		assertTrue(body.contains("\"account_hash\":\"acct-1\""));
+		assertTrue(body.contains("\"item_id\":22124"));
+		assertTrue(body.contains("\"side\":\"sell\""));
+		assertTrue(body.contains("\"quantity\":5000"));
+		assertTrue(body.contains("\"price_each\":21070"));
 	}
 
 	@Test

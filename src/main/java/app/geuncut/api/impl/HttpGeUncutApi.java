@@ -14,6 +14,7 @@ import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.FlipsResponse;
+import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
@@ -158,6 +159,23 @@ public class HttpGeUncutApi implements GeUncutApi {
 		payload.addProperty("account_hash", accountHash);
 		payload.addProperty("synced_at", syncedAt);
 		payload.add("offers", gson.toJsonTree(offers));
+		Request request = new Request.Builder()
+				.url(url)
+				.post(RequestBody.create(JSON, payload.toString()))
+				.build();
+		enqueue(request, onError, body -> onSuccess.run());
+	}
+
+	@Override
+	public void postGeHistory(String accountHash, List<GeHistoryRow> rows, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/ge-history");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		JsonObject payload = new JsonObject();
+		payload.addProperty("account_hash", accountHash);
+		payload.add("rows", gson.toJsonTree(rows));
 		Request request = new Request.Builder()
 				.url(url)
 				.post(RequestBody.create(JSON, payload.toString()))

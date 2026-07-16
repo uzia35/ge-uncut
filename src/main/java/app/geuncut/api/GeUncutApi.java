@@ -4,6 +4,7 @@ import java.util.function.Consumer;
 import java.util.List;
 
 import app.geuncut.dto.FlipsResponse;
+import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
@@ -28,6 +29,8 @@ public interface GeUncutApi {
 	void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError);
 
 	void postOffers(String accountHash, List<GeOffer> offers, String syncedAt, Runnable onSuccess, Consumer<ApiFailure> onError);
+
+	void postGeHistory(String accountHash, List<GeHistoryRow> rows, Runnable onSuccess, Consumer<ApiFailure> onError);
 
 	void startLink(Consumer<LinkSession> onSuccess, Consumer<ApiFailure> onError);
 

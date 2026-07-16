@@ -5,12 +5,16 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.api.impl.HttpGeUncutApi;
 import app.geuncut.config.GeUncutConfig;
+import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.FlipsService;
@@ -24,6 +28,7 @@ import app.geuncut.service.OfferSyncService;
 import app.geuncut.service.PositionsService;
 import app.geuncut.service.TradeSyncService;
 import app.geuncut.tracker.BuyLimitTracker;
+import app.geuncut.tracker.GeHistoryParser;
 import app.geuncut.tracker.impl.BuyLimitTrackerImpl;
 import app.geuncut.tracker.impl.OfferTrackerImpl;
 import app.geuncut.tracker.OfferTracker;
@@ -35,6 +40,8 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GrandExchangeOfferChanged;
+import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.ItemComposition;
@@ -111,8 +118,15 @@ public class GeUncutPlugin extends Plugin {
 	@Inject
 	private BuyLimitTracker buyLimits;
 
+	@Inject
+	private ScheduledExecutorService executor;
+
 	private FlipsPanel panel;
 	private NavigationButton navButton;
+	private ScheduledFuture<?> positionsPoll;
+
+	private static final int POSITIONS_POLL_SECONDS = 30;
+	private static final int POST_FILL_REFRESH_SECONDS = 8;
 
 	@Override
 	protected void startUp() {
@@ -131,12 +145,18 @@ public class GeUncutPlugin extends Plugin {
 		// Offers still record locally for the working-offers panel when unlinked, but
 		// only transmit when linked: a null hash makes the flush skip (see OfferSync).
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
+		positionsPoll = executor.scheduleWithFixedDelay(this::refreshPositions,
+				POSITIONS_POLL_SECONDS, POSITIONS_POLL_SECONDS, TimeUnit.SECONDS);
 		refreshFlips();
 	}
 
 	@Override
 	protected void shutDown() {
 		link.cancel();
+		if (positionsPoll != null) {
+			positionsPoll.cancel(false);
+			positionsPoll = null;
+		}
 		tradeSync.stop();
 		offerSync.stop();
 		clientToolbar.removeNavigation(navButton);
@@ -198,6 +218,25 @@ public class GeUncutPlugin extends Plugin {
 		SwingUtilities.invokeLater(() -> panel.showOffers(working, itemNames));
 	}
 
+	@Subscribe
+	public void onWidgetLoaded(WidgetLoaded event) {
+		if (event.getGroupId() != InterfaceID.GE_HISTORY || !linked()) {
+			return;
+		}
+		clientThread.invokeLater(this::syncTradeHistory);
+	}
+
+	private void syncTradeHistory() {
+		List<GeHistoryRow> rows = GeHistoryParser.parse(client.getWidget(InterfaceID.GeHistory.LIST));
+		if (rows.isEmpty()) {
+			return;
+		}
+		api.postGeHistory(Long.toString(client.getAccountHash()), rows,
+				() -> log.debug("event=history_synced rows={}", rows.size()),
+				failure -> log.debug("event=history_sync_failed status={} message=\"{}\"",
+						failure.getStatusCode(), failure.getMessage()));
+	}
+
 	private String itemName(int itemId) {
 		ItemComposition composition = itemManager.getItemComposition(itemId);
 		return composition != null ? composition.getName() : "Item " + itemId;
@@ -222,6 +261,7 @@ public class GeUncutPlugin extends Plugin {
 		// to and the buy limit above is already tracked locally.
 		if (linked()) {
 			tradeSync.accept(delta);
+			executor.schedule(this::refreshPositions, POST_FILL_REFRESH_SECONDS, TimeUnit.SECONDS);
 		}
 	}
 

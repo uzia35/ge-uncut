@@ -7,6 +7,7 @@ import java.util.List;
 import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.FlipsResponse;
+import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
@@ -33,6 +34,8 @@ class MockGeUncutApi implements GeUncutApi {
 
 	final List<List<GeTradeEvent>> postedBatches = new ArrayList<>();
 	final List<List<GeOffer>> postedOffers = new ArrayList<>();
+	final List<List<GeHistoryRow>> postedHistory = new ArrayList<>();
+	String lastHistoryAccountHash;
 	String lastOffersAccountHash;
 	String lastOffersSyncedAt;
 	int pollCount;
@@ -103,6 +106,13 @@ class MockGeUncutApi implements GeUncutApi {
 		lastOffersAccountHash = accountHash;
 		lastOffersSyncedAt = syncedAt;
 		postedOffers.add(new ArrayList<>(offers));
+		onSuccess.run();
+	}
+
+	@Override
+	public void postGeHistory(String accountHash, List<GeHistoryRow> rows, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		lastHistoryAccountHash = accountHash;
+		postedHistory.add(new ArrayList<>(rows));
 		onSuccess.run();
 	}
 
