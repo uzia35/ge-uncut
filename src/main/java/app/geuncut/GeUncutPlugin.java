@@ -49,6 +49,7 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -130,16 +131,7 @@ public class GeUncutPlugin extends Plugin {
 
 	@Override
 	protected void startUp() {
-		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, this::unlinkAccount, this::openMovers,
-				this::openMyFlips, new ItemIconLoader(okHttpClient, itemManager), this::openItem);
-		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
-		navButton = NavigationButton.builder()
-				.tooltip("GE Uncut")
-				.icon(icon)
-				.priority(6)
-				.panel(panel)
-				.build();
-		clientToolbar.addNavigation(navButton);
+		installPanel();
 
 		tradeSync.start(() -> Long.toString(client.getAccountHash()));
 		// Offers still record locally for the working-offers panel when unlinked, but
@@ -148,6 +140,40 @@ public class GeUncutPlugin extends Plugin {
 		positionsPoll = executor.scheduleWithFixedDelay(this::refreshPositions,
 				POSITIONS_POLL_SECONDS, POSITIONS_POLL_SECONDS, TimeUnit.SECONDS);
 		refreshFlips();
+	}
+
+	// Build the panel with the current theme and mount it. Extracted so a theme
+	// switch can tear the panel down and rebuild it with the new palette (Swing
+	// captures colours at construction, so a live re-theme means a rebuild).
+	private void installPanel() {
+		FlipsPanel.applyTheme(config.lightMode());
+		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, this::unlinkAccount, this::openMovers,
+				this::openMyFlips, new ItemIconLoader(okHttpClient, itemManager), this::openItem, this::markNotFlip,
+				this::restoreFlip);
+		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
+		navButton = NavigationButton.builder()
+				.tooltip("GE Uncut")
+				.icon(icon)
+				.priority(6)
+				.panel(panel)
+				.build();
+		clientToolbar.addNavigation(navButton);
+	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event) {
+		if (!GeUncutConfig.GROUP.equals(event.getGroup()) || !"lightMode".equals(event.getKey())) {
+			return;
+		}
+		// Rebuild on the EDT with the new palette, then repopulate from the last
+		// known state so the switch is seamless.
+		SwingUtilities.invokeLater(() -> {
+			clientToolbar.removeNavigation(navButton);
+			installPanel();
+			refreshFlips();
+			refreshMovers();
+			refreshPositions();
+		});
 	}
 
 	@Override
@@ -317,6 +343,46 @@ public class GeUncutPlugin extends Plugin {
 					}
 				}),
 				failure -> log.debug("event=positions_fetch_failed kind={} status={}",
+						failure.getKind(), failure.getStatusCode()));
+		// Keep the History tab in step with the flip list (archived fetch 401s
+		// harmlessly when unlinked).
+		refreshHistory();
+	}
+
+	// Panel "Not a flip": demote the position to History on the website, then
+	// refresh so it drops out of Active flips and into History. Best-effort — a
+	// failure just leaves the card in place (the next poll will reconcile).
+	private void markNotFlip(long positionId) {
+		api.archivePosition(positionId,
+				() -> SwingUtilities.invokeLater(() -> {
+					refreshPositions();
+					refreshHistory();
+				}),
+				failure -> log.debug("event=archive_position_failed id={} kind={} status={}",
+						positionId, failure.getKind(), failure.getStatusCode()));
+	}
+
+	// History tab "Make it a flip": restore an archived position, then refresh
+	// both lists so it moves back into Active flips.
+	private void restoreFlip(long positionId) {
+		api.restorePosition(positionId,
+				() -> SwingUtilities.invokeLater(() -> {
+					refreshPositions();
+					refreshHistory();
+				}),
+				failure -> log.debug("event=restore_position_failed id={} kind={} status={}",
+						positionId, failure.getKind(), failure.getStatusCode()));
+	}
+
+	private void refreshHistory() {
+		FlipsPanel target = panel;
+		api.fetchArchived(
+				response -> SwingUtilities.invokeLater(() -> {
+					if (target == panel) {
+						target.showHistory(response);
+					}
+				}),
+				failure -> log.debug("event=archived_fetch_failed kind={} status={}",
 						failure.getKind(), failure.getStatusCode()));
 	}
 

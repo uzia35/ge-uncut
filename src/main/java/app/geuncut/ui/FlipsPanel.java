@@ -1,6 +1,7 @@
 package app.geuncut.ui;
 
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Cursor;
@@ -10,11 +11,15 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.text.NumberFormat;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.IntConsumer;
+import java.util.function.LongConsumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -46,13 +51,20 @@ import net.runelite.client.util.ImageUtil;
 public class FlipsPanel extends PluginPanel {
 	private static final NumberFormat GP = NumberFormat.getIntegerInstance();
 
+	// Usable width inside a card: RuneLite's 225px sidebar minus the panel
+	// border (2x10) and the card padding (2x11). Layout math uses this instead
+	// of guesses — the harness renders at the same constant.
+	private static final int CONTENT_WIDTH = PANEL_WIDTH - 42;
+
 	private final ItemIconLoader iconLoader;
 	private final IntConsumer onOpenItem;
+	private final LongConsumer onNotFlip;
+	private final LongConsumer onRestore;
 
 	private final JLabel linkStatus = new JLabel();
-	private final JLabel unlinkLink = text("Unlink", Theme.FAINT, Theme.SMALL);
-	private final JLabel linkLink = text("Link ↗", Theme.INFO, Theme.SMALL);
-	private final JLabel webHint = text("Follow your flips on geuncut.app ↗", Theme.FAINT, Theme.SMALL);
+	private final JLabel unlinkLink = text("Unlink", Theme.MUTED, Theme.SMALL);
+	private final JLabel linkLink = text("Link", Theme.INFO, Theme.SMALL);
+	private final JLabel webHint = text("Follow your flips on geuncut.app ↗", Theme.MUTED, Theme.SMALL);
 	private final JLabel allTimeValue = statValue("0");
 	private final JLabel todayValue = statValue("0");
 	private final JLabel winValue = statValue("—");
@@ -74,6 +86,21 @@ public class FlipsPanel extends PluginPanel {
 	private final JPanel activeList = listPanel();
 	private final JLabel activeCount = new JLabel("0");
 
+	private final JPanel historySection = new JPanel();
+	private final JPanel historyList = listPanel();
+	private final JLabel historyCount = new JLabel("0");
+
+	// Tab bar + card content. History is linked-only, so it's hidden when unlinked.
+	private final JPanel content = new JPanel(new CardLayout());
+	private final Map<String, JLabel> tabButtons = new LinkedHashMap<>();
+	private String activeTab = "finder";
+	private boolean linked = true;
+
+	// Which active-flip cards are expanded (by position id). Survives the poll's
+	// re-render so an open card doesn't snap shut every 30 seconds.
+	private final java.util.Set<Long> expandedFlips = new java.util.HashSet<>();
+	private List<Position> lastPositions = Collections.emptyList();
+
 	private final FlatSelect scanPicker = new FlatSelect(
 			new String[] { "Standard", "Fast Fill", "High Volume" },
 			new String[] { "standard", "fast", "value" }, 2);
@@ -91,13 +118,33 @@ public class FlipsPanel extends PluginPanel {
 	private List<Flip> lastFlips = Collections.emptyList();
 	private boolean promptShowing;
 
+	// Repaint the shared palette before a panel is (re)built. Keeps Theme itself
+	// package-private while giving the plugin a single entry point to switch mode.
+	public static void applyTheme(boolean light) {
+		Theme.apply(light ? Theme.Mode.LIGHT : Theme.Mode.DARK);
+	}
+
+	// THE clipped-right-edge fix. The sidebar scroll pane never shows a
+	// horizontal bar and renders the view at its preferred width — so any row
+	// whose text out-measured 225px (a long finder meta line was enough) pushed
+	// the whole panel wider and the viewport cut the right edge off every card
+	// and button. Pinning the reported width forces every row to lay out inside
+	// the visible area and truncate its own text instead.
+	@Override
+	public Dimension getPreferredSize() {
+		return new Dimension(PANEL_WIDTH, super.getPreferredSize().height);
+	}
+
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers,
-			Runnable onOpenWeb, ItemIconLoader iconLoader, IntConsumer onOpenItem) {
+			Runnable onOpenWeb, ItemIconLoader iconLoader, IntConsumer onOpenItem, LongConsumer onNotFlip,
+			LongConsumer onRestore) {
 		this.iconLoader = iconLoader;
 		this.onOpenItem = onOpenItem;
+		this.onNotFlip = onNotFlip;
+		this.onRestore = onRestore;
 		// Row icons are inventory sprites (no network); the loader repaints as they decode.
-		gainers = new MoversRotator(Theme.NUM_SMALL, Theme.UP, iconLoader::sprite);
-		losers = new MoversRotator(Theme.NUM_SMALL, Theme.DOWN, iconLoader::sprite);
+		gainers = new MoversRotator(Theme.NUM_SMALL, Theme.UP, iconLoader::sprite, onOpenItem);
+		losers = new MoversRotator(Theme.NUM_SMALL, Theme.DOWN, iconLoader::sprite, onOpenItem);
 
 		setLayout(new BorderLayout());
 		setBackground(Theme.SURFACE);
@@ -108,87 +155,23 @@ public class FlipsPanel extends PluginPanel {
 		column.setBackground(Theme.SURFACE);
 
 		column.add(buildHeader());
-		column.add(strut(12));
-		column.add(buildStats());
-		column.add(strut(6));
-		webHint.setAlignmentX(Component.LEFT_ALIGNMENT);
-		webHint.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		webHint.setVisible(false);
-		webHint.addMouseListener(new MouseAdapter() {
-			@Override
-			public void mouseClicked(MouseEvent event) {
-				onOpenWeb.run();
-			}
-		});
-		column.add(webHint);
-		column.add(strut(8));
-
-		// Today's movers: risers and fallers, public so it fills in linked or not. Each group pages, it does not scroll.
-		moversSection.setLayout(new BorderLayout());
-		moversSection.setBackground(Theme.SURFACE);
-		moversSection.setAlignmentX(Component.LEFT_ALIGNMENT);
-		moversSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
-		JPanel moversHeader = sectionHeader("Today's movers ↗", null);
-		installRecursively(moversHeader, new MouseAdapter() {
-			@Override
-			public void mouseClicked(MouseEvent event) {
-				onOpenMovers.run();
-			}
-		});
-		moversSection.add(moversHeader, BorderLayout.NORTH);
-		buildMoverGroup(gainersGroup, "Gainers", gainers, 0);
-		buildMoverGroup(losersGroup, "Losers", losers, 8);
-		JPanel moversBody = new JPanel();
-		moversBody.setLayout(new BoxLayout(moversBody, BoxLayout.Y_AXIS));
-		moversBody.setBackground(Theme.SURFACE);
-		moversBody.setAlignmentX(Component.LEFT_ALIGNMENT);
-		moversBody.add(gainersGroup);
-		moversBody.add(losersGroup);
-		moversSection.add(moversBody, BorderLayout.CENTER);
-		moversSection.setVisible(false);
-		column.add(moversSection);
-
-		// The section spacing is a bottom border, not a separate strut, so a hidden
-		// section leaves no orphaned gap (e.g. an unlinked account with no offers).
-		offersSection.setLayout(new BorderLayout());
-		offersSection.setBackground(Theme.SURFACE);
-		offersSection.setAlignmentX(Component.LEFT_ALIGNMENT);
-		offersSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
-		offersSection.add(sectionHeader("Working offers", offersCount), BorderLayout.NORTH);
-		offersSection.add(wrapList(offersList), BorderLayout.CENTER);
-		offersSection.setVisible(false);
-		column.add(offersSection);
-
-		activeSection.setLayout(new BorderLayout());
-		activeSection.setBackground(Theme.SURFACE);
-		activeSection.setAlignmentX(Component.LEFT_ALIGNMENT);
-		activeSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
-		activeSection.add(sectionHeader("Active flips", activeCount), BorderLayout.NORTH);
-		activeSection.add(wrapList(activeList), BorderLayout.CENTER);
-		activeSection.setVisible(false);
-		column.add(activeSection);
-
-		column.add(sectionHeader("Flip finder", null));
-		column.add(strut(4));
-		JLabel finderHint = text("Tap an item for full details ↗", Theme.FAINT, Theme.SMALL);
-		finderHint.setAlignmentX(Component.LEFT_ALIGNMENT);
-		column.add(finderHint);
-		column.add(strut(6));
-		column.add(buildFinderBar(onRefresh));
 		column.add(strut(10));
-		upsell.setAlignmentX(Component.LEFT_ALIGNMENT);
-		upsell.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
-		upsell.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		upsell.setVisible(false);
+		column.add(buildTabBar());
+		column.add(strut(10));
+
+		// One pane per tab, swapped by the tab bar. Finder is the default landing.
+		// Each pane is top-anchored (topWrap): CardLayout sizes the content area to
+		// the tallest pane, so a shorter pane must NOT let its cards stretch to fill
+		// the slack — the extra space stays empty below instead.
+		content.setBackground(Theme.SURFACE);
+		content.setAlignmentX(Component.LEFT_ALIGNMENT);
+		content.add(topWrap(buildFinderPane(onRefresh)), "finder");
+		content.add(topWrap(buildFlipsPane(onOpenWeb)), "flips");
+		content.add(topWrap(buildMoversPane(onOpenMovers)), "movers");
+		content.add(topWrap(buildHistoryPane()), "history");
+		column.add(content);
+
 		upsell.addActionListener(event -> onLink.run());
-		column.add(upsell);
-		column.add(strut(10));
-		finderStatus.setForeground(Theme.MUTED);
-		finderStatus.setFont(Theme.BODY);
-		finderStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
-		column.add(finderStatus);
-		column.add(wrapList(finderList));
-
 		linkButton.addActionListener(event -> onLink.run());
 		unlinkLink.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		unlinkLink.setVisible(false);
@@ -210,9 +193,185 @@ public class FlipsPanel extends PluginPanel {
 		capitalPicker.setOnChange(onRefresh);
 		accountPicker.setOnChange(this::renderFlips);
 
+		selectTab("finder");
 		add(column, BorderLayout.NORTH);
 		setLinked(true);
+	}
+
+	// ---- tabs & panes --------------------------------------------------------
+
+	private JPanel pane() {
+		JPanel p = new JPanel();
+		p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+		p.setBackground(Theme.SURFACE);
+		p.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return p;
+	}
+
+	// Pin a pane's content to the top. CardLayout hands every pane the height of
+	// the tallest one; a BorderLayout NORTH keeps this pane's cards at their
+	// natural height and lets the leftover space fall empty below, instead of
+	// BoxLayout stretching a card (the hero) to swallow it.
+	private JPanel topWrap(JComponent pane) {
+		JPanel wrap = new JPanel(new BorderLayout());
+		wrap.setBackground(Theme.SURFACE);
+		wrap.setAlignmentX(Component.LEFT_ALIGNMENT);
+		wrap.add(pane, BorderLayout.NORTH);
+		return wrap;
+	}
+
+	private JPanel buildTabBar() {
+		JPanel bar = new JPanel(new GridLayout(1, 0));
+		bar.setBackground(Theme.SURFACE);
+		bar.setAlignmentX(Component.LEFT_ALIGNMENT);
+		bar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+		bar.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.LINE));
+		addTab(bar, "finder", "Finder");
+		addTab(bar, "flips", "Flips");
+		addTab(bar, "movers", "Movers");
+		addTab(bar, "history", "History");
+		return bar;
+	}
+
+	private void addTab(JPanel bar, String key, String label) {
+		JLabel tab = new JLabel(label, SwingConstants.CENTER);
+		// 11px bold: four tabs share 225px, and "Movers"/"History" truncate at
+		// the full body size.
+		tab.setFont(Theme.BODY_BOLD.deriveFont(11f));
+		tab.setForeground(Theme.MUTED);
+		tab.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		tab.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				selectTab(key);
+			}
+		});
+		tabButtons.put(key, tab);
+		bar.add(tab);
+	}
+
+	void selectTab(String key) {
+		activeTab = key;
+		((CardLayout) content.getLayout()).show(content, key);
+		for (Map.Entry<String, JLabel> entry : tabButtons.entrySet()) {
+			boolean active = entry.getKey().equals(key);
+			JLabel tab = entry.getValue();
+			tab.setForeground(active ? Theme.INK : Theme.MUTED);
+			// Active tab carries a green underline; padding compensates so the
+			// baseline never shifts between states.
+			tab.setBorder(BorderFactory.createCompoundBorder(
+					BorderFactory.createMatteBorder(0, 0, active ? 2 : 0, 0, Theme.UP),
+					BorderFactory.createEmptyBorder(6, 4, active ? 6 : 8, 4)));
+		}
+		revalidate();
+		repaint();
+	}
+
+	private JPanel buildFinderPane(Runnable onRefresh) {
+		JPanel pane = pane();
+		// Hint on the left, a compact refresh on the right — replaces the old
+		// full-height gutter button that boxed the pickers in.
+		JPanel hintRow = new JPanel(new BorderLayout(8, 0));
+		hintRow.setBackground(Theme.SURFACE);
+		hintRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+		JLabel finderHint = text("Tap an item for full details ↗", Theme.MUTED, Theme.SMALL);
+		hintRow.add(finderHint, BorderLayout.WEST);
+		hintRow.add(flatButton("↻", onRefresh), BorderLayout.EAST);
+		hintRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 28));
+		pane.add(hintRow);
+		pane.add(strut(8));
+		pane.add(buildFinderBar());
+		pane.add(strut(10));
+		upsell.setAlignmentX(Component.LEFT_ALIGNMENT);
+		upsell.setMaximumSize(new Dimension(Integer.MAX_VALUE, 34));
+		upsell.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		upsell.setVisible(false);
+		pane.add(upsell);
+		pane.add(strut(10));
+		finderStatus.setForeground(Theme.MUTED);
+		finderStatus.setFont(Theme.BODY);
+		finderStatus.setAlignmentX(Component.LEFT_ALIGNMENT);
+		pane.add(finderStatus);
+		pane.add(wrapList(finderList));
+		return pane;
+	}
+
+	private JPanel buildFlipsPane(Runnable onOpenWeb) {
+		JPanel pane = pane();
+		pane.add(buildStats());
+		pane.add(strut(6));
+		webHint.setAlignmentX(Component.LEFT_ALIGNMENT);
+		webHint.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		webHint.setVisible(false);
+		webHint.addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onOpenWeb.run();
+			}
+		});
+		pane.add(webHint);
+		pane.add(strut(8));
+
+		offersSection.setLayout(new BorderLayout());
+		offersSection.setBackground(Theme.SURFACE);
+		offersSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		offersSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
+		offersSection.add(sectionHeader("Working offers", offersCount), BorderLayout.NORTH);
+		offersSection.add(wrapList(offersList), BorderLayout.CENTER);
+		offersSection.setVisible(false);
+		pane.add(offersSection);
+
+		activeSection.setLayout(new BorderLayout());
+		activeSection.setBackground(Theme.SURFACE);
+		activeSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		activeSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
+		activeSection.add(sectionHeader("Active flips", activeCount), BorderLayout.NORTH);
+		activeSection.add(wrapList(activeList), BorderLayout.CENTER);
+		activeSection.setVisible(false);
+		pane.add(activeSection);
+		return pane;
+	}
+
+	private JPanel buildMoversPane(Runnable onOpenMovers) {
+		JPanel pane = pane();
+		moversSection.setLayout(new BorderLayout());
+		moversSection.setBackground(Theme.SURFACE);
+		moversSection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		moversSection.setBorder(BorderFactory.createEmptyBorder(0, 0, 14, 0));
+		JPanel moversHeader = sectionHeader("Today's movers ↗", null);
+		installRecursively(moversHeader, new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onOpenMovers.run();
+			}
+		});
+		moversSection.add(moversHeader, BorderLayout.NORTH);
+		buildMoverGroup(gainersGroup, "Gainers", gainers, 0);
+		buildMoverGroup(losersGroup, "Losers", losers, 10);
+		JPanel moversBody = new JPanel();
+		moversBody.setLayout(new BoxLayout(moversBody, BoxLayout.Y_AXIS));
+		moversBody.setBackground(Theme.SURFACE);
+		moversBody.setAlignmentX(Component.LEFT_ALIGNMENT);
+		moversBody.add(gainersGroup);
+		moversBody.add(losersGroup);
+		moversSection.add(moversBody, BorderLayout.CENTER);
+		pane.add(moversSection);
+		return pane;
+	}
+
+	private JPanel buildHistoryPane() {
+		JPanel pane = pane();
+		JLabel blurb = text("Marked not a flip. Restore anytime.", Theme.MUTED, Theme.SMALL);
+		blurb.setAlignmentX(Component.LEFT_ALIGNMENT);
+		pane.add(blurb);
+		pane.add(strut(8));
+		historySection.setLayout(new BorderLayout());
+		historySection.setBackground(Theme.SURFACE);
+		historySection.setAlignmentX(Component.LEFT_ALIGNMENT);
+		historySection.add(sectionHeader("Archived", historyCount), BorderLayout.NORTH);
+		historySection.add(wrapList(historyList), BorderLayout.CENTER);
+		pane.add(historySection);
+		return pane;
 	}
 
 	// ---- public updates (call on the EDT) ------------------------------------
@@ -231,12 +390,22 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void setLinked(boolean linked) {
+		this.linked = linked;
 		linkStatus.setText(linked
 				? "<html><span style='color:#2ec27e'>&#9679;</span> <span style='color:#9a9aa4'>Linked</span></html>"
 				: "<html><span style='color:#9a9aa4'>Not linked</span></html>");
 		unlinkLink.setVisible(linked);
 		linkLink.setVisible(!linked);
 		webHint.setVisible(linked);
+		// History is account-only: hide its tab when unlinked, and bounce off it
+		// if it was the active pane.
+		JLabel historyTab = tabButtons.get("history");
+		if (historyTab != null) {
+			historyTab.setVisible(linked);
+		}
+		if (!linked && "history".equals(activeTab)) {
+			selectTab("finder");
+		}
 	}
 
 	public void showOffers(List<GeOffer> offers, Map<Integer, String> itemNames) {
@@ -262,14 +431,38 @@ public class FlipsPanel extends PluginPanel {
 		winValue.setText(summary.getWinRate() != null ? Math.round(summary.getWinRate()) + "%" : "—");
 		setPct(roiValue, summary.getAvgRoi());
 		flipsValue.setText(Integer.toString(summary.getFlips()));
-		List<Position> positions = response.getPositions() != null
+		lastPositions = response.getPositions() != null
 				? response.getPositions() : Collections.emptyList();
-		activeCount.setText(Integer.toString(positions.size()));
+		renderActiveFlips();
+	}
+
+	private void renderActiveFlips() {
+		activeCount.setText(Integer.toString(lastPositions.size()));
 		activeList.removeAll();
-		for (Position position : positions) {
+		for (Position position : lastPositions) {
 			addCard(activeList, activeFlipCard(position));
 		}
-		activeSection.setVisible(!positions.isEmpty());
+		activeSection.setVisible(!lastPositions.isEmpty());
+		revalidate();
+		repaint();
+	}
+
+	// Package-private for the render harness; the card head's click lands here.
+	void toggleFlip(long positionId) {
+		if (!expandedFlips.remove(positionId)) {
+			expandedFlips.add(positionId);
+		}
+		renderActiveFlips();
+	}
+
+	public void showHistory(PositionsResponse response) {
+		List<Position> positions = response.getPositions() != null
+				? response.getPositions() : Collections.emptyList();
+		historyCount.setText(Integer.toString(positions.size()));
+		historyList.removeAll();
+		for (Position position : positions) {
+			addCard(historyList, historyCard(position));
+		}
 		revalidate();
 		repaint();
 	}
@@ -300,9 +493,11 @@ public class FlipsPanel extends PluginPanel {
 		group.setBackground(Theme.SURFACE);
 		group.setAlignmentX(Component.LEFT_ALIGNMENT);
 		group.setBorder(BorderFactory.createEmptyBorder(topGap, 0, 0, 0));
-		JLabel heading = text(label, Theme.FAINT, Theme.SECTION);
+		// Full-size ink heading: the old small muted caption disappeared next to
+		// the rows it labels.
+		JLabel heading = text(label, Theme.INK, Theme.BODY_BOLD);
 		heading.setAlignmentX(Component.LEFT_ALIGNMENT);
-		heading.setBorder(BorderFactory.createEmptyBorder(0, 0, 3, 0));
+		heading.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
 		group.add(heading);
 		group.add(rotator);
 	}
@@ -400,6 +595,9 @@ public class FlipsPanel extends PluginPanel {
 		brand.add(name, BorderLayout.CENTER);
 
 		linkStatus.setFont(Theme.SMALL);
+		// Link / Unlink are real buttons (bordered), not text links.
+		styleHeaderButton(unlinkLink, Theme.MUTED, Theme.LINE_STRONG);
+		styleHeaderButton(linkLink, Theme.INFO, Theme.INFO);
 		JPanel status = new JPanel();
 		status.setLayout(new BoxLayout(status, BoxLayout.X_AXIS));
 		status.setBackground(Theme.SURFACE);
@@ -412,85 +610,80 @@ public class FlipsPanel extends PluginPanel {
 		return header;
 	}
 
+	private static void styleHeaderButton(JLabel label, java.awt.Color fg, java.awt.Color border) {
+		label.setForeground(fg);
+		label.setOpaque(false);
+		label.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createLineBorder(border, 1, true),
+				BorderFactory.createEmptyBorder(3, 9, 3, 9)));
+	}
+
 	private JPanel buildStats() {
 		JPanel stats = new JPanel();
 		stats.setLayout(new BoxLayout(stats, BoxLayout.Y_AXIS));
 		stats.setBackground(Theme.SURFACE);
 		stats.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		RoundedPanel card = new RoundedPanel(8, Theme.RAISED, Theme.LINE);
-		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-		card.setBorder(BorderFactory.createEmptyBorder(11, 12, 11, 12));
-		card.setAlignmentX(Component.LEFT_ALIGNMENT);
+		// Hero: lifetime profit, the number the panel exists to show. Leads the
+		// same way the website's My Flips summary does.
+		RoundedPanel hero = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
+		hero.setLayout(new BoxLayout(hero, BoxLayout.Y_AXIS));
+		hero.setBorder(BorderFactory.createEmptyBorder(13, 14, 13, 14));
+		hero.setAlignmentX(Component.LEFT_ALIGNMENT);
+		hero.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+		JLabel heroCaption = text("TOTAL PROFIT", Theme.MUTED, Theme.SECTION);
+		heroCaption.setAlignmentX(Component.LEFT_ALIGNMENT);
+		allTimeValue.setFont(Theme.NUM_HERO);
+		allTimeValue.setAlignmentX(Component.LEFT_ALIGNMENT);
+		hero.add(heroCaption);
+		hero.add(Box.createVerticalStrut(5));
+		hero.add(allTimeValue);
+		stats.add(hero);
+		stats.add(Box.createVerticalStrut(9));
 
-		// Headline trio; the fuller breakdown sits under the divider. NUM_BOLD not
-		// NUM_LG so a wide value like +999.9M fits the narrow tiles.
-		JPanel trio = new JPanel(new GridLayout(1, 3, 8, 0));
-		trio.setOpaque(false);
-		trio.setAlignmentX(Component.LEFT_ALIGNMENT);
-		trio.add(statTile("ALL-TIME", allTimeValue));
-		trio.add(statTile("TODAY", todayValue));
-		trio.add(statTile("WIN RATE", winValue));
-		card.add(trio);
-
-		card.add(Box.createVerticalStrut(11));
-		card.add(divider());
-		card.add(Box.createVerticalStrut(9));
-
-		card.add(statLine("Open P/L", unrealizedValue));
-		card.add(Box.createVerticalStrut(6));
-		card.add(statLine("Avg ROI", roiValue));
-		card.add(Box.createVerticalStrut(6));
-		card.add(statLine("Flips", flipsValue));
-
-		stats.add(card);
+		// Four supporting tiles, each its own card — the clean, separated look
+		// from the website rather than one dense block.
+		JPanel grid = new JPanel(new GridLayout(2, 2, 9, 9));
+		grid.setOpaque(false);
+		grid.setAlignmentX(Component.LEFT_ALIGNMENT);
+		grid.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+		grid.add(statTile("TODAY", todayValue));
+		grid.add(statTile("OPEN P/L", unrealizedValue));
+		grid.add(statTile("WIN RATE", winValue));
+		grid.add(statTile("AVG ROI", roiValue));
+		stats.add(grid);
 		return stats;
 	}
 
 	private JPanel statTile(String caption, JLabel value) {
-		JPanel tile = new JPanel();
-		tile.setOpaque(false);
+		RoundedPanel tile = new RoundedPanel(8, Theme.RAISED, Theme.LINE);
 		tile.setLayout(new BoxLayout(tile, BoxLayout.Y_AXIS));
-		JLabel label = text(caption, Theme.FAINT, Theme.SECTION);
-		label.setAlignmentX(Component.CENTER_ALIGNMENT);
-		value.setAlignmentX(Component.CENTER_ALIGNMENT);
+		tile.setBorder(BorderFactory.createEmptyBorder(9, 11, 9, 11));
+		JLabel label = text(caption, Theme.MUTED, Theme.SECTION);
+		label.setAlignmentX(Component.LEFT_ALIGNMENT);
+		value.setFont(Theme.NUM_BOLD);
+		value.setAlignmentX(Component.LEFT_ALIGNMENT);
 		tile.add(label);
-		tile.add(Box.createVerticalStrut(3));
+		tile.add(Box.createVerticalStrut(4));
 		tile.add(value);
 		return tile;
 	}
 
-	private JPanel statLine(String label, JLabel value) {
-		JPanel row = new JPanel(new BorderLayout());
-		row.setOpaque(false);
-		row.setAlignmentX(Component.LEFT_ALIGNMENT);
-		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
-		value.setFont(Theme.NUM);
-		value.setHorizontalAlignment(SwingConstants.RIGHT);
-		row.add(text(label, Theme.MUTED, Theme.BODY), BorderLayout.WEST);
-		row.add(value, BorderLayout.EAST);
-		return row;
-	}
-
-	private JPanel buildFinderBar(Runnable onRefresh) {
-		JPanel bar = new JPanel(new BorderLayout(6, 0));
-		bar.setBackground(Theme.SURFACE);
-		bar.setAlignmentX(Component.LEFT_ALIGNMENT);
-
+	// Full-width pickers, the mock's field stack. The refresh control lives in
+	// the hint row above, not in a tall gutter beside these.
+	private JPanel buildFinderBar() {
 		JPanel pickers = new JPanel();
 		pickers.setLayout(new BoxLayout(pickers, BoxLayout.Y_AXIS));
 		pickers.setBackground(Theme.SURFACE);
+		pickers.setAlignmentX(Component.LEFT_ALIGNMENT);
 		pickers.add(scanPicker);
-		pickers.add(Box.createVerticalStrut(6));
+		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(riskPicker);
-		pickers.add(Box.createVerticalStrut(6));
+		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(capitalPicker);
-		pickers.add(Box.createVerticalStrut(6));
+		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(accountPicker);
-
-		bar.add(pickers, BorderLayout.CENTER);
-		bar.add(flatButton("↻", onRefresh), BorderLayout.EAST);
-		return bar;
+		return pickers;
 	}
 
 	private RoundedPanel flatButton(String glyph, Runnable onClick) {
@@ -507,98 +700,170 @@ public class FlipsPanel extends PluginPanel {
 
 	// ---- cards ---------------------------------------------------------------
 
-	private RoundedPanel offerCard(GeOffer offer, String name) {
-		RoundedPanel card = card();
-		card.add(icon(offer.getItemId(), name), BorderLayout.WEST);
+	private static final long STUCK_OFFER_MINUTES = 30;
 
-		JPanel body = new JPanel();
-		body.setOpaque(false);
-		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+	private RoundedPanel offerCard(GeOffer offer, String name) {
+		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
+		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
 
 		boolean buy = "buy".equals(offer.getSide());
-		JLabel nameLabel = nameLabel(name);
-		nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(nameLabel);
-		body.add(Box.createVerticalStrut(6));
+		boolean full = offer.getQuantityTotal() > 0
+				&& offer.getQuantityFilled() >= offer.getQuantityTotal();
+
+		// Head: small icon, name + pending age (amber once an unfilled offer
+		// looks stuck), slot number beneath. The bar and figures span the full
+		// card width below, so nothing fights for room beside a tall icon.
+		JPanel head = new JPanel(new BorderLayout(9, 0));
+		head.setOpaque(false);
+		head.setAlignmentX(Component.LEFT_ALIGNMENT);
+		head.add(icon(offer.getItemId(), name, 26), BorderLayout.WEST);
+		JPanel nameCol = new JPanel();
+		nameCol.setOpaque(false);
+		nameCol.setLayout(new BoxLayout(nameCol, BoxLayout.Y_AXIS));
+		JPanel top = new JPanel(new BorderLayout(6, 0));
+		top.setOpaque(false);
+		top.add(nameLabel(name), BorderLayout.CENTER);
+		Long ageMinutes = offerAgeMinutes(offer.getOccurredAt());
+		if (ageMinutes != null) {
+			boolean stuck = !full && ageMinutes >= STUCK_OFFER_MINUTES;
+			top.add(text(formatAge(ageMinutes), stuck ? Theme.AMBER : Theme.MUTED, Theme.NUM_TINY), BorderLayout.EAST);
+		}
+		top.setAlignmentX(Component.LEFT_ALIGNMENT);
+		nameCol.add(top);
+		nameCol.add(Box.createVerticalStrut(2));
+		// Which of the 8 GE slots this offer occupies (1-based for humans).
+		JLabel slot = text("Slot " + (offer.getSlot() + 1), Theme.MUTED, Theme.SMALL);
+		slot.setAlignmentX(Component.LEFT_ALIGNMENT);
+		nameCol.add(slot);
+		head.add(nameCol, BorderLayout.CENTER);
+		card.add(head);
+		card.add(Box.createVerticalStrut(8));
 
 		double fraction = offer.getQuantityTotal() > 0
 				? (double) offer.getQuantityFilled() / offer.getQuantityTotal() : 0;
-		boolean soldOut = !buy && offer.getQuantityTotal() > 0
-				&& offer.getQuantityFilled() >= offer.getQuantityTotal();
+		// A completed offer (fully bought OR fully sold) reads as done: the pill and
+		// the whole bar go green. In flight, buys are blue and sells amber.
+		java.awt.Color accent = full ? Theme.UP : (buy ? Theme.INFO : Theme.AMBER);
 		JPanel barRow = new JPanel(new BorderLayout(7, 0));
 		barRow.setOpaque(false);
-		barRow.add(buy ? pill("BUY", Theme.INFO) : pill("SELL", soldOut ? Theme.UP : Theme.AMBER), BorderLayout.WEST);
-		FillBar progress = new FillBar(fraction, buy ? Theme.INFO : (soldOut ? Theme.UP : Theme.AMBER));
+		barRow.add(solidPill(full ? "DONE" : (buy ? "BUY" : "SELL"), accent), BorderLayout.WEST);
+		FillBar progress = new FillBar(fraction, accent);
 		progress.setPreferredSize(new Dimension(10, 6));
 		barRow.add(progress, BorderLayout.CENTER);
 		barRow.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(barRow);
-		body.add(Box.createVerticalStrut(5));
+		barRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16));
+		card.add(barRow);
+		card.add(Box.createVerticalStrut(6));
 
-		JPanel meta = new JPanel(new BorderLayout());
-		meta.setOpaque(false);
-		meta.add(text(GP.format(offer.getQuantityFilled()) + " / " + GP.format(offer.getQuantityTotal()), Theme.INK, Theme.NUM_SMALL), BorderLayout.WEST);
-		meta.add(text("@ " + GP.format(offer.getPriceEach()), Theme.MUTED, Theme.NUM_SMALL), BorderLayout.EAST);
-		meta.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(meta);
+		// Filled / total on the left; the price you set and the offer's total
+		// value on the right, prominent — the number the flipper cares about.
+		long value = (long) offer.getPriceEach() * offer.getQuantityTotal();
+		addLeft(card, detailRow(GP.format(offer.getQuantityFilled()) + " / " + GP.format(offer.getQuantityTotal()),
+				"@ " + GP.format(offer.getPriceEach()) + " · " + shortGp(value), Theme.INK));
 
-		card.add(body, BorderLayout.CENTER);
 		clickable(card, offer.getItemId());
 		return card;
 	}
 
+	// Minutes since the offer's last state change (placement, for an offer that
+	// has not filled). Null when the timestamp is missing or unparseable.
+	private static Long offerAgeMinutes(String occurredAt) {
+		if (occurredAt == null) {
+			return null;
+		}
+		try {
+			long minutes = Duration.between(Instant.parse(occurredAt), Instant.now()).toMinutes();
+			return minutes < 0 ? 0 : minutes;
+		} catch (RuntimeException unparseable) {
+			return null;
+		}
+	}
+
+	private static String formatAge(long minutes) {
+		if (minutes < 60) {
+			return minutes + "m";
+		}
+		long hours = minutes / 60;
+		if (hours < 24) {
+			long rem = minutes % 60;
+			return rem == 0 ? hours + "h" : hours + "h " + rem + "m";
+		}
+		return (hours / 24) + "d";
+	}
+
+	// The mock's finder card: a compact head row (small icon, name + tier tag,
+	// entry meta) and then everything else — pills, prices, stats, fill times —
+	// spanning the full card width instead of being squeezed right of a big
+	// vertically-centered icon.
 	private RoundedPanel finderCard(Flip flip) {
-		RoundedPanel card = card();
-		card.add(icon(flip.getItemId(), flip.getName()), BorderLayout.WEST);
+		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
+		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
 
-		JPanel body = new JPanel();
-		body.setOpaque(false);
-		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
-
-		addLeft(body, nameLabel(flip.getName()));
-
-		String meta = marginLabel(flip);
+		JPanel head = new JPanel(new BorderLayout(9, 0));
+		head.setOpaque(false);
+		head.setAlignmentX(Component.LEFT_ALIGNMENT);
+		head.add(icon(flip.getItemId(), flip.getName(), 26), BorderLayout.WEST);
+		JLabel finderName = nameLabel(flip.getName());
+		shrinkToFit(finderName, CONTENT_WIDTH - 26 - 9);
+		head.add(finderName, BorderLayout.CENTER);
+		card.add(head);
+		// Tier + margin get their own full-width line under the head: beside the
+		// icon the ~148px column ellipsized "Members · 14.7% below target"
+		// mid-word at any readable size. Shrink floor + tooltip as backstops.
+		String tier = flip.getMembers() == null ? null : (flip.getMembers() ? "Members" : "F2P");
+		String margin = marginLabel(flip);
+		String meta = tier == null ? margin : (margin == null ? tier : tier + " · " + margin);
 		if (meta != null) {
-			body.add(Box.createVerticalStrut(2));
-			addLeft(body, text(meta, Theme.FAINT, Theme.SMALL));
+			card.add(Box.createVerticalStrut(3));
+			JLabel metaLabel = text(meta, Theme.MUTED, Theme.SMALL);
+			shrinkToFit(metaLabel, CONTENT_WIDTH, 9.5f);
+			metaLabel.setToolTipText(meta);
+			addLeft(card, metaLabel);
 		}
 
 		Pill demand = demandPill(flip.getDemandTrend());
 		if (demand != null) {
-			body.add(Box.createVerticalStrut(4));
-			addLeft(body, demand);
+			card.add(Box.createVerticalStrut(8));
+			addLeft(card, demand);
 		}
 
-		body.add(Box.createVerticalStrut(8));
-		addLeft(body, text("Buy " + GP.format(flip.getQuantity()) + " @ " + GP.format(flip.getBuyPrice()), Theme.INK, Theme.NUM_SMALL));
-		body.add(Box.createVerticalStrut(3));
+		card.add(Box.createVerticalStrut(9));
+		addLeft(card, detailRow("Buy " + GP.format(flip.getQuantity()), "@ " + GP.format(flip.getBuyPrice()), Theme.INK));
+		addLeft(card, detailRow("Sell", "@ " + GP.format(flip.getTargetSellPrice()), Theme.INK));
+		addLeft(card, text("+" + shortGp(flip.getProfitPerItem()) + " / ea after tax", Theme.UP, Theme.NUM_SMALL));
 
-		addLeft(body, text("Sell @ " + GP.format(flip.getTargetSellPrice()), Theme.INK, Theme.NUM_SMALL));
-		body.add(Box.createVerticalStrut(3));
-		addLeft(body, text("+" + shortGp(flip.getProfitPerItem()) + "/ea after tax", Theme.UP, Theme.NUM_SMALL));
-
-		body.add(Box.createVerticalStrut(9));
-		addLeft(body, divider());
-		body.add(Box.createVerticalStrut(9));
+		card.add(Box.createVerticalStrut(9));
+		addLeft(card, divider());
+		card.add(Box.createVerticalStrut(9));
 		JPanel stats = new JPanel(new BorderLayout());
 		stats.setOpaque(false);
 		stats.add(statMini("Profit", text("+" + shortGp(flip.getTotalProfit()), Theme.UP, Theme.NUM_LG),
 				Component.LEFT_ALIGNMENT), BorderLayout.WEST);
 		stats.add(statMini("ROI / day", text(trimNum(flip.getRoiPerDay()) + "%", Theme.INK, Theme.NUM_BOLD),
 				Component.RIGHT_ALIGNMENT), BorderLayout.EAST);
-		addLeft(body, stats);
+		addLeft(card, stats);
 
-		body.add(Box.createVerticalStrut(8));
-		addLeft(body, labeledValue("Time to buy", fillTime(flip.getBuyFill())));
-		body.add(Box.createVerticalStrut(3));
-		addLeft(body, labeledValue("Time to sell", fillTime(flip.getSellFill())));
+		card.add(Box.createVerticalStrut(9));
+		addLeft(card, labeledValue("Time to buy", fillTime(flip.getBuyFill())));
+		card.add(Box.createVerticalStrut(3));
+		addLeft(card, labeledValue("Time to sell", fillTime(flip.getSellFill())));
 		if (flip.getHorizon() != null) {
-			body.add(Box.createVerticalStrut(3));
-			addLeft(body, labeledValue("Hold up to", flip.getHorizon().getRecommendedDays() + "d"));
+			card.add(Box.createVerticalStrut(3));
+			addLeft(card, labeledValue("Hold up to", flip.getHorizon().getRecommendedDays() + "d"));
 		}
 
-		card.add(body, BorderLayout.CENTER);
 		clickable(card, flip.getItemId());
+		// Explicit affordance for the same action as the card click, added AFTER
+		// clickable() so it stays its own hit target (the mock's primary button).
+		JPanel actions = new JPanel(new BorderLayout());
+		actions.setOpaque(false);
+		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
+		actions.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+		actions.add(actionButton("Item details ↗", true,
+				() -> onOpenItem.accept(flip.getItemId())), BorderLayout.EAST);
+		card.add(actions);
 		return card;
 	}
 
@@ -616,6 +881,22 @@ public class FlipsPanel extends PluginPanel {
 	private static void addLeft(JPanel body, JComponent child) {
 		child.setAlignmentX(Component.LEFT_ALIGNMENT);
 		body.add(child);
+	}
+
+	// Step the font down (floor 11px) until the text fits: a whole name one
+	// notch smaller beats "Extended ant…" at full size. Ellipsis only after.
+	private static void shrinkToFit(JLabel label, int available) {
+		shrinkToFit(label, available, 11f);
+	}
+
+	private static void shrinkToFit(JLabel label, int available, float floor) {
+		java.awt.Font base = label.getFont();
+		for (float size = base.getSize2D(); size >= floor; size -= 0.5f) {
+			label.setFont(base.deriveFont(size));
+			if (label.getPreferredSize().width <= available) {
+				return;
+			}
+		}
 	}
 
 	private static String marginLabel(Flip flip) {
@@ -682,7 +963,7 @@ public class FlipsPanel extends PluginPanel {
 		JPanel col = new JPanel();
 		col.setOpaque(false);
 		col.setLayout(new BoxLayout(col, BoxLayout.Y_AXIS));
-		JLabel caption = text(label.toUpperCase(), Theme.FAINT, Theme.SMALL);
+		JLabel caption = text(label.toUpperCase(), Theme.MUTED, Theme.SMALL);
 		caption.setAlignmentX(align);
 		value.setAlignmentX(align);
 		col.add(caption);
@@ -691,72 +972,264 @@ public class FlipsPanel extends PluginPanel {
 		return col;
 	}
 
+	// The mock's expandable flip card: the head (icon, name, qty @ price, P&L,
+	// chevron) toggles a detail section with labeled rows and the two actions —
+	// "View item details" (opens the web page, the head no longer does) and
+	// "Not a flip". Collapsed cards stay one clean line.
 	private RoundedPanel activeFlipCard(Position position) {
-		RoundedPanel card = card();
-		card.add(icon(position.getItemId(), position.getName()), BorderLayout.WEST);
+		boolean expanded = expandedFlips.contains(position.getId());
+		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
+		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
 
-		JPanel body = new JPanel();
-		body.setOpaque(false);
-		body.setLayout(new BoxLayout(body, BoxLayout.Y_AXIS));
+		// Two lines instead of one four-column row: at RuneLite's 225px panel
+		// width the name can't share a line with the P&L without truncating, so
+		// line 1 is icon + name (+SELL) + chevron, and line 2 pairs qty @ price
+		// with the P&L. Names render whole.
+		JPanel head = new JPanel();
+		head.setOpaque(false);
+		head.setLayout(new BoxLayout(head, BoxLayout.Y_AXIS));
+		head.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-		JPanel line1 = new JPanel(new BorderLayout(6, 0));
+		JPanel line1 = new JPanel(new BorderLayout(8, 0));
 		line1.setOpaque(false);
-		line1.add(nameLabel(position.getName()), BorderLayout.CENTER);
-		if (isSell(position.getPhase())) {
-			line1.add(pill("SELL", Theme.AMBER), BorderLayout.EAST);
-		}
 		line1.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(line1);
-		body.add(Box.createVerticalStrut(3));
+		line1.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+		line1.add(icon(position.getItemId(), position.getName(), 24), BorderLayout.WEST);
+		// The name owns line 1 outright — the SELL state rides line 2 with the
+		// P&L, so even long names render whole (with a shrink step before any
+		// ellipsis).
+		JLabel flipName = nameLabel(position.getName());
+		shrinkToFit(flipName, CONTENT_WIDTH - 24 - 8 - 20);
+		line1.add(flipName, BorderLayout.CENTER);
+		line1.add(text(expanded ? "▲" : "▼", Theme.MUTED, Theme.NUM_TINY), BorderLayout.EAST);
+		head.add(line1);
+		head.add(Box.createVerticalStrut(4));
 
-		JLabel sub = text(GP.format(position.getQuantity()) + " @ " + GP.format(position.getBuyPrice()), Theme.MUTED, Theme.NUM_SMALL);
-		sub.setAlignmentX(Component.LEFT_ALIGNMENT);
-		body.add(sub);
+		// Glue row, not WEST/EAST: when the two sides would collide, the sub
+		// compresses and ellipsizes instead of the P&L stamping over it.
+		JPanel line2 = new JPanel();
+		line2.setOpaque(false);
+		line2.setLayout(new BoxLayout(line2, BoxLayout.X_AXIS));
+		line2.setAlignmentX(Component.LEFT_ALIGNMENT);
+		line2.setMaximumSize(new Dimension(Integer.MAX_VALUE, 18));
+		JLabel sub = text(GP.format(position.getQuantity()) + " @ " + GP.format(position.getBuyPrice()),
+				Theme.MUTED, Theme.NUM_SMALL);
+		sub.setMinimumSize(new Dimension(40, sub.getPreferredSize().height));
+		sub.setMaximumSize(sub.getPreferredSize());
+		line2.add(sub);
+		line2.add(Box.createHorizontalGlue());
+		if (isSell(position.getPhase())) {
+			// This flip's signal is "sell now" — the solid amber chip carries it.
+			line2.add(solidPill("SELL", Theme.AMBER));
+			line2.add(Box.createHorizontalStrut(6));
+		}
+		// Headline number is the flip's TOTAL profit (realized + unrealized), the
+		// same figure the expanded card leads with — not just the unrealized leg.
+		Long unrealized = position.getUnrealizedProfit();
+		Long realized = position.getRealizedProfit();
+		Long profit = unrealized == null && realized == null ? null
+				: (unrealized == null ? 0 : unrealized) + (realized == null ? 0 : realized);
+		if (profit == null) {
+			line2.add(text("—", Theme.MUTED, Theme.NUM_BOLD));
+		} else {
+			line2.add(text(pnlText(profit), profit >= 0 ? Theme.UP : Theme.DOWN, Theme.NUM_BOLD));
+			if (position.getRoi() != null) {
+				line2.add(Box.createHorizontalStrut(5));
+				line2.add(text(signedPct(position.getRoi()), Theme.MUTED, Theme.NUM_SMALL));
+			}
+		}
+		head.add(line2);
+		card.add(head);
 
-		card.add(body, BorderLayout.CENTER);
-		card.add(pnlBlock(position), BorderLayout.EAST);
-		clickable(card, position.getItemId());
+		// The head is the expand toggle (with the card's hover highlight); the
+		// item page moved to its explicit button below.
+		installRecursively(head, new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				toggleFlip(position.getId());
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent event) {
+				card.setFill(Theme.HOVER);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent event) {
+				card.setFill(Theme.RAISED);
+			}
+		});
+
+		if (expanded) {
+			card.add(Box.createVerticalStrut(9));
+			addLeft(card, divider());
+			card.add(Box.createVerticalStrut(8));
+			// The mock's P&L block: Total profit leads, the partial-fill split
+			// (unrealized vs realized) only appears once something has sold, then
+			// the per-item average and ROI.
+			addLeft(card, detailRow("Total profit",
+					profit == null ? "—" : pnlText(profit),
+					profit == null ? Theme.MUTED : (profit >= 0 ? Theme.UP : Theme.DOWN)));
+			boolean hasSold = position.getSoldQty() != null && position.getSoldQty() > 0;
+			if (hasSold && unrealized != null) {
+				addLeft(card, detailRow("Unrealized P/L", pnlText(unrealized),
+						unrealized >= 0 ? Theme.UP : Theme.DOWN));
+			}
+			if (hasSold && realized != null) {
+				addLeft(card, detailRow("Realized so far", pnlText(realized),
+						realized >= 0 ? Theme.UP : Theme.DOWN));
+			}
+			if (profit != null && position.getQuantity() > 0) {
+				long perItem = profit / position.getQuantity();
+				addLeft(card, detailRow("Avg profit / ea", pnlText(perItem),
+						perItem >= 0 ? Theme.UP : Theme.DOWN));
+			}
+			if (position.getRoi() != null) {
+				addLeft(card, detailRow("Avg ROI", signedPct(position.getRoi()), Theme.INK));
+			}
+			card.add(Box.createVerticalStrut(6));
+			addLeft(card, divider());
+			card.add(Box.createVerticalStrut(6));
+			addLeft(card, detailRow("Bought",
+					GP.format(position.getQuantity()) + " @ " + GP.format(position.getBuyPrice()), Theme.INK));
+			addLeft(card, detailRow("Sold",
+					hasSold
+							? GP.format(position.getSoldQty())
+									+ (position.getSoldAvgPrice() != null ? " @ " + GP.format(position.getSoldAvgPrice()) : "")
+							: "— none yet",
+					hasSold ? Theme.INK : Theme.MUTED));
+			addLeft(card, detailRow("Cost", shortGp(position.getBuyPrice() * position.getQuantity()), Theme.INK));
+
+			// BoxLayout + glue, not WEST/EAST: if font metrics ever run wider than
+			// the row, the buttons compress and their labels ellipsize INSIDE their
+			// rounded borders instead of the right button clipping at the card edge.
+			JPanel actions = new JPanel();
+			actions.setLayout(new BoxLayout(actions, BoxLayout.X_AXIS));
+			actions.setOpaque(false);
+			actions.setAlignmentX(Component.LEFT_ALIGNMENT);
+			actions.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+			actions.add(actionButton("Item details ↗", true,
+					() -> onOpenItem.accept(position.getItemId())));
+			actions.add(Box.createHorizontalGlue());
+			actions.add(actionButton("Not a flip", false,
+					() -> onNotFlip.accept(position.getId())));
+			card.add(actions);
+		}
 		return card;
 	}
 
-	private JPanel pnlBlock(Position position) {
-		JPanel block = new JPanel();
-		block.setOpaque(false);
-		block.setLayout(new BoxLayout(block, BoxLayout.Y_AXIS));
-		block.setBorder(BorderFactory.createEmptyBorder(0, 8, 0, 0));
+	private JPanel detailRow(String label, String value, java.awt.Color valueColor) {
+		JPanel row = new JPanel(new BorderLayout(8, 0));
+		row.setOpaque(false);
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 21));
+		row.setPreferredSize(new Dimension(10, 21));
+		row.add(text(label, Theme.MUTED, Theme.SMALL), BorderLayout.WEST);
+		JLabel number = text(value, valueColor, Theme.NUM_SMALL);
+		number.setHorizontalAlignment(SwingConstants.RIGHT);
+		row.add(number, BorderLayout.EAST);
+		return row;
+	}
 
-		Long profit = position.getUnrealizedProfit();
-		if (profit == null) {
-			JLabel stale = text("—", Theme.FAINT, Theme.NUM_BOLD);
-			stale.setAlignmentX(Component.RIGHT_ALIGNMENT);
-			block.add(stale);
-			return block;
-		}
-		JLabel value = text(pnlText(profit), profit >= 0 ? Theme.UP : Theme.DOWN, Theme.NUM_BOLD);
-		value.setAlignmentX(Component.RIGHT_ALIGNMENT);
-		block.add(value);
-		if (position.getRoi() != null) {
-			JLabel roi = text(signedPct(position.getRoi()), Theme.FAINT, Theme.NUM_SMALL);
-			roi.setAlignmentX(Component.RIGHT_ALIGNMENT);
-			block.add(roi);
-		}
-		return block;
+	// A real button with its own listener, never inheriting a parent card's
+	// click-through. Solid fills, NO outline: a 1px border stroke sits on the
+	// component's outermost pixel row, and at fractional Windows DPI scales the
+	// live client's partial repaints (hover, tooltips, polls) round that row out
+	// of the dirty region — the top edge kept vanishing. A solid chip has no
+	// hairline to lose. Primary wears the theme's near-white accent (the
+	// website's primary button), not a semantic hue; ghost is a quiet inset.
+	private RoundedPanel actionButton(String label, boolean primary, Runnable onClick) {
+		java.awt.Color rest = primary ? Theme.INK : Theme.TRACK;
+		java.awt.Color hover = primary ? Theme.WHITE : Theme.HOVER;
+		RoundedPanel button = new RoundedPanel(7, rest, null);
+		button.setLayout(new BorderLayout());
+		// 9px sides: two buttons must share a 203px row without touching.
+		button.setBorder(BorderFactory.createEmptyBorder(4, 9, 4, 9));
+		JLabel text = text(label, primary ? Theme.SURFACE : Theme.MUTED, primary ? Theme.SMALL_BOLD : Theme.SMALL);
+		text.setHorizontalAlignment(SwingConstants.CENTER);
+		// Small minimum + pref-capped maximum: in a BoxLayout row the button can
+		// compress (label ellipsizes inside the border) but never stretches.
+		text.setMinimumSize(new Dimension(24, text.getPreferredSize().height));
+		button.add(text, BorderLayout.CENTER);
+		button.setMaximumSize(new Dimension(
+				button.getPreferredSize().width, button.getPreferredSize().height));
+		installRecursively(button, new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				onClick.run();
+			}
+
+			@Override
+			public void mouseEntered(MouseEvent event) {
+				button.setFill(hover);
+			}
+
+			@Override
+			public void mouseExited(MouseEvent event) {
+				button.setFill(rest);
+			}
+		});
+		return button;
+	}
+
+	// A History-tab card, detailed like the mock: quantity, bought at, sold at
+	// ("— not sold" when the item never moved), spent, and the restore action.
+	// The whole card still opens item details.
+	private RoundedPanel historyCard(Position position) {
+		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
+		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
+
+		JPanel head = new JPanel(new BorderLayout(9, 0));
+		head.setOpaque(false);
+		head.setAlignmentX(Component.LEFT_ALIGNMENT);
+		head.add(icon(position.getItemId(), position.getName(), 26), BorderLayout.WEST);
+		JPanel nameCol = new JPanel();
+		nameCol.setOpaque(false);
+		nameCol.setLayout(new BoxLayout(nameCol, BoxLayout.Y_AXIS));
+		JLabel name = nameLabel(position.getName());
+		shrinkToFit(name, CONTENT_WIDTH - 26 - 9);
+		name.setAlignmentX(Component.LEFT_ALIGNMENT);
+		nameCol.add(name);
+		nameCol.add(Box.createVerticalStrut(2));
+		JLabel sub = text("Archived", Theme.MUTED, Theme.SMALL);
+		sub.setAlignmentX(Component.LEFT_ALIGNMENT);
+		nameCol.add(sub);
+		head.add(nameCol, BorderLayout.CENTER);
+		card.add(head);
+
+		card.add(Box.createVerticalStrut(8));
+		addLeft(card, detailRow("Quantity", GP.format(position.getQuantity()), Theme.INK));
+		addLeft(card, detailRow("Bought at", GP.format(position.getBuyPrice()), Theme.INK));
+		boolean sold = position.getSoldQty() != null && position.getSoldQty() > 0
+				&& position.getSoldAvgPrice() != null;
+		addLeft(card, detailRow("Sold at",
+				sold ? GP.format(position.getSoldAvgPrice()) : "— not sold",
+				sold ? Theme.INK : Theme.MUTED));
+		addLeft(card, detailRow("Spent", shortGp(position.getBuyPrice() * position.getQuantity()), Theme.INK));
+
+		clickable(card, position.getItemId());
+		// Added AFTER clickable() so the restore button keeps its own listener.
+		JPanel actions = new JPanel(new BorderLayout());
+		actions.setOpaque(false);
+		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
+		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
+		actions.add(actionButton("Make it a flip", true,
+				() -> onRestore.accept(position.getId())), BorderLayout.EAST);
+		card.add(actions);
+		return card;
 	}
 
 	// ---- small helpers -------------------------------------------------------
 
-	private RoundedPanel card() {
-		RoundedPanel card = new RoundedPanel(9, Theme.RAISED, Theme.LINE);
-		card.setLayout(new BorderLayout(9, 0));
-		card.setBorder(BorderFactory.createEmptyBorder(8, 9, 8, 9));
-		return card;
-	}
-
-	private JLabel icon(int itemId, String name) {
+	// Card-head icons are small (26px, the mock's .ic) so the name keeps the
+	// width; the finder's old 36px icon floating mid-card was the main "looks
+	// amateur" offender.
+	private JLabel icon(int itemId, String name, int size) {
 		JLabel label = new JLabel();
-		label.setPreferredSize(new Dimension(36, 32));
+		label.setPreferredSize(new Dimension(size + 2, size));
 		label.setHorizontalAlignment(SwingConstants.CENTER);
-		iconLoader.load(itemId, name, label, 32);
+		iconLoader.load(itemId, name, label, size);
 		return label;
 	}
 
@@ -799,8 +1272,19 @@ public class FlipsPanel extends PluginPanel {
 		}
 	}
 
+	// Borderless like the mock's .dpill — and like the buttons, no hairline for
+	// fractional-DPI partial repaints to shave off.
 	private Pill pill(String label, java.awt.Color hue) {
-		return new Pill(label, hue, Theme.soft(hue), Theme.line(hue));
+		return new Pill(label, hue, Theme.soft(hue), null);
+	}
+
+	// The mock's .pill: a solid accent chip with dark ink text and no border —
+	// the BUY/SELL/DONE state markers. Translucent pill() stays for the softer
+	// demand tags.
+	private Pill solidPill(String label, java.awt.Color hue) {
+		Pill chip = new Pill(label, Theme.PILL_INK, hue, null);
+		chip.setFont(Theme.PILL);
+		return chip;
 	}
 
 	private JPanel sectionHeader(String title, JLabel count) {
@@ -808,13 +1292,15 @@ public class FlipsPanel extends PluginPanel {
 		header.setLayout(new BoxLayout(header, BoxLayout.X_AXIS));
 		header.setBackground(Theme.SURFACE);
 		header.setAlignmentX(Component.LEFT_ALIGNMENT);
-		header.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+		header.setBorder(BorderFactory.createEmptyBorder(2, 0, 9, 0));
 
+		// Lighter (FAINT) with a touch of tracking reads calmer than a bold MUTED
+		// caption, closer to the website's section labels.
 		JLabel titleLabel = text(title.toUpperCase(), Theme.MUTED, Theme.SECTION);
 		header.add(titleLabel);
-		header.add(Box.createHorizontalStrut(8));
+		header.add(Box.createHorizontalStrut(9));
 		if (count != null) {
-			count.setForeground(Theme.FAINT);
+			count.setForeground(Theme.MUTED);
 			count.setFont(Theme.NUM_SMALL);
 			header.add(count);
 			header.add(Box.createHorizontalStrut(8));

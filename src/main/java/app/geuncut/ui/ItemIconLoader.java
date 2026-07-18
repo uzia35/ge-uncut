@@ -32,12 +32,14 @@ public class ItemIconLoader {
 
 	private final OkHttpClient http;
 	private final ItemManager itemManager;
-	// Keyed by itemId, not name: noted/unnoted variants share a name but not an id.
-	// Bounded LRU so a long session browsing many items cannot grow it without limit.
-	private final Map<Integer, ImageIcon> cache = Collections.synchronizedMap(
-			new LinkedHashMap<Integer, ImageIcon>(64, 0.75f, true) {
+	// Keyed by itemId AND render size: noted/unnoted variants share a name but
+	// not an id, and the same item appears at different sizes (26px card heads,
+	// 32px elsewhere) — a size-blind cache leaked oversized icons into small
+	// slots. Bounded LRU so a long session cannot grow it without limit.
+	private final Map<String, ImageIcon> cache = Collections.synchronizedMap(
+			new LinkedHashMap<String, ImageIcon>(64, 0.75f, true) {
 				@Override
-				protected boolean removeEldestEntry(Map.Entry<Integer, ImageIcon> eldest) {
+				protected boolean removeEldestEntry(Map.Entry<String, ImageIcon> eldest) {
 					return size() > MAX_CACHE;
 				}
 			});
@@ -55,12 +57,18 @@ public class ItemIconLoader {
 	}
 
 	void load(int itemId, String name, JLabel label, int size) {
-		// Inventory sprite first, so the row is never blank while the render loads.
-		itemManager.getImage(itemId).addTo(label);
+		// Inventory sprite first, so the row is never blank while the render
+		// loads — scaled to the slot, not slapped on at its native 36x32 (which
+		// overflowed the 26px card-head labels).
+		AsyncBufferedImage sprite = itemManager.getImage(itemId);
+		sprite.onLoaded(() -> SwingUtilities.invokeLater(() ->
+				label.setIcon(new ImageIcon(fit(sprite, size)))));
+		label.setIcon(new ImageIcon(fit(sprite, size)));
 		if (name == null || name.trim().isEmpty()) {
 			return;
 		}
-		ImageIcon cached = cache.get(itemId);
+		String key = itemId + ":" + size;
+		ImageIcon cached = cache.get(key);
 		if (cached != null) {
 			label.setIcon(cached);
 			return;
@@ -82,7 +90,7 @@ public class ItemIconLoader {
 						return;
 					}
 					ImageIcon icon = new ImageIcon(fit(image, size));
-					cache.put(itemId, icon);
+					cache.put(key, icon);
 					SwingUtilities.invokeLater(() -> label.setIcon(icon));
 				} catch (IOException unreadable) {
 					// Keep the sprite.

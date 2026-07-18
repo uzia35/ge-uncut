@@ -30,8 +30,10 @@ class RoundedPanel extends JPanel {
 		g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		int w = getWidth();
 		int h = getHeight();
-		g2.setColor(fill);
-		g2.fillRoundRect(0, 0, w - 1, h - 1, arc, arc);
+		if (fill != null) {
+			g2.setColor(fill);
+			g2.fillRoundRect(0, 0, w - 1, h - 1, arc, arc);
+		}
 		if (border != null) {
 			g2.setColor(border);
 			g2.drawRoundRect(0, 0, w - 1, h - 1, arc, arc);

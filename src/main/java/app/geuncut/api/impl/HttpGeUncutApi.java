@@ -122,6 +122,45 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
+	public void archivePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/positions/" + positionId + "/archive");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		Request request = new Request.Builder()
+				.url(url)
+				.post(RequestBody.create(JSON, "{}"))
+				.build();
+		enqueue(request, onError, body -> onSuccess.run());
+	}
+
+	@Override
+	public void fetchArchived(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/positions/archived");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		Request request = new Request.Builder().url(url).get().build();
+		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, PositionsResponse.class)));
+	}
+
+	@Override
+	public void restorePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/positions/" + positionId + "/restore");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		Request request = new Request.Builder()
+				.url(url)
+				.post(RequestBody.create(JSON, "{}"))
+				.build();
+		enqueue(request, onError, body -> onSuccess.run());
+	}
+
+	@Override
 	public void fetchMovers(Consumer<Movers> onSuccess, Consumer<ApiFailure> onError) {
 		HttpUrl url = resolve("/api/plugin/movers");
 		if (url == null) {

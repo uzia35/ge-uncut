@@ -4,6 +4,7 @@ import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Composite;
+import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.FontMetrics;
@@ -11,24 +12,29 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.RenderingHints;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntConsumer;
 import javax.swing.JComponent;
 import javax.swing.Timer;
 
 import app.geuncut.dto.MoverEntry;
 
 /**
- * A paged list of movers (icon, name, change%). Extra pages fade in and out on a
- * timer, an alpha dip rather than a scroll, so nothing moves per frame.
+ * A paged list of movers, two text lines per row: the name owns line one (with
+ * the ↗ click affordance), price and day volume fill line two beside the
+ * change%. Extra pages fade in and out on a timer, an alpha dip rather than a
+ * scroll, so nothing moves per frame. Clicking a row opens its item details.
  */
 class MoversRotator extends JComponent {
 	private static final int PAGE = 5;
 	private static final int DWELL_MS = 10_000;
 	private static final int FADE_MS = 650;
 	private static final int TICK_MS = 16;
-	private static final int ROW_HEIGHT = 22;
-	private static final int ICON = 18;
+	private static final int ROW_HEIGHT = 36;
+	private static final int ICON = 20;
 	private static final int TEXT_X = ICON + 8;
 	private static final int NAME_GAP = 8;
 
@@ -40,6 +46,7 @@ class MoversRotator extends JComponent {
 	private final Font numberFont;
 	private final Color pctColor;
 	private final IconProvider icons;
+	private final IntConsumer onOpen;
 	private final List<Row> rows = new ArrayList<>();
 	private final Timer timer;
 
@@ -48,13 +55,25 @@ class MoversRotator extends JComponent {
 	private long fadeStartNanos;
 	private long pageShownNanos;
 
-	MoversRotator(Font numberFont, Color pctColor, IconProvider icons) {
+	MoversRotator(Font numberFont, Color pctColor, IconProvider icons, IntConsumer onOpen) {
 		this.numberFont = numberFont;
 		this.pctColor = pctColor;
 		this.icons = icons;
+		this.onOpen = onOpen;
 		setOpaque(true);
 		setBackground(Theme.SURFACE);
 		setAlignmentX(Component.LEFT_ALIGNMENT);
+		setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+		// Whole row is the hit target: click a mover to open its item details.
+		addMouseListener(new MouseAdapter() {
+			@Override
+			public void mouseClicked(MouseEvent event) {
+				int index = page * PAGE + event.getY() / ROW_HEIGHT;
+				if (onOpen != null && index >= 0 && index < rows.size()) {
+					onOpen.accept(rows.get(index).itemId);
+				}
+			}
+		});
 		timer = new Timer(TICK_MS, event -> tick());
 	}
 
@@ -67,7 +86,8 @@ class MoversRotator extends JComponent {
 				if (entry == null || entry.getName() == null) {
 					continue;
 				}
-				Row row = new Row(entry.getName(), String.format("%+.1f%%", entry.getChangePct()));
+				Row row = new Row(entry.getName(), String.format("%+.1f%%", entry.getChangePct()),
+						detailLine(entry), entry.getItemId());
 				// Fetch the sprite once here (not per paint) so onLoaded is registered once.
 				row.icon = icons.icon(entry.getItemId(), this::repaint);
 				rows.add(row);
@@ -93,6 +113,29 @@ class MoversRotator extends JComponent {
 
 	private int totalPages() {
 		return rows.isEmpty() ? 0 : (rows.size() + PAGE - 1) / PAGE;
+	}
+
+	// "20,589 gp · 1.2M vol" — the payload already ships both; null price means
+	// the second line shows only the change%.
+	private static String detailLine(MoverEntry entry) {
+		if (entry.getPrice() == null) {
+			return null;
+		}
+		String line = String.format("%,d gp", entry.getPrice());
+		if (entry.getVolumeDay() != null && entry.getVolumeDay() > 0) {
+			line += " · " + shortAmount(entry.getVolumeDay()) + " vol";
+		}
+		return line;
+	}
+
+	private static String shortAmount(long value) {
+		if (value >= 1_000_000) {
+			return String.format("%.1fM", value / 1_000_000.0);
+		}
+		if (value >= 1_000) {
+			return Math.round(value / 1000.0) + "k";
+		}
+		return Long.toString(value);
 	}
 
 	// Package-private so the offscreen render harness can step the animation.
@@ -169,23 +212,35 @@ class MoversRotator extends JComponent {
 		g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.min(1f, alpha)));
 		FontMetrics nameMetrics = g2.getFontMetrics(Theme.BODY);
 		FontMetrics pctMetrics = g2.getFontMetrics(numberFont);
+		FontMetrics detailMetrics = g2.getFontMetrics(Theme.NUM_SMALL);
 		int start = pageIndex * PAGE;
 		int end = Math.min(start + PAGE, rows.size());
 		for (int index = start; index < end; index++) {
 			Row row = rows.get(index);
 			int rowY = (index - start) * ROW_HEIGHT;
-			int baseline = rowY + (ROW_HEIGHT + nameMetrics.getAscent() - nameMetrics.getDescent()) / 2;
+			int line1 = rowY + 14;
+			int line2 = rowY + 29;
 			if (row.icon != null) {
 				g2.drawImage(row.icon, 0, rowY + (ROW_HEIGHT - ICON) / 2, ICON, ICON, null);
 			}
-			// Change% right-aligned, drawn first so the name knows how much room is left.
+			// Line 1: the name owns the row up to the ↗ (the whole-row click
+			// affordance), so it never fights the change% for width.
+			g2.setFont(Theme.BODY);
+			int arrowX = getWidth() - nameMetrics.stringWidth("↗");
+			g2.setColor(Theme.MUTED);
+			g2.drawString("↗", arrowX, line1);
+			g2.setColor(Theme.INK);
+			g2.drawString(truncate(row.name, nameMetrics, arrowX - NAME_GAP - TEXT_X), TEXT_X, line1);
+			// Line 2: price · volume on the left (full ink, readable), change% right.
 			g2.setFont(numberFont);
 			g2.setColor(pctColor);
 			int pctX = getWidth() - pctMetrics.stringWidth(row.pct);
-			g2.drawString(row.pct, pctX, baseline);
-			g2.setFont(Theme.BODY);
-			g2.setColor(Theme.INK);
-			g2.drawString(truncate(row.name, nameMetrics, pctX - NAME_GAP - TEXT_X), TEXT_X, baseline);
+			g2.drawString(row.pct, pctX, line2);
+			if (row.detail != null) {
+				g2.setFont(Theme.NUM_SMALL);
+				g2.setColor(Theme.INK);
+				g2.drawString(truncate(row.detail, detailMetrics, pctX - NAME_GAP - TEXT_X), TEXT_X, line2);
+			}
 		}
 		g2.setComposite(base);
 	}
@@ -205,11 +260,15 @@ class MoversRotator extends JComponent {
 	static final class Row {
 		private final String name;
 		private final String pct;
+		private final String detail;
+		private final int itemId;
 		private Image icon;
 
-		Row(String name, String pct) {
+		Row(String name, String pct, String detail, int itemId) {
 			this.name = name;
 			this.pct = pct;
+			this.detail = detail;
+			this.itemId = itemId;
 		}
 	}
 }
