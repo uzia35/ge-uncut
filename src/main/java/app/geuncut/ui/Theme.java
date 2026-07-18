@@ -15,32 +15,87 @@ final class Theme {
 	private Theme() {
 	}
 
-	// RuneLite's native panel grey (ColorScheme.DARK_GRAY_COLOR, #282828) so it matches the default plugins.
-	static final Color SURFACE = new Color(0x28, 0x28, 0x28);
-	static final Color RAISED = new Color(0x33, 0x33, 0x33);
-	static final Color HOVER = new Color(0x3E, 0x3E, 0x3E);
-	static final Color TRACK = new Color(0x1E, 0x1E, 0x1E);
-	static final Color LINE = new Color(0x3A, 0x3A, 0x3A);
-	static final Color LINE_STRONG = new Color(0x4A, 0x4A, 0x4A);
+	/** Panel colour mode. Dark is RuneLite's native look; light mirrors the website. */
+	enum Mode {
+		DARK, LIGHT
+	}
 
-	static final Color INK = new Color(0xED, 0xED, 0xF0);
-	static final Color WHITE = new Color(0xFF, 0xFF, 0xFF);
-	static final Color MUTED = new Color(0x9A, 0x9A, 0xA4);
-	static final Color FAINT = new Color(0x6C, 0x6C, 0x76);
+	// Non-final so a mode switch can repaint the palette in place; the panel is
+	// rebuilt after apply() so every component re-reads the new values. Dark by
+	// default (RuneLite's native grey), applied in the static initialiser below.
+	static Color SURFACE;
+	static Color RAISED;
+	static Color HOVER;
+	static Color TRACK;
+	static Color LINE;
+	static Color LINE_STRONG;
+	static Color INK;
+	static Color WHITE;
+	static Color MUTED;
+	static Color FAINT;
+	static Color UP;
+	static Color DOWN;
+	static Color AMBER;
+	static Color INFO;
+	// Text on a solid accent chip (the mock's --pill-ink): near-black over the
+	// bright dark-mode accents, white over the darker light-mode ones.
+	static Color PILL_INK;
 
-	static final Color UP = new Color(0x2E, 0xC2, 0x7E);
-	static final Color DOWN = new Color(0xF4, 0x57, 0x4D);
-	static final Color AMBER = new Color(0xE8, 0xA1, 0x3C);
-	static final Color INFO = new Color(0x4D, 0x9F, 0xFF);
+	private static Mode mode = Mode.DARK;
 
-	// Translucent fills for pills and alert grounds (alpha over the dark surface).
+	static {
+		apply(Mode.DARK);
+	}
+
+	static Mode mode() {
+		return mode;
+	}
+
+	/** Repaint the palette for a mode. Call before rebuilding the panel. */
+	static void apply(Mode target) {
+		mode = target;
+		if (target == Mode.LIGHT) {
+			// Designed light tokens (mirrors the website's styles.css), not an invert.
+			SURFACE = new Color(0xF4, 0xF4, 0xF3);
+			RAISED = new Color(0xFF, 0xFF, 0xFF);
+			HOVER = new Color(0xEC, 0xEC, 0xEA);
+			TRACK = new Color(0xE7, 0xE7, 0xE4);
+			LINE = new Color(0xE4, 0xE4, 0xE1);
+			LINE_STRONG = new Color(0xD2, 0xD2, 0xCE);
+			INK = new Color(0x14, 0x15, 0x1A);
+			WHITE = new Color(0x0A, 0x0B, 0x0F);        // "strongest text" -> near-black on light
+			MUTED = new Color(0x5C, 0x5F, 0x6B);
+			FAINT = new Color(0x8A, 0x8D, 0x99);
+			UP = new Color(0x15, 0x80, 0x3D);           // darker accents for contrast on light
+			DOWN = new Color(0xC4, 0x1F, 0x1F);
+			AMBER = new Color(0xB4, 0x53, 0x09);
+			INFO = new Color(0x25, 0x63, 0xEB);
+			PILL_INK = new Color(0xFF, 0xFF, 0xFF);
+		} else {
+			// RuneLite's native panel grey (ColorScheme.DARK_GRAY_COLOR, #282828).
+			SURFACE = new Color(0x28, 0x28, 0x28);
+			RAISED = new Color(0x33, 0x33, 0x33);
+			HOVER = new Color(0x3E, 0x3E, 0x3E);
+			TRACK = new Color(0x1E, 0x1E, 0x1E);
+			LINE = new Color(0x3A, 0x3A, 0x3A);
+			LINE_STRONG = new Color(0x4A, 0x4A, 0x4A);
+			INK = new Color(0xED, 0xED, 0xF0);
+			WHITE = new Color(0xFF, 0xFF, 0xFF);
+			MUTED = new Color(0x9A, 0x9A, 0xA4);
+			FAINT = new Color(0x6C, 0x6C, 0x76);
+			UP = new Color(0x2E, 0xC2, 0x7E);
+			DOWN = new Color(0xF4, 0x57, 0x4D);
+			AMBER = new Color(0xE8, 0xA1, 0x3C);
+			INFO = new Color(0x4D, 0x9F, 0xFF);
+			PILL_INK = new Color(0x10, 0x13, 0x0F);
+		}
+	}
+
+	// Translucent fills for pills and alert grounds (alpha over the surface).
 	static Color soft(Color base) {
 		return new Color(base.getRed(), base.getGreen(), base.getBlue(), 34);
 	}
 
-	static Color line(Color base) {
-		return new Color(base.getRed(), base.getGreen(), base.getBlue(), 90);
-	}
 
 	// The website's faces, bundled so the panel matches it exactly: Inter for
 	// text, JetBrains Mono for numerals. Falls back to logical fonts if a
@@ -53,6 +108,8 @@ final class Theme {
 	static final Font BODY = INTER.deriveFont(12.5f);
 	static final Font BODY_BOLD = INTER_SEMI.deriveFont(12.5f);
 	static final Font SMALL = INTER.deriveFont(11f);
+	static final Font SMALL_BOLD = INTER_SEMI.deriveFont(11f);
+	static final Font PILL = INTER_SEMI.deriveFont(9.5f);
 	static final Font SECTION = INTER_SEMI.deriveFont(10.5f);
 	static final Font NUM = MONO.deriveFont(12f);
 	static final Font NUM_BOLD = MONO_SEMI.deriveFont(12f);

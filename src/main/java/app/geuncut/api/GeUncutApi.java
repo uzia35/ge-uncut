@@ -24,6 +24,14 @@ public interface GeUncutApi {
 
 	void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError);
 
+	// "Not a flip": demote an auto-tracked position to History on the website.
+	void archivePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError);
+
+	// The History tab: archived ("not a flip") positions, and restoring one to a flip.
+	void fetchArchived(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError);
+
+	void restorePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError);
+
 	void fetchMovers(Consumer<Movers> onSuccess, Consumer<ApiFailure> onError);
 
 	void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError);

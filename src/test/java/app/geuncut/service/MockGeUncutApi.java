@@ -35,6 +35,10 @@ class MockGeUncutApi implements GeUncutApi {
 	final List<List<GeTradeEvent>> postedBatches = new ArrayList<>();
 	final List<List<GeOffer>> postedOffers = new ArrayList<>();
 	final List<List<GeHistoryRow>> postedHistory = new ArrayList<>();
+	final List<Long> archivedPositions = new ArrayList<>();
+	final List<Long> restoredPositions = new ArrayList<>();
+	boolean failNextArchive;
+	PositionsResponse archivedResponse;
 	String lastHistoryAccountHash;
 	String lastOffersAccountHash;
 	String lastOffersSyncedAt;
@@ -59,6 +63,32 @@ class MockGeUncutApi implements GeUncutApi {
 		} else {
 			onError.accept(failure);
 		}
+	}
+
+	@Override
+	public void archivePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		if (failNextArchive) {
+			failNextArchive = false;
+			onError.accept(failure);
+			return;
+		}
+		archivedPositions.add(positionId);
+		onSuccess.run();
+	}
+
+	@Override
+	public void fetchArchived(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError) {
+		if (archivedResponse != null) {
+			onSuccess.accept(archivedResponse);
+		} else {
+			onError.accept(failure);
+		}
+	}
+
+	@Override
+	public void restorePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		restoredPositions.add(positionId);
+		onSuccess.run();
 	}
 
 	@Override

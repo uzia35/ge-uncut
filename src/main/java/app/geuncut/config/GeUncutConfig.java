@@ -19,4 +19,9 @@ public interface GeUncutConfig extends Config {
 	default String apiToken() {
 		return "";
 	}
+
+	@ConfigItem(keyName = "lightMode", name = "Light mode", description = "Use a light panel theme instead of the default dark", position = 2)
+	default boolean lightMode() {
+		return false;
+	}
 }
