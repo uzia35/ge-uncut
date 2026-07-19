@@ -33,7 +33,8 @@ public class FlipsPanelRenderTest {
 			"\"positions\":[{\"id\":42,\"item_id\":22124,\"item_name\":\"Superior dragon bones\",\"quantity\":1097," +
 			"\"buy_price\":20065,\"sold_qty\":400,\"sold_avg_price\":21010,\"realized_profit\":210000," +
 			"\"unrealized_profit\":506000,\"roi\":2.3,\"phase\":\"sell\",\"sell_reason\":\"target_hit\",\"price_stale\":false," +
-			"\"account_hash\":\"acct-a\"}," +
+			"\"account_hash\":\"acct-a\",\"target_sell_price\":21500,\"alert_price\":21200," +
+			"\"horizon_days\":3,\"opened_at\":\"2026-07-17T12:00:00\"}," +
 			"{\"id\":43,\"item_id\":2,\"item_name\":\"Cannonball\",\"quantity\":5000,\"buy_price\":180," +
 			"\"unrealized_profit\":null,\"roi\":null,\"phase\":\"exit\",\"price_stale\":true," +
 			"\"account_hash\":\"acct-b\"}]}";
@@ -49,7 +50,9 @@ public class FlipsPanelRenderTest {
 			"{\"item_id\":1,\"name\":\"Hueycoatl hide vambraces\",\"change_pct\":21.8,\"price\":38213,\"volume_day\":124000}," +
 			"{\"item_id\":2,\"name\":\"Watermelon seed\",\"change_pct\":31.6,\"price\":52,\"volume_day\":2400000}]," +
 			"\"fallers\":[" +
-			"{\"item_id\":3,\"name\":\"Ghorrock teleport (tablet)\",\"change_pct\":-40.3,\"price\":11890,\"volume_day\":8100}]}";
+			"{\"item_id\":3,\"name\":\"Ghorrock teleport (tablet)\",\"change_pct\":-40.3,\"price\":11890,\"volume_day\":8100}]," +
+			"\"volume_spikes\":[" +
+			"{\"item_id\":4,\"name\":\"Wine of zamorak\",\"change_pct\":2.1,\"price\":1210,\"volume_day\":910000,\"volume_ratio\":4.2}]}";
 
 	private static final String FLIPS_JSON = "{\"flips\":[" +
 			"{\"item_id\":1623,\"name\":\"Uncut diamond\",\"buy_price\":2512,\"target_sell_price\":2617," +
@@ -162,6 +165,13 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "ACCOUNT 1"));
 		assertNotNull(findLabel(panel, "ACCOUNT 2"));
 		assertNotNull(findLabel(panel, "EXIT"));
+		// The expanded card shows what the flip is aiming for.
+		assertNotNull(findLabel(panel, "Sell target"));
+		assertNotNull(findLabel(panel, "Alert at"));
+		assertNotNull(findLabel(panel, "Held"));
+		// The Movers tab carries the website's third group.
+		panel.selectTab("movers");
+		assertNotNull(findLabel(panel, "Volume spikes"));
 	}
 
 	@Test

@@ -47,6 +47,7 @@ class MoversRotator extends JComponent {
 	private final Color pctColor;
 	private final IconProvider icons;
 	private final IntConsumer onOpen;
+	private final java.util.function.Function<MoverEntry, String> valueText;
 	private final List<Row> rows = new ArrayList<>();
 	private final Timer timer;
 
@@ -56,10 +57,17 @@ class MoversRotator extends JComponent {
 	private long pageShownNanos;
 
 	MoversRotator(Font numberFont, Color pctColor, IconProvider icons, IntConsumer onOpen) {
+		this(numberFont, pctColor, icons, onOpen,
+				entry -> String.format("%+.1f%%", entry.getChangePct()));
+	}
+
+	MoversRotator(Font numberFont, Color pctColor, IconProvider icons, IntConsumer onOpen,
+			java.util.function.Function<MoverEntry, String> valueText) {
 		this.numberFont = numberFont;
 		this.pctColor = pctColor;
 		this.icons = icons;
 		this.onOpen = onOpen;
+		this.valueText = valueText;
 		setOpaque(true);
 		setBackground(Theme.SURFACE);
 		setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -85,7 +93,7 @@ class MoversRotator extends JComponent {
 				if (entry == null || entry.getName() == null) {
 					continue;
 				}
-				Row row = new Row(entry.getName(), String.format("%+.1f%%", entry.getChangePct()),
+				Row row = new Row(entry.getName(), valueText.apply(entry),
 						detailLine(entry), entry.getItemId());
 				// Fetch the sprite once here (not per paint) so onLoaded is registered once.
 				row.icon = icons.icon(entry.getItemId(), this::repaint);

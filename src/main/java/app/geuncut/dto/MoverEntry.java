@@ -17,4 +17,7 @@ public class MoverEntry {
 
 	@SerializedName("volume_day")
 	private final Long volumeDay;
+
+	@SerializedName("volume_ratio")
+	private final Double volumeRatio;
 }
