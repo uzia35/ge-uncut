@@ -1249,10 +1249,22 @@ public class FlipsPanel extends PluginPanel {
 		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
 		boolean completed = position.getClosedAt() != null
 				|| (position.getSoldQty() != null && position.getSoldQty() > 0);
-		actions.add(actionButton(completed ? "Restore" : "Track as a flip",
-				() -> onRestore.accept(position.getId())), BorderLayout.EAST);
+		actions.add(withTooltip(actionButton(completed ? "Restore" : "Track as a flip",
+				() -> onRestore.accept(position.getId())),
+				completed ? "Restores under Completed on geuncut.app"
+						: "Back to your active flips"), BorderLayout.EAST);
 		card.add(actions);
 		return card;
+	}
+
+	private static RoundedPanel withTooltip(RoundedPanel button, String tip) {
+		button.setToolTipText(tip);
+		for (Component child : button.getComponents()) {
+			if (child instanceof JComponent) {
+				((JComponent) child).setToolTipText(tip);
+			}
+		}
+		return button;
 	}
 
 	private RoundedPanel plainHistoryCard(int itemId, String name) {
@@ -1281,8 +1293,9 @@ public class FlipsPanel extends PluginPanel {
 		actions.setOpaque(false);
 		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
 		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
-		actions.add(actionButton("Track as a flip",
-				() -> onTrackPair.accept(check.getSellEventId())), BorderLayout.EAST);
+		actions.add(withTooltip(actionButton("Restore",
+				() -> onTrackPair.accept(check.getSellEventId())),
+				"Restores under Completed on geuncut.app"), BorderLayout.EAST);
 		card.add(actions);
 		return card;
 	}
