@@ -61,6 +61,24 @@ public class OfferSyncServiceTest {
 	}
 
 	@Test
+	public void slotKeepsPlacementTimeAcrossFillsAndReplays() {
+		service.record(0, 561, GrandExchangeOfferState.BUYING, 0, 100, 128, T0);
+		service.record(0, 561, GrandExchangeOfferState.BUYING, 40, 100, 128, T0.plusSeconds(600));
+		flushTick.run();
+
+		assertEquals(T0.toString(), api.postedOffers.get(0).get(0).getOccurredAt());
+	}
+
+	@Test
+	public void newOfferInSlotGetsFreshPlacementTime() {
+		service.record(0, 561, GrandExchangeOfferState.BUYING, 100, 100, 128, T0);
+		service.record(0, 561, GrandExchangeOfferState.SELLING, 0, 100, 140, T0.plusSeconds(600));
+		flushTick.run();
+
+		assertEquals(T0.plusSeconds(600).toString(), api.postedOffers.get(0).get(0).getOccurredAt());
+	}
+
+	@Test
 	public void allOccupiedSlotsFlushTogether() {
 		service.record(0, 561, GrandExchangeOfferState.BUYING, 0, 100, 128, T0);
 		service.record(1, 556, GrandExchangeOfferState.SELLING, 5, 50, 4, T0);

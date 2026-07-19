@@ -69,6 +69,14 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 			if (offer == null) {
 				return;
 			}
+			GeOffer previous = slots.get(slot);
+			if (previous != null && previous.getItemId() == offer.getItemId()
+					&& previous.getSide().equals(offer.getSide())
+					&& previous.getPriceEach() == offer.getPriceEach()
+					&& previous.getQuantityTotal() == offer.getQuantityTotal()
+					&& previous.getOccurredAt() != null) {
+				offer = withOccurredAt(offer, previous.getOccurredAt());
+			}
 			// GE offers only fire an event when something actually changed, so
 			// any recorded change is worth a flush; the interval caps the rate.
 			slots.put(slot, offer);
@@ -123,6 +131,19 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 								snapshot.size(), failure.getKind(), failure.getStatusCode(), failure.getMessage());
 					}
 				});
+	}
+
+	private static GeOffer withOccurredAt(GeOffer offer, String occurredAt) {
+		return GeOffer.builder()
+				.slot(offer.getSlot())
+				.itemId(offer.getItemId())
+				.side(offer.getSide())
+				.state(offer.getState())
+				.quantityFilled(offer.getQuantityFilled())
+				.quantityTotal(offer.getQuantityTotal())
+				.priceEach(offer.getPriceEach())
+				.occurredAt(occurredAt)
+				.build();
 	}
 
 	private static GeOffer toOffer(int slot, int itemId, GrandExchangeOfferState state,
