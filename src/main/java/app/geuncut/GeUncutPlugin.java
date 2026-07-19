@@ -138,6 +138,16 @@ public class GeUncutPlugin extends Plugin {
 		positionsPoll = executor.scheduleWithFixedDelay(this::refreshPositions,
 				POSITIONS_POLL_SECONDS, POSITIONS_POLL_SECONDS, TimeUnit.SECONDS);
 		refreshFlips();
+		// Durable placement times so working-offer ages survive a client restart
+		// (401s harmlessly when unlinked). Re-push so already-replayed slots pick
+		// up their seeded ages.
+		api.fetchOfferPlacements(
+				placements -> {
+					offerSync.seed(placements);
+					clientThread.invokeLater(this::pushOffers);
+				},
+				failure -> log.debug("event=offer_placements_fetch_failed kind={} status={}",
+						failure.getKind(), failure.getStatusCode()));
 	}
 
 	private void installPanel() {
@@ -192,6 +202,13 @@ public class GeUncutPlugin extends Plugin {
 		if (event.getGameState() == GameState.LOGIN_SCREEN || event.getGameState() == GameState.HOPPING) {
 			offerTracker.reset();
 		}
+		// Offer ages only tick while a session can actually see fills. HOPPING
+		// stays live (the offers survive a hop); only a real logout pauses.
+		if (event.getGameState() == GameState.LOGGED_IN) {
+			SwingUtilities.invokeLater(() -> panel.setGameActive(true));
+		} else if (event.getGameState() == GameState.LOGIN_SCREEN) {
+			SwingUtilities.invokeLater(() -> panel.setGameActive(false));
+		}
 	}
 
 	private void unlinkAccount() {
@@ -228,7 +245,11 @@ public class GeUncutPlugin extends Plugin {
 				offer.getTotalQuantity(),
 				offer.getPrice(),
 				now);
-		// Resolve names here on the client thread; the panel only has item ids.
+		pushOffers();
+	}
+
+	// Resolve names on the client thread; the panel only has item ids.
+	private void pushOffers() {
 		List<GeOffer> working = offerSync.current();
 		Map<Integer, String> itemNames = new HashMap<>();
 		for (GeOffer openOffer : working) {

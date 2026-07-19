@@ -7,6 +7,7 @@ import java.util.concurrent.TimeUnit;
 
 import app.geuncut.api.ApiFailure;
 import app.geuncut.dto.GeOffer;
+import app.geuncut.dto.OfferPlacement;
 import app.geuncut.service.impl.OfferSyncServiceImpl;
 import net.runelite.api.GrandExchangeOfferState;
 import org.junit.Before;
@@ -76,6 +77,42 @@ public class OfferSyncServiceTest {
 		flushTick.run();
 
 		assertEquals(T0.plusSeconds(600).toString(), api.postedOffers.get(0).get(0).getOccurredAt());
+	}
+
+	@Test
+	public void serverSeedAgesOfferAcrossRestart() {
+		service.seed(java.util.Collections.singletonList(OfferPlacement.builder()
+				.accountHash("acct-1").slot(0).itemId(561).side("buy")
+				.priceEach(128).quantityTotal(100).quantityFilled(0)
+				.placedAt("2026-07-06T01:30:00").build()));
+		service.record(0, 561, GrandExchangeOfferState.BUYING, 40, 100, 128, T0);
+		flushTick.run();
+
+		assertEquals("2026-07-06T01:30:00Z", api.postedOffers.get(0).get(0).getOccurredAt());
+	}
+
+	@Test
+	public void seedIgnoredForADifferentOffer() {
+		service.seed(java.util.Collections.singletonList(OfferPlacement.builder()
+				.accountHash("acct-1").slot(0).itemId(561).side("buy")
+				.priceEach(999).quantityTotal(100).quantityFilled(0)
+				.placedAt("2026-07-06T01:30:00").build()));
+		service.record(0, 561, GrandExchangeOfferState.BUYING, 0, 100, 128, T0);
+		flushTick.run();
+
+		assertEquals(T0.toString(), api.postedOffers.get(0).get(0).getOccurredAt());
+	}
+
+	@Test
+	public void seedRetroAppliesToAnAlreadyRecordedSlot() {
+		service.record(0, 561, GrandExchangeOfferState.BUYING, 40, 100, 128, T0);
+		service.seed(java.util.Collections.singletonList(OfferPlacement.builder()
+				.accountHash("acct-1").slot(0).itemId(561).side("buy")
+				.priceEach(128).quantityTotal(100).quantityFilled(40)
+				.placedAt("2026-07-06T01:30:00").build()));
+		flushTick.run();
+
+		assertEquals("2026-07-06T01:30:00Z", api.postedOffers.get(0).get(0).getOccurredAt());
 	}
 
 	@Test

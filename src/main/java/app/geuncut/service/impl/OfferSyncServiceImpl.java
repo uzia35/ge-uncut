@@ -1,6 +1,8 @@
 package app.geuncut.service.impl;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -11,6 +13,7 @@ import javax.inject.Singleton;
 
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.GeOffer;
+import app.geuncut.dto.OfferPlacement;
 import app.geuncut.service.OfferSyncService;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GrandExchangeOfferState;
@@ -28,6 +31,9 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 
 	private final GeUncutApi api;
 	private final Map<Integer, GeOffer> slots = new HashMap<>();
+	// Server placement times keyed "accountHash|slot", consumed on first sight
+	// of a matching offer so an age survives a client restart.
+	private final Map<String, OfferPlacement> seeds = new HashMap<>();
 
 	private String lastAccountHash;
 	private boolean dirty;
@@ -44,8 +50,31 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 		flush();
 		synchronized (slots) {
 			slots.clear();
+			seeds.clear();
 			dirty = false;
 			flushInFlight = false;
+		}
+	}
+
+	@Override
+	public void seed(List<OfferPlacement> placements) {
+		synchronized (slots) {
+			for (OfferPlacement placement : placements) {
+				if (placement.getAccountHash() == null || placement.getPlacedAt() == null) {
+					continue;
+				}
+				seeds.put(placement.getAccountHash() + "|" + placement.getSlot(), placement);
+				// Retro-apply: the login replay may have recorded the slot before
+				// this response arrived.
+				if (placement.getAccountHash().equals(lastAccountHash)) {
+					GeOffer existing = slots.get(placement.getSlot());
+					String placed = seededPlacement(placement, existing);
+					if (placed != null && !placed.equals(existing.getOccurredAt())) {
+						slots.put(placement.getSlot(), withOccurredAt(existing, placed));
+						dirty = true;
+					}
+				}
+			}
 		}
 	}
 
@@ -76,6 +105,12 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 					&& previous.getQuantityTotal() == offer.getQuantityTotal()
 					&& previous.getOccurredAt() != null) {
 				offer = withOccurredAt(offer, previous.getOccurredAt());
+			} else if (previous == null && lastAccountHash != null) {
+				OfferPlacement seedRow = seeds.remove(lastAccountHash + "|" + slot);
+				String placed = seedRow != null ? seededPlacement(seedRow, offer) : null;
+				if (placed != null) {
+					offer = withOccurredAt(offer, placed);
+				}
 			}
 			// GE offers only fire an event when something actually changed, so
 			// any recorded change is worth a flush; the interval caps the rate.
@@ -131,6 +166,34 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 								snapshot.size(), failure.getKind(), failure.getStatusCode(), failure.getMessage());
 					}
 				});
+	}
+
+	// The seed applies only to the offer it describes: same identity, and the
+	// server's filled count not ahead of the client's (ahead means the slot was
+	// re-placed with an identical offer since the server last saw it).
+	private static String seededPlacement(OfferPlacement placement, GeOffer offer) {
+		if (offer == null || placement.getSide() == null
+				|| placement.getItemId() != offer.getItemId()
+				|| !placement.getSide().equals(offer.getSide())
+				|| placement.getPriceEach() != offer.getPriceEach()
+				|| placement.getQuantityTotal() != offer.getQuantityTotal()
+				|| placement.getQuantityFilled() > offer.getQuantityFilled()) {
+			return null;
+		}
+		return toInstantString(placement.getPlacedAt());
+	}
+
+	// The server sends naive-UTC timestamps; the panel parses Instant strings.
+	private static String toInstantString(String timestamp) {
+		try {
+			return Instant.parse(timestamp).toString();
+		} catch (RuntimeException notInstant) {
+			try {
+				return LocalDateTime.parse(timestamp).toInstant(ZoneOffset.UTC).toString();
+			} catch (RuntimeException unparseable) {
+				return null;
+			}
+		}
 	}
 
 	private static GeOffer withOccurredAt(GeOffer offer, String occurredAt) {

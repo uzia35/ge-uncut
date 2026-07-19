@@ -2,11 +2,16 @@
 
 **Find profitable OSRS flips in seconds, track your profit automatically, and never miss a buy-limit reset. Right inside RuneLite.**
 
-Free. Privacy-first. Backed by the full [geuncut.app](https://geuncut.app) toolkit.
+Free. Backed by the full [geuncut.app](https://geuncut.app) toolkit.
 
-<!-- PANEL SCREENSHOT (hero): the RuneLite side panel, linked, showing the ranked
-     flips and working offers. Capture from your client and save it here. -->
-![The GE Uncut panel in RuneLite](docs/screenshots/panel-flips.png)
+![The GE Uncut panel in RuneLite: the flip finder](docs/screenshots/panel-finder.png)
+
+The panel is four tabs, all at RuneLite's native look:
+
+|  |  |  |
+|:--:|:--:|:--:|
+| ![Flips tab: live GE slots with offer timers, and your stats](docs/screenshots/panel-flips.png) | ![Movers tab: the day's gainers and losers](docs/screenshots/panel-movers.png) | ![History tab: items marked not a flip, restorable](docs/screenshots/panel-history.png) |
+| **Flips:** your stats, live GE slots with offer timers, and tracked positions | **Movers:** the day's gainers and losers with price and volume | **History:** buys you marked "not a flip", restorable in one tap |
 
 ---
 

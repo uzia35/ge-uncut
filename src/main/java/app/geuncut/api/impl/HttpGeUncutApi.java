@@ -2,6 +2,7 @@ package app.geuncut.api.impl;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
+import java.util.Collections;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -19,6 +20,8 @@ import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
+import app.geuncut.dto.OfferPlacement;
+import app.geuncut.dto.OfferPlacementsResponse;
 import app.geuncut.dto.PositionsResponse;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -158,6 +161,21 @@ public class HttpGeUncutApi implements GeUncutApi {
 				.post(RequestBody.create(JSON, "{}"))
 				.build();
 		enqueue(request, onError, body -> onSuccess.run());
+	}
+
+	@Override
+	public void fetchOfferPlacements(Consumer<List<OfferPlacement>> onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/offers/placements");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		Request request = new Request.Builder().url(url).get().build();
+		enqueue(request, onError, body -> {
+			OfferPlacementsResponse response = gson.fromJson(body, OfferPlacementsResponse.class);
+			onSuccess.accept(response != null && response.getPlacements() != null
+					? response.getPlacements() : Collections.emptyList());
+		});
 	}
 
 	@Override
