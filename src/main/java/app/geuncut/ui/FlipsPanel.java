@@ -113,8 +113,8 @@ public class FlipsPanel extends PluginPanel {
 			new String[] { "standard", "fast", "value" }, 2);
 	private final FlatSelect riskPicker = new FlatSelect(new String[] { "Conservative", "Balanced", "Aggressive" }, 1);
 	private final FlatSelect capitalPicker = new FlatSelect(
-			new String[] { "My capital", "1M gp", "10M gp", "50M gp", "100M gp", "500M gp", "1B gp" },
-			new String[] { "", "1000000", "10000000", "50000000", "100000000", "500000000", "1000000000" }, 0);
+			new String[] { "My capital", "1M gp", "5M gp", "10M gp", "50M gp", "100M gp", "500M gp", "1B gp" },
+			new String[] { "", "1000000", "5000000", "10000000", "50000000", "100000000", "500000000", "1000000000" }, 0);
 	private final FlatSelect accountPicker = new FlatSelect(
 			new String[] { "All items", "Members", "Free-to-play" },
 			new String[] { "all", "members", "f2p" }, 0);
