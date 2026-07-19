@@ -29,14 +29,20 @@ public class FlipsPanelRenderTest {
 	};
 
 	private static final String ACTIVE_FLIPS_JSON = "{\"summary\":{\"total_realized\":0,\"today_realized\":0," +
-			"\"open_unrealized\":506000,\"open_count\":1,\"flips\":0,\"win_rate\":null,\"avg_roi\":null}," +
+			"\"open_unrealized\":506000,\"open_count\":2,\"flips\":0,\"win_rate\":null,\"avg_roi\":null}," +
 			"\"positions\":[{\"id\":42,\"item_id\":22124,\"item_name\":\"Superior dragon bones\",\"quantity\":1097," +
 			"\"buy_price\":20065,\"sold_qty\":400,\"sold_avg_price\":21010,\"realized_profit\":210000," +
-			"\"unrealized_profit\":506000,\"roi\":2.3,\"phase\":\"sell\",\"sell_reason\":\"target_hit\",\"price_stale\":false}]}";
+			"\"unrealized_profit\":506000,\"roi\":2.3,\"phase\":\"sell\",\"sell_reason\":\"target_hit\",\"price_stale\":false," +
+			"\"account_hash\":\"acct-a\"}," +
+			"{\"id\":43,\"item_id\":2,\"item_name\":\"Cannonball\",\"quantity\":5000,\"buy_price\":180," +
+			"\"unrealized_profit\":null,\"roi\":null,\"phase\":\"exit\",\"price_stale\":true," +
+			"\"account_hash\":\"acct-b\"}]}";
 
 	private static final String ARCHIVED_JSON = "{\"positions\":[" +
-			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480}]," +
-			"\"margin_checks\":[{\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
+			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480}," +
+			"{\"id\":9,\"item_id\":1637,\"item_name\":\"Sapphire ring\",\"quantity\":10,\"buy_price\":900," +
+			"\"exit_price\":1100,\"closed_at\":\"2026-07-18T10:00:00\"}]," +
+			"\"margin_checks\":[{\"sell_event_id\":501,\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
 			"\"archived_sells\":[{\"item_id\":1601,\"item_name\":\"Diamond\",\"quantity\":8,\"price_each\":1640,\"occurred_at\":\"2026-07-19T09:00:00\"}]}";
 
 	private static final String MOVERS_JSON = "{\"risers\":[" +
@@ -81,7 +87,7 @@ public class FlipsPanelRenderTest {
 		};
 		FlipsResponse response = new Gson().fromJson(FLIPS_JSON, FlipsResponse.class);
 
-		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
 		panel.showFlips(response.getFlips(), false);
 		BufferedImage unlinked = paint(panel);
 		write(unlinked, "panel-unlinked.png");
@@ -98,7 +104,7 @@ public class FlipsPanelRenderTest {
 		};
 		IntConsumer noopItem = item -> {
 		};
-		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
 		panel.showLinkPrompt();
 		paint(panel);
 		BufferedImage before = paint(panel);
@@ -118,7 +124,7 @@ public class FlipsPanelRenderTest {
 		FlipsResponse flips = new Gson().fromJson(FLIPS_JSON, FlipsResponse.class);
 		PositionsResponse positions = new Gson().fromJson(ACTIVE_FLIPS_JSON, PositionsResponse.class);
 
-		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
 		panel.showFlips(flips.getFlips(), true);
 		panel.showActiveFlips(positions);
 
@@ -144,6 +150,53 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "Item details ↗"));
 		panel.selectTab("history");
 		assertNotNull(findLabel(panel, "Track as a flip"));
+		assertNotNull(findLabel(panel, "Uncut diamond"));
+		assertNotNull(findLabel(panel, "Diamond"));
+		// A completed trade moved to History restores back to Completed and
+		// shows its manual-close sale price instead of "— not sold".
+		assertNotNull(findLabel(panel, "Restore"));
+		assertNotNull(findLabel(panel, "1,100"));
+		// Two linked accounts split the active list into website-style sections,
+		// and a hold-window exit is its own pill, not a SELL.
+		panel.selectTab("flips");
+		assertNotNull(findLabel(panel, "ACCOUNT 1"));
+		assertNotNull(findLabel(panel, "ACCOUNT 2"));
+		assertNotNull(findLabel(panel, "EXIT"));
+	}
+
+	@Test
+	public void trackPairClickCallsBackWithSellEventId() {
+		long[] captured = { -1 };
+		LongConsumer capture = id -> captured[0] = id;
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, capture);
+		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
+		// Both the archived card's restore and the pair card carry this label;
+		// clicking every one must route the pair's click to the sell event id.
+		java.util.List<JLabel> tracks = new java.util.ArrayList<>();
+		collectLabels(panel, "Track as a flip", tracks);
+		assertTrue(tracks.size() >= 2);
+		for (JLabel track : tracks) {
+			MouseEvent click = new MouseEvent(track, MouseEvent.MOUSE_CLICKED, 0L, 0, 1, 1, 1, false);
+			for (MouseListener listener : track.getMouseListeners()) {
+				listener.mouseClicked(click);
+			}
+		}
+		assertEquals(501L, captured[0]);
+	}
+
+	private static void collectLabels(Component component, String text, java.util.List<JLabel> found) {
+		if (component instanceof JLabel && text.equals(((JLabel) component).getText())) {
+			found.add((JLabel) component);
+		}
+		if (component instanceof Container) {
+			for (Component child : ((Container) component).getComponents()) {
+				collectLabels(child, text, found);
+			}
+		}
 	}
 
 	@Test
@@ -152,7 +205,7 @@ public class FlipsPanelRenderTest {
 		};
 		IntConsumer noopItem = item -> {
 		};
-		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
 		panel.showActiveFlips(new Gson().fromJson(ACTIVE_FLIPS_JSON, PositionsResponse.class));
 
 		assertTrue(findLabel(panel, "Not a flip") == null);
@@ -174,7 +227,7 @@ public class FlipsPanelRenderTest {
 		};
 		IntConsumer noopItem = item -> {
 		};
-		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
 		panel.showActiveFlips(new Gson().fromJson("{\"summary\":{},\"positions\":[]}", PositionsResponse.class));
 		panel.selectTab("flips");
 		BufferedImage image = paint(panel);
@@ -192,7 +245,7 @@ public class FlipsPanelRenderTest {
 		};
 		IntConsumer noopItem = item -> {
 		};
-		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, capture);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, capture, noopArchive);
 		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
 		JLabel restore = findLabel(panel, "Track as a flip");
 		assertNotNull(restore);
@@ -213,7 +266,7 @@ public class FlipsPanelRenderTest {
 		FlipsResponse response = new Gson().fromJson(FLIPS_JSON, FlipsResponse.class);
 		try {
 			FlipsPanel.applyTheme(true);
-			FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive);
+			FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
 			panel.showFlips(response.getFlips(), true);
 			BufferedImage light = paint(panel);
 			write(light, "panel-light.png");
@@ -231,7 +284,7 @@ public class FlipsPanelRenderTest {
 		};
 		PositionsResponse response = new Gson().fromJson(ACTIVE_FLIPS_JSON, PositionsResponse.class);
 
-		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
 		panel.showActiveFlips(response);
 		panel.toggleFlip(42);
 		write(paint(panel), "panel-active-flips.png");
@@ -250,7 +303,7 @@ public class FlipsPanelRenderTest {
 		};
 		PositionsResponse response = new Gson().fromJson(ACTIVE_FLIPS_JSON, PositionsResponse.class);
 
-		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, capture, noopArchive);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, capture, noopArchive, noopArchive);
 		panel.showActiveFlips(response);
 		panel.toggleFlip(42);
 		JLabel notFlip = findLabel(panel, "Not a flip");

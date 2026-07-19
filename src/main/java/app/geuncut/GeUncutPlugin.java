@@ -154,7 +154,7 @@ public class GeUncutPlugin extends Plugin {
 		FlipsPanel.applyTheme(config.lightMode());
 		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, this::unlinkAccount, this::openMovers,
 				this::openMyFlips, new ItemIconLoader(okHttpClient, itemManager), this::openItem, this::markNotFlip,
-				this::restoreFlip);
+				this::restoreFlip, this::trackPair);
 		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
 		navButton = NavigationButton.builder()
 				.tooltip("GE Uncut")
@@ -369,6 +369,18 @@ public class GeUncutPlugin extends Plugin {
 				}),
 				failure -> log.debug("event=archive_position_failed id={} kind={} status={}",
 						positionId, failure.getKind(), failure.getStatusCode()));
+	}
+
+	// History "Track as a flip" on a quarantined pair: it becomes a real
+	// completed flip server-side, then both lists refresh.
+	private void trackPair(long sellEventId) {
+		api.trackPair(sellEventId,
+				() -> SwingUtilities.invokeLater(() -> {
+					refreshPositions();
+					refreshHistory();
+				}),
+				failure -> log.debug("event=track_pair_failed id={} kind={} status={}",
+						sellEventId, failure.getKind(), failure.getStatusCode()));
 	}
 
 	private void restoreFlip(long positionId) {

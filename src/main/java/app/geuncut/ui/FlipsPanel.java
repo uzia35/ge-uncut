@@ -59,6 +59,7 @@ public class FlipsPanel extends PluginPanel {
 	private final IntConsumer onOpenItem;
 	private final LongConsumer onNotFlip;
 	private final LongConsumer onRestore;
+	private final LongConsumer onTrackPair;
 
 	private final JLabel linkStatus = new JLabel();
 	private final JLabel unlinkLink = text("Unlink", Theme.MUTED, Theme.SMALL);
@@ -134,9 +135,10 @@ public class FlipsPanel extends PluginPanel {
 
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers,
 			Runnable onOpenWeb, ItemIconLoader iconLoader, IntConsumer onOpenItem, LongConsumer onNotFlip,
-			LongConsumer onRestore) {
+			LongConsumer onRestore, LongConsumer onTrackPair) {
 		this.iconLoader = iconLoader;
 		this.onOpenItem = onOpenItem;
+		this.onTrackPair = onTrackPair;
 		this.onNotFlip = onNotFlip;
 		this.onRestore = onRestore;
 		// Row icons are inventory sprites (no network); the loader repaints as they decode.
@@ -343,7 +345,7 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildHistoryPane() {
 		JPanel pane = pane();
-		JLabel blurb = text("Kept out of your P&L and win rate. Restore anytime.", Theme.MUTED, Theme.SMALL);
+		JLabel blurb = text("Kept out of your stats. Restore anytime.", Theme.MUTED, Theme.SMALL);
 		blurb.setAlignmentX(Component.LEFT_ALIGNMENT);
 		pane.add(blurb);
 		pane.add(strut(8));
@@ -454,12 +456,53 @@ public class FlipsPanel extends PluginPanel {
 	private void renderActiveFlips() {
 		activeCount.setText(Integer.toString(lastPositions.size()));
 		activeList.removeAll();
+		// The website's account sections: distinct hashes sorted so "Account 1"
+		// never changes identity, unassigned flips last with no label.
+		java.util.TreeSet<String> accounts = new java.util.TreeSet<>();
 		for (Position position : lastPositions) {
-			addCard(activeList, activeFlipCard(position));
+			if (position.getAccountHash() != null) {
+				accounts.add(position.getAccountHash());
+			}
+		}
+		if (accounts.size() > 1) {
+			int index = 1;
+			for (String hash : accounts) {
+				addAccountSection("Account " + index++, hash);
+			}
+			addAccountSection(null, null);
+		} else {
+			for (Position position : lastPositions) {
+				addCard(activeList, activeFlipCard(position));
+			}
 		}
 		activeSection.setVisible(!lastPositions.isEmpty());
 		revalidate();
 		repaint();
+	}
+
+	// One account's slice of the active list: a small label row, then its cards.
+	// A null label collects the unassigned (no account hash) flips, unlabeled.
+	private void addAccountSection(String label, String hash) {
+		boolean any = false;
+		for (Position position : lastPositions) {
+			boolean match = hash == null
+					? position.getAccountHash() == null
+					: hash.equals(position.getAccountHash());
+			if (!match) {
+				continue;
+			}
+			if (!any && label != null) {
+				if (activeList.getComponentCount() > 0) {
+					activeList.add(Box.createVerticalStrut(10));
+				}
+				JLabel heading = text(label.toUpperCase(), Theme.MUTED, Theme.SECTION);
+				heading.setAlignmentX(Component.LEFT_ALIGNMENT);
+				heading.setBorder(BorderFactory.createEmptyBorder(0, 1, 4, 0));
+				activeList.add(heading);
+			}
+			any = true;
+			addCard(activeList, activeFlipCard(position));
+		}
 	}
 
 	void toggleFlip(long positionId) {
@@ -1018,8 +1061,13 @@ public class FlipsPanel extends PluginPanel {
 		sub.setMaximumSize(sub.getPreferredSize());
 		line2.add(sub);
 		line2.add(Box.createHorizontalGlue());
-		if (isSell(position.getPhase())) {
+		// The website's two distinct states: SELL is a live profit signal, EXIT
+		// means the hold window is over, not a win.
+		if ("sell".equals(position.getPhase())) {
 			line2.add(solidPill("SELL", Theme.AMBER));
+			line2.add(Box.createHorizontalStrut(6));
+		} else if ("exit".equals(position.getPhase())) {
+			line2.add(solidPill("EXIT", Theme.MUTED));
 			line2.add(Box.createHorizontalStrut(6));
 		}
 		Long unrealized = position.getUnrealizedProfit();
@@ -1027,7 +1075,11 @@ public class FlipsPanel extends PluginPanel {
 		Long profit = unrealized == null && realized == null ? null
 				: (unrealized == null ? 0 : unrealized) + (realized == null ? 0 : realized);
 		if (profit == null) {
-			line2.add(text("—", Theme.MUTED, Theme.NUM_BOLD));
+			JLabel dash = text("—", Theme.MUTED, Theme.NUM_BOLD);
+			if (position.isPriceStale()) {
+				dash.setToolTipText("Prices are stale, so P/L and sell signals are paused");
+			}
+			line2.add(dash);
 		} else {
 			line2.add(text(pnlText(profit), profit >= 0 ? Theme.UP : Theme.DOWN, Theme.NUM_BOLD));
 			if (position.getRoi() != null) {
@@ -1059,6 +1111,12 @@ public class FlipsPanel extends PluginPanel {
 			card.add(Box.createVerticalStrut(9));
 			addLeft(card, divider());
 			card.add(Box.createVerticalStrut(8));
+			if (position.isPriceStale()) {
+				JLabel stale = text("Prices stale · P/L and signals paused", Theme.MUTED, Theme.SMALL);
+				stale.setAlignmentX(Component.LEFT_ALIGNMENT);
+				stale.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
+				card.add(stale);
+			}
 			addLeft(card, detailRow("Total profit",
 					profit == null ? "—" : pnlText(profit),
 					profit == null ? Theme.MUTED : (profit >= 0 ? Theme.UP : Theme.DOWN)));
@@ -1177,11 +1235,14 @@ public class FlipsPanel extends PluginPanel {
 		card.add(Box.createVerticalStrut(8));
 		addLeft(card, detailRow("Quantity", GP.format(position.getQuantity()), Theme.INK));
 		addLeft(card, detailRow("Bought at", GP.format(position.getBuyPrice()), Theme.INK));
-		boolean sold = position.getSoldQty() != null && position.getSoldQty() > 0
-				&& position.getSoldAvgPrice() != null;
+		// Same fallback the website uses: plugin-fill average first, then the
+		// manual close's exit price, so a hand-closed flip never reads unsold.
+		Long soldPrice = position.getSoldQty() != null && position.getSoldQty() > 0
+				&& position.getSoldAvgPrice() != null
+						? position.getSoldAvgPrice() : position.getExitPrice();
 		addLeft(card, detailRow("Sold at",
-				sold ? GP.format(position.getSoldAvgPrice()) : "— not sold",
-				sold ? Theme.INK : Theme.MUTED));
+				soldPrice != null ? GP.format(soldPrice) : "— not sold",
+				soldPrice != null ? Theme.INK : Theme.MUTED));
 		addLeft(card, detailRow("Spent", shortGp(position.getBuyPrice() * position.getQuantity()), Theme.INK));
 
 		clickable(card, position.getItemId());
@@ -1189,7 +1250,7 @@ public class FlipsPanel extends PluginPanel {
 		actions.setOpaque(false);
 		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
 		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
-		actions.add(actionButton("Track as a flip",
+		actions.add(actionButton(position.getClosedAt() != null ? "Restore" : "Track as a flip",
 				() -> onRestore.accept(position.getId())), BorderLayout.EAST);
 		card.add(actions);
 		return card;
@@ -1217,6 +1278,13 @@ public class FlipsPanel extends PluginPanel {
 		addLeft(card, detailRow("Quantity", "1", Theme.INK));
 		addLeft(card, detailRow("Bought at", GP.format(check.getBuyPrice()), Theme.INK));
 		addLeft(card, detailRow("Sold at", GP.format(check.getSellPrice()), Theme.INK));
+		JPanel actions = new JPanel(new BorderLayout());
+		actions.setOpaque(false);
+		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
+		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
+		actions.add(actionButton("Track as a flip",
+				() -> onTrackPair.accept(check.getSellEventId())), BorderLayout.EAST);
+		card.add(actions);
 		return card;
 	}
 
@@ -1379,10 +1447,6 @@ public class FlipsPanel extends PluginPanel {
 
 	private static Component strut(int height) {
 		return Box.createVerticalStrut(height);
-	}
-
-	private static boolean isSell(String phase) {
-		return "sell".equals(phase) || "exit".equals(phase);
 	}
 
 	private static void setStat(JLabel label, long value) {

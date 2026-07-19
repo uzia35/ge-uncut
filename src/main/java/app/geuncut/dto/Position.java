@@ -19,6 +19,9 @@ public class Position {
 	@SerializedName("item_name")
 	private final String name;
 
+	@SerializedName("account_hash")
+	private final String accountHash;
+
 	private final long quantity;
 
 	@SerializedName("buy_price")
@@ -35,6 +38,14 @@ public class Position {
 
 	@SerializedName("realized_profit")
 	private final Long realizedProfit;
+
+	// Archived-endpoint extras: a completed trade moved to History keeps its
+	// sale price and close time, so the panel can show and restore it right.
+	@SerializedName("exit_price")
+	private final Long exitPrice;
+
+	@SerializedName("closed_at")
+	private final String closedAt;
 
 	private final Double roi;
 
