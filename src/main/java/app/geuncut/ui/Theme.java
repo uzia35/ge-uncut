@@ -20,9 +20,6 @@ final class Theme {
 		DARK, LIGHT
 	}
 
-	// Non-final so a mode switch can repaint the palette in place; the panel is
-	// rebuilt after apply() so every component re-reads the new values. Dark by
-	// default (RuneLite's native grey), applied in the static initialiser below.
 	static Color SURFACE;
 	static Color RAISED;
 	static Color HOVER;
@@ -37,8 +34,6 @@ final class Theme {
 	static Color DOWN;
 	static Color AMBER;
 	static Color INFO;
-	// Text on a solid accent chip (the mock's --pill-ink): near-black over the
-	// bright dark-mode accents, white over the darker light-mode ones.
 	static Color PILL_INK;
 
 	private static Mode mode = Mode.DARK;
@@ -55,7 +50,6 @@ final class Theme {
 	static void apply(Mode target) {
 		mode = target;
 		if (target == Mode.LIGHT) {
-			// Designed light tokens (mirrors the website's styles.css), not an invert.
 			SURFACE = new Color(0xF4, 0xF4, 0xF3);
 			RAISED = new Color(0xFF, 0xFF, 0xFF);
 			HOVER = new Color(0xEC, 0xEC, 0xEA);
@@ -63,16 +57,15 @@ final class Theme {
 			LINE = new Color(0xE4, 0xE4, 0xE1);
 			LINE_STRONG = new Color(0xD2, 0xD2, 0xCE);
 			INK = new Color(0x14, 0x15, 0x1A);
-			WHITE = new Color(0x0A, 0x0B, 0x0F);        // "strongest text" -> near-black on light
+			WHITE = new Color(0x0A, 0x0B, 0x0F);
 			MUTED = new Color(0x5C, 0x5F, 0x6B);
 			FAINT = new Color(0x8A, 0x8D, 0x99);
-			UP = new Color(0x15, 0x80, 0x3D);           // darker accents for contrast on light
+			UP = new Color(0x15, 0x80, 0x3D);
 			DOWN = new Color(0xC4, 0x1F, 0x1F);
 			AMBER = new Color(0xB4, 0x53, 0x09);
 			INFO = new Color(0x25, 0x63, 0xEB);
 			PILL_INK = new Color(0xFF, 0xFF, 0xFF);
 		} else {
-			// RuneLite's native panel grey (ColorScheme.DARK_GRAY_COLOR, #282828).
 			SURFACE = new Color(0x28, 0x28, 0x28);
 			RAISED = new Color(0x33, 0x33, 0x33);
 			HOVER = new Color(0x3E, 0x3E, 0x3E);
@@ -91,7 +84,6 @@ final class Theme {
 		}
 	}
 
-	// Translucent fills for pills and alert grounds (alpha over the surface).
 	static Color soft(Color base) {
 		return new Color(base.getRed(), base.getGreen(), base.getBlue(), 34);
 	}

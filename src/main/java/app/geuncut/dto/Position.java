@@ -11,7 +11,6 @@ import lombok.Value;
 @Value
 @Builder
 public class Position {
-	// Server position id, needed to archive ("not a flip") the exact flip.
 	private final long id;
 
 	@SerializedName("item_id")
@@ -28,9 +27,6 @@ public class Position {
 	@SerializedName("unrealized_profit")
 	private final Long unrealizedProfit;
 
-	// Partial-fill state: how much has sold, at what average, and the exact
-	// realized gp so far. Feeds the expanded card's Bought/Sold/Realized rows
-	// (and History's "Sold at").
 	@SerializedName("sold_qty")
 	private final Long soldQty;
 
