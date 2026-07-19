@@ -78,6 +78,9 @@ public class FlipsPanel extends PluginPanel {
 	private final JPanel offersSection = new JPanel();
 	private final JPanel offersList = listPanel();
 	private final JLabel offersCount = new JLabel("0");
+	private List<GeOffer> lastOffers = Collections.emptyList();
+	private Map<Integer, String> lastOfferNames = Collections.emptyMap();
+	private final javax.swing.Timer offerAgeTimer = new javax.swing.Timer(60_000, event -> renderOffers());
 
 	private final JPanel activeSection = new JPanel();
 	private final JPanel activeList = listPanel();
@@ -378,15 +381,34 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showOffers(List<GeOffer> offers, Map<Integer, String> itemNames) {
-		offersCount.setText(Integer.toString(offers.size()));
+		lastOffers = offers;
+		lastOfferNames = itemNames;
+		renderOffers();
+	}
+
+	private void renderOffers() {
+		offersCount.setText(Integer.toString(lastOffers.size()));
 		offersList.removeAll();
-		for (GeOffer offer : offers) {
-			String name = itemNames.getOrDefault(offer.getItemId(), "Item " + offer.getItemId());
+		for (GeOffer offer : lastOffers) {
+			String name = lastOfferNames.getOrDefault(offer.getItemId(), "Item " + offer.getItemId());
 			addCard(offersList, offerCard(offer, name));
 		}
-		offersSection.setVisible(!offers.isEmpty());
+		offersSection.setVisible(!lastOffers.isEmpty());
 		revalidate();
 		repaint();
+	}
+
+	@Override
+	public void addNotify() {
+		super.addNotify();
+		renderOffers();
+		offerAgeTimer.start();
+	}
+
+	@Override
+	public void removeNotify() {
+		super.removeNotify();
+		offerAgeTimer.stop();
 	}
 
 	public void showActiveFlips(PositionsResponse response) {
