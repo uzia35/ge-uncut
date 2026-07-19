@@ -36,22 +36,23 @@ public class OfferTrackerImpl implements OfferTracker {
 			GrandExchangeOfferState state,
 			int quantitySold,
 			int spent,
+			int totalQuantity,
+			int price,
 			Instant now) {
 		if (state == GrandExchangeOfferState.EMPTY) {
-			slots.remove(slot);
-			return Optional.empty();
+			return residualFill(slots.remove(slot), slot, now);
 		}
 
 		boolean selling = isSellState(state);
 		boolean firstSinceReset = replayedSlots.add(slot);
 		OfferSnapshot last = slots.get(slot);
-		slots.put(slot, new OfferSnapshot(itemId, quantitySold, spent, selling));
+		slots.put(slot, new OfferSnapshot(itemId, quantitySold, spent, state, totalQuantity, price));
 
-		if (last == null || last.getItemId() != itemId || last.isSelling() != selling) {
+		if (last == null || last.getItemId() != itemId || isSellState(last.getState()) != selling) {
 			if (quantitySold > 0 && firstSinceReset) {
 				return Optional.empty();
 			}
-			last = new OfferSnapshot(itemId, 0, 0, selling);
+			last = new OfferSnapshot(itemId, 0, 0, state, totalQuantity, price);
 		}
 
 		int quantityDelta = quantitySold - last.getQuantitySold();
@@ -69,10 +70,35 @@ public class OfferTrackerImpl implements OfferTracker {
 		return Optional.of(new OfferDelta(itemId, side, quantityDelta, priceEach, slot, now));
 	}
 
+	// A slot that empties while its offer was still BUYING/SELLING and short of
+	// its total means the final fill's event never arrived - it can land in the
+	// same tick as the collection and collapse straight to EMPTY. Book the
+	// unaccounted units at the offer price rather than losing them. An abort
+	// always shows its CANCELLED state first, so those clear with no residual;
+	// a slot collected while this client was away has no snapshot and is skipped.
+	private Optional<OfferDelta> residualFill(OfferSnapshot last, int slot, Instant now) {
+		if (last == null || !isActiveState(last.getState())) {
+			return Optional.empty();
+		}
+		int missing = last.getQuantityTotal() - last.getQuantitySold();
+		if (missing <= 0 || last.getPrice() <= 0) {
+			return Optional.empty();
+		}
+		OfferDelta.Side side = isSellState(last.getState()) ? OfferDelta.Side.SELL : OfferDelta.Side.BUY;
+		log.debug("event=residual_fill_on_empty item={} slot={} missing={} price={}",
+				last.getItemId(), slot, missing, last.getPrice());
+		return Optional.of(new OfferDelta(last.getItemId(), side, missing, last.getPrice(), slot, now));
+	}
+
 	@Override
 	public void reset() {
 		slots.clear();
 		replayedSlots.clear();
+	}
+
+	private static boolean isActiveState(GrandExchangeOfferState state) {
+		return state == GrandExchangeOfferState.BUYING
+				|| state == GrandExchangeOfferState.SELLING;
 	}
 
 	private static boolean isSellState(GrandExchangeOfferState state) {
