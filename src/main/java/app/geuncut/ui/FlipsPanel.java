@@ -801,7 +801,7 @@ public class FlipsPanel extends PluginPanel {
 		actions.setOpaque(false);
 		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
 		actions.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
-		actions.add(actionButton("Item details ↗", true,
+		actions.add(actionButton("Item details ↗",
 				() -> onOpenItem.accept(flip.getItemId())), BorderLayout.EAST);
 		card.add(actions);
 		return card;
@@ -811,7 +811,7 @@ public class FlipsPanel extends PluginPanel {
 		JPanel row = new JPanel(new BorderLayout());
 		row.setOpaque(false);
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 16));
-		row.add(text(label, Theme.MUTED, Theme.SMALL), BorderLayout.WEST);
+		row.add(text(label, Theme.INK, Theme.SMALL), BorderLayout.WEST);
 		JLabel number = text(value, Theme.INK, Theme.NUM_SMALL);
 		number.setHorizontalAlignment(SwingConstants.RIGHT);
 		row.add(number, BorderLayout.EAST);
@@ -1023,10 +1023,10 @@ public class FlipsPanel extends PluginPanel {
 			actions.setOpaque(false);
 			actions.setAlignmentX(Component.LEFT_ALIGNMENT);
 			actions.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
-			actions.add(actionButton("Item details ↗", true,
+			actions.add(actionButton("Item details ↗",
 					() -> onOpenItem.accept(position.getItemId())));
 			actions.add(Box.createHorizontalGlue());
-			actions.add(actionButton("Not a flip", false,
+			actions.add(actionButton("Not a flip",
 					() -> onNotFlip.accept(position.getId())));
 			card.add(actions);
 		}
@@ -1038,7 +1038,7 @@ public class FlipsPanel extends PluginPanel {
 		row.setOpaque(false);
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 21));
 		row.setPreferredSize(new Dimension(10, 21));
-		row.add(text(label, Theme.MUTED, Theme.SMALL), BorderLayout.WEST);
+		row.add(text(label, Theme.INK, Theme.SMALL), BorderLayout.WEST);
 		JLabel number = text(value, valueColor, Theme.NUM_SMALL);
 		number.setHorizontalAlignment(SwingConstants.RIGHT);
 		row.add(number, BorderLayout.EAST);
@@ -1047,13 +1047,11 @@ public class FlipsPanel extends PluginPanel {
 
 	private static final int BUTTON_HEIGHT = 24;
 
-	private RoundedPanel actionButton(String label, boolean primary, Runnable onClick) {
-		java.awt.Color rest = primary ? Theme.INK : Theme.TRACK;
-		java.awt.Color hover = primary ? Theme.WHITE : Theme.HOVER;
-		RoundedPanel button = new RoundedPanel(7, rest, null);
+	private RoundedPanel actionButton(String label, Runnable onClick) {
+		RoundedPanel button = new RoundedPanel(7, Theme.TRACK, null);
 		button.setLayout(new BorderLayout());
 		button.setBorder(BorderFactory.createEmptyBorder(4, 9, 4, 9));
-		JLabel text = text(label, primary ? Theme.SURFACE : Theme.MUTED, primary ? Theme.SMALL_BOLD : Theme.SMALL);
+		JLabel text = text(label, Theme.INK, Theme.SMALL_BOLD);
 		text.setHorizontalAlignment(SwingConstants.CENTER);
 		text.setMinimumSize(new Dimension(24, text.getPreferredSize().height));
 		button.add(text, BorderLayout.CENTER);
@@ -1068,12 +1066,12 @@ public class FlipsPanel extends PluginPanel {
 
 			@Override
 			public void mouseEntered(MouseEvent event) {
-				button.setFill(hover);
+				button.setFill(Theme.HOVER);
 			}
 
 			@Override
 			public void mouseExited(MouseEvent event) {
-				button.setFill(rest);
+				button.setFill(Theme.TRACK);
 			}
 		});
 		return button;
@@ -1117,7 +1115,7 @@ public class FlipsPanel extends PluginPanel {
 		actions.setOpaque(false);
 		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
 		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
-		actions.add(actionButton("Make it a flip", true,
+		actions.add(actionButton("Make it a flip",
 				() -> onRestore.accept(position.getId())), BorderLayout.EAST);
 		card.add(actions);
 		return card;
