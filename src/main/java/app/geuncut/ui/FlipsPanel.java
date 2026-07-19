@@ -97,7 +97,6 @@ public class FlipsPanel extends PluginPanel {
 
 	private final JPanel historySection = new JPanel();
 	private final JPanel historyList = listPanel();
-	private final JLabel historyCount = new JLabel("0");
 
 	private final JPanel content = new JPanel(new CardLayout());
 	private final Map<String, JLabel> tabButtons = new LinkedHashMap<>();
@@ -346,13 +345,13 @@ public class FlipsPanel extends PluginPanel {
 	private JPanel buildHistoryPane() {
 		JPanel pane = pane();
 		JLabel blurb = text("Kept out of your stats. Restore anytime.", Theme.MUTED, Theme.SMALL);
+		shrinkToFit(blurb, PANEL_WIDTH - 22, 9.5f);
 		blurb.setAlignmentX(Component.LEFT_ALIGNMENT);
 		pane.add(blurb);
 		pane.add(strut(8));
 		historySection.setLayout(new BorderLayout());
 		historySection.setBackground(Theme.SURFACE);
 		historySection.setAlignmentX(Component.LEFT_ALIGNMENT);
-		historySection.add(sectionHeader("Archived", historyCount), BorderLayout.NORTH);
 		historySection.add(wrapList(historyList), BorderLayout.CENTER);
 		pane.add(historySection);
 		return pane;
@@ -519,7 +518,6 @@ public class FlipsPanel extends PluginPanel {
 				? response.getMarginChecks() : Collections.emptyList();
 		List<ArchivedSell> sells = response.getArchivedSells() != null
 				? response.getArchivedSells() : Collections.emptyList();
-		historyCount.setText(Integer.toString(positions.size() + checks.size() + sells.size()));
 		historyList.removeAll();
 		for (Position position : positions) {
 			addCard(historyList, historyCard(position));
@@ -1187,7 +1185,10 @@ public class FlipsPanel extends PluginPanel {
 		text.setHorizontalAlignment(SwingConstants.CENTER);
 		text.setMinimumSize(new Dimension(24, text.getPreferredSize().height));
 		button.add(text, BorderLayout.CENTER);
-		Dimension size = new Dimension(button.getPreferredSize().width, BUTTON_HEIGHT);
+		// A few px of slack over the measured label: live-client font metrics can
+		// run a hair wider than construction-time ones, and the frozen preferred
+		// width was ellipsizing "Track as a flip" mid-word.
+		Dimension size = new Dimension(button.getPreferredSize().width + 6, BUTTON_HEIGHT);
 		button.setPreferredSize(size);
 		button.setMaximumSize(size);
 		installRecursively(button, new MouseAdapter() {
@@ -1225,10 +1226,6 @@ public class FlipsPanel extends PluginPanel {
 		shrinkToFit(name, CONTENT_WIDTH - 26 - 9);
 		name.setAlignmentX(Component.LEFT_ALIGNMENT);
 		nameCol.add(name);
-		nameCol.add(Box.createVerticalStrut(2));
-		JLabel sub = text("Archived", Theme.MUTED, Theme.SMALL);
-		sub.setAlignmentX(Component.LEFT_ALIGNMENT);
-		nameCol.add(sub);
 		head.add(nameCol, BorderLayout.CENTER);
 		card.add(head);
 
