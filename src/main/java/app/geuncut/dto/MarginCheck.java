@@ -8,6 +8,9 @@ import lombok.Value;
 @Value
 @Builder
 public class MarginCheck {
+	@SerializedName("sell_event_id")
+	private final long sellEventId;
+
 	@SerializedName("item_id")
 	private final int itemId;
 

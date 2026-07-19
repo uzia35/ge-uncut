@@ -39,6 +39,7 @@ class MockGeUncutApi implements GeUncutApi {
 	final List<List<GeHistoryRow>> postedHistory = new ArrayList<>();
 	final List<Long> archivedPositions = new ArrayList<>();
 	final List<Long> restoredPositions = new ArrayList<>();
+	final List<Long> trackedPairs = new ArrayList<>();
 	boolean failNextArchive;
 	PositionsResponse archivedResponse;
 	String lastHistoryAccountHash;
@@ -90,6 +91,12 @@ class MockGeUncutApi implements GeUncutApi {
 	@Override
 	public void restorePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError) {
 		restoredPositions.add(positionId);
+		onSuccess.run();
+	}
+
+	@Override
+	public void trackPair(long sellEventId, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		trackedPairs.add(sellEventId);
 		onSuccess.run();
 	}
 

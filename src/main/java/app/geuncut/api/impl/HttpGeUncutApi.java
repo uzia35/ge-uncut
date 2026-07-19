@@ -164,6 +164,20 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
+	public void trackPair(long sellEventId, Runnable onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/positions/margin-checks/" + sellEventId + "/track");
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		Request request = new Request.Builder()
+				.url(url)
+				.post(RequestBody.create(JSON, "{}"))
+				.build();
+		enqueue(request, onError, body -> onSuccess.run());
+	}
+
+	@Override
 	public void fetchOfferPlacements(Consumer<List<OfferPlacement>> onSuccess, Consumer<ApiFailure> onError) {
 		HttpUrl url = resolve("/api/plugin/offers/placements");
 		if (url == null) {
