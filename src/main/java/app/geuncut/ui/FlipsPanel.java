@@ -31,8 +31,10 @@ import javax.swing.JPanel;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 
+import app.geuncut.dto.ArchivedSell;
 import app.geuncut.dto.DemandTrend;
 import app.geuncut.dto.Fill;
+import app.geuncut.dto.MarginCheck;
 import app.geuncut.dto.Flip;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.MoverEntry;
@@ -341,7 +343,7 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildHistoryPane() {
 		JPanel pane = pane();
-		JLabel blurb = text("Marked not a flip. Restore anytime.", Theme.MUTED, Theme.SMALL);
+		JLabel blurb = text("Kept out of your P&L and win rate. Restore anytime.", Theme.MUTED, Theme.SMALL);
 		blurb.setAlignmentX(Component.LEFT_ALIGNMENT);
 		pane.add(blurb);
 		pane.add(strut(8));
@@ -470,10 +472,20 @@ public class FlipsPanel extends PluginPanel {
 	public void showHistory(PositionsResponse response) {
 		List<Position> positions = response.getPositions() != null
 				? response.getPositions() : Collections.emptyList();
-		historyCount.setText(Integer.toString(positions.size()));
+		List<MarginCheck> checks = response.getMarginChecks() != null
+				? response.getMarginChecks() : Collections.emptyList();
+		List<ArchivedSell> sells = response.getArchivedSells() != null
+				? response.getArchivedSells() : Collections.emptyList();
+		historyCount.setText(Integer.toString(positions.size() + checks.size() + sells.size()));
 		historyList.removeAll();
 		for (Position position : positions) {
 			addCard(historyList, historyCard(position));
+		}
+		for (MarginCheck check : checks) {
+			addCard(historyList, marginCheckCard(check));
+		}
+		for (ArchivedSell sale : sells) {
+			addCard(historyList, archivedSellCard(sale));
 		}
 		revalidate();
 		repaint();
@@ -1177,9 +1189,44 @@ public class FlipsPanel extends PluginPanel {
 		actions.setOpaque(false);
 		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
 		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
-		actions.add(actionButton("Make it a flip",
+		actions.add(actionButton("Track as a flip",
 				() -> onRestore.accept(position.getId())), BorderLayout.EAST);
 		card.add(actions);
+		return card;
+	}
+
+	private RoundedPanel plainHistoryCard(int itemId, String name) {
+		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
+		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
+		JPanel head = new JPanel(new BorderLayout(9, 0));
+		head.setOpaque(false);
+		head.setAlignmentX(Component.LEFT_ALIGNMENT);
+		head.add(icon(itemId, name, 26), BorderLayout.WEST);
+		JLabel nameHead = nameLabel(name);
+		shrinkToFit(nameHead, CONTENT_WIDTH - 26 - 9);
+		head.add(nameHead, BorderLayout.CENTER);
+		card.add(head);
+		card.add(Box.createVerticalStrut(8));
+		clickable(card, itemId);
+		return card;
+	}
+
+	private RoundedPanel marginCheckCard(MarginCheck check) {
+		RoundedPanel card = plainHistoryCard(check.getItemId(), check.getItemName());
+		addLeft(card, detailRow("Quantity", "1", Theme.INK));
+		addLeft(card, detailRow("Bought at", GP.format(check.getBuyPrice()), Theme.INK));
+		addLeft(card, detailRow("Sold at", GP.format(check.getSellPrice()), Theme.INK));
+		return card;
+	}
+
+	private RoundedPanel archivedSellCard(ArchivedSell sale) {
+		RoundedPanel card = plainHistoryCard(sale.getItemId(), sale.getItemName());
+		addLeft(card, detailRow("Quantity", GP.format(sale.getQuantity()), Theme.INK));
+		addLeft(card, detailRow("Bought at", "—", Theme.MUTED));
+		addLeft(card, detailRow("Sold at",
+				sale.getPriceEach() != null ? GP.format(sale.getPriceEach()) : "—",
+				sale.getPriceEach() != null ? Theme.INK : Theme.MUTED));
 		return card;
 	}
 
