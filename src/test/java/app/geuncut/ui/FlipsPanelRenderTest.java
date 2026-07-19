@@ -35,7 +35,9 @@ public class FlipsPanelRenderTest {
 			"\"unrealized_profit\":506000,\"roi\":2.3,\"phase\":\"sell\",\"sell_reason\":\"target_hit\",\"price_stale\":false}]}";
 
 	private static final String ARCHIVED_JSON = "{\"positions\":[" +
-			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480}]}";
+			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480}]," +
+			"\"margin_checks\":[{\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
+			"\"archived_sells\":[{\"item_id\":1601,\"item_name\":\"Diamond\",\"quantity\":8,\"price_each\":1640,\"occurred_at\":\"2026-07-19T09:00:00\"}]}";
 
 	private static final String MOVERS_JSON = "{\"risers\":[" +
 			"{\"item_id\":1,\"name\":\"Hueycoatl hide vambraces\",\"change_pct\":21.8,\"price\":38213,\"volume_day\":124000}," +
@@ -141,7 +143,7 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "Not a flip"));
 		assertNotNull(findLabel(panel, "Item details ↗"));
 		panel.selectTab("history");
-		assertNotNull(findLabel(panel, "Make it a flip"));
+		assertNotNull(findLabel(panel, "Track as a flip"));
 	}
 
 	@Test
@@ -192,7 +194,7 @@ public class FlipsPanelRenderTest {
 		};
 		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, capture);
 		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
-		JLabel restore = findLabel(panel, "Make it a flip");
+		JLabel restore = findLabel(panel, "Track as a flip");
 		assertNotNull(restore);
 
 		MouseEvent click = new MouseEvent(restore, MouseEvent.MOUSE_CLICKED, 0L, 0, 1, 1, 1, false);
