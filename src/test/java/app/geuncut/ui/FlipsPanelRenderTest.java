@@ -174,10 +174,10 @@ public class FlipsPanelRenderTest {
 		};
 		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, capture);
 		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
-		// Both the archived card's restore and the pair card carry this label;
+		// Both the completed card's restore and the pair card carry this label;
 		// clicking every one must route the pair's click to the sell event id.
 		java.util.List<JLabel> tracks = new java.util.ArrayList<>();
-		collectLabels(panel, "Track as a flip", tracks);
+		collectLabels(panel, "Restore", tracks);
 		assertTrue(tracks.size() >= 2);
 		for (JLabel track : tracks) {
 			MouseEvent click = new MouseEvent(track, MouseEvent.MOUSE_CLICKED, 0L, 0, 1, 1, 1, false);
