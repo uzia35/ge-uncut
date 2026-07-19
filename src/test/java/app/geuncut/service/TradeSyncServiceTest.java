@@ -6,6 +6,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import app.geuncut.api.ApiFailure;
+import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.impl.TradeSyncServiceImpl;
 import org.junit.Before;
@@ -13,6 +14,7 @@ import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -125,5 +127,33 @@ public class TradeSyncServiceTest {
 		assertTrue(key.contains("acct-1"));
 		assertTrue(key.contains("20997"));
 		assertTrue(key.contains(String.valueOf(T0.toEpochMilli())));
+	}
+
+	@Test
+	public void everyEventCarriesItsOwnClientEventId() {
+		service.accept(buy(3));
+		service.accept(buy(5));
+		flushTick.run();
+
+		String first = api.postedBatches.get(0).get(0).getClientEventId();
+		String second = api.postedBatches.get(0).get(1).getClientEventId();
+		assertEquals(36, java.util.UUID.fromString(first).toString().length());
+		assertFalse(first.equals(second));
+	}
+
+	@Test
+	public void clientEventIdSurvivesARetryWhilePublishedAtIsRestamped() {
+		service.accept(buy(3));
+		api.failNextPost = true;
+		flushTick.run();
+		flushTick.run();
+
+		assertEquals(1, api.postedBatches.size());
+		GeTradeEvent event = api.postedBatches.get(0).get(0);
+		// Minted at accept time, so the retry re-sends the same identity.
+		assertEquals(36, java.util.UUID.fromString(event.getClientEventId()).toString().length());
+		assertTrue(event.getPublishedAt() != null && !event.getPublishedAt().isEmpty());
+		// Publication is the transmission attempt, distinct from the fill time.
+		assertTrue(Instant.parse(event.getPublishedAt()).isAfter(T0));
 	}
 }

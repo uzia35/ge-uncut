@@ -16,6 +16,8 @@ public interface OfferTracker {
 			GrandExchangeOfferState state,
 			int quantitySold,
 			int spent,
+			int totalQuantity,
+			int price,
 			Instant now);
 
 	void reset();

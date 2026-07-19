@@ -1,10 +1,12 @@
 package app.geuncut.service.impl;
 
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.Deque;
 import java.util.List;
+import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
@@ -55,13 +57,20 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 
 	@Override
 	protected void flush() {
-		List<GeTradeEvent> batch;
+		List<GeTradeEvent> drained;
 		synchronized (queue) {
 			if (queue.isEmpty()) {
 				return;
 			}
-			batch = new ArrayList<>(queue);
+			drained = new ArrayList<>(queue);
 			queue.clear();
+		}
+		// Restamped per transmission attempt; client_event_id stays fixed, so
+		// the pair separates "when it happened" from "when it finally got out".
+		String publishedAt = Instant.now().toString();
+		List<GeTradeEvent> batch = new ArrayList<>(drained.size());
+		for (GeTradeEvent event : drained) {
+			batch.add(event.toBuilder().publishedAt(publishedAt).build());
 		}
 		api.postGeEvents(batch,
 				() -> log.debug("event=trade_sync_flushed count={}", batch.size()),
@@ -92,6 +101,7 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 		return GeTradeEvent.builder()
 				.accountHash(accountHash)
 				.idempotencyKey(idempotencyKey(accountHash, delta))
+				.clientEventId(UUID.randomUUID().toString())
 				.itemId(delta.getItemId())
 				.side(delta.getSide() == OfferDelta.Side.BUY ? "buy" : "sell")
 				.quantity(delta.getQuantity())

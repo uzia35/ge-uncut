@@ -236,6 +236,8 @@ public class GeUncutPlugin extends Plugin {
 				offer.getState(),
 				offer.getQuantitySold(),
 				offer.getSpent(),
+				offer.getTotalQuantity(),
+				offer.getPrice(),
 				now).ifPresent(this::onFill);
 		offerSync.record(
 				event.getSlot(),
