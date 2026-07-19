@@ -1247,7 +1247,9 @@ public class FlipsPanel extends PluginPanel {
 		actions.setOpaque(false);
 		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
 		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
-		actions.add(actionButton(position.getClosedAt() != null ? "Restore" : "Track as a flip",
+		boolean completed = position.getClosedAt() != null
+				|| (position.getSoldQty() != null && position.getSoldQty() > 0);
+		actions.add(actionButton(completed ? "Restore" : "Track as a flip",
 				() -> onRestore.accept(position.getId())), BorderLayout.EAST);
 		card.add(actions);
 		return card;
