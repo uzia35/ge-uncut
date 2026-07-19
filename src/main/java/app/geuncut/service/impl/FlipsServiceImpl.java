@@ -2,13 +2,12 @@ package app.geuncut.service.impl;
 
 import java.util.function.Consumer;
 import java.util.Collections;
-import java.util.List;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
 import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
-import app.geuncut.dto.Flip;
+import app.geuncut.dto.FlipsResponse;
 import app.geuncut.service.FlipsService;
 
 /**
@@ -24,9 +23,23 @@ public class FlipsServiceImpl implements FlipsService {
 	}
 
 	@Override
-	public void fetch(String scanType, String risk, Long capital, Consumer<List<Flip>> onSuccess, Consumer<ApiFailure> onError) {
+	public void fetch(String scanType, String risk, Long capital, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
 		api.fetchFlips(scanType, risk, capital,
-				response -> onSuccess.accept(response.getFlips() != null ? response.getFlips() : Collections.emptyList()),
+				response -> onSuccess.accept(normalize(response)),
 				onError);
+	}
+
+	// The consumer contract: never null, never a null flip list.
+	private static FlipsResponse normalize(FlipsResponse response) {
+		if (response == null) {
+			return FlipsResponse.builder().flips(Collections.emptyList()).build();
+		}
+		if (response.getFlips() == null) {
+			return FlipsResponse.builder()
+					.flips(Collections.emptyList())
+					.myCapital(response.getMyCapital())
+					.build();
+		}
+		return response;
 	}
 }

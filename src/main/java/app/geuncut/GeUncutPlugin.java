@@ -316,11 +316,14 @@ public class GeUncutPlugin extends Plugin {
 		refreshPositions();
 		refreshMovers();
 		flips.fetch(target.selectedScan(), target.selectedRisk(), target.selectedCapital(),
-				list -> SwingUtilities.invokeLater(() -> {
+				response -> SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
 						return;
 					}
-					target.showFlips(list, linked);
+					// Picker first: if the link state moved the effective capital,
+					// applyCapital re-scans and this render is replaced anyway.
+					target.applyCapital(linked, response.getMyCapital());
+					target.showFlips(response.getFlips(), linked);
 				}),
 				failure -> SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
