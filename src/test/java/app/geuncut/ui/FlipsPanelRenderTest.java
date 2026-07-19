@@ -47,12 +47,14 @@ public class FlipsPanelRenderTest {
 			"{\"item_id\":1623,\"name\":\"Uncut diamond\",\"buy_price\":2512,\"target_sell_price\":2617," +
 			"\"quantity\":10000,\"total_profit\":530000,\"profit_per_item\":53,\"position_cost\":25120000," +
 			"\"roi\":2.1,\"roi_per_day\":0.7,\"entry_discount_pct\":4.0,\"strategy\":\"value\",\"members\":false," +
+			"\"demand_trend\":{\"direction\":\"steady\",\"ratio\":0.8}," +
 			"\"buy_fill\":{\"worst_case_hours\":0.23},\"sell_fill\":{\"worst_case_hours\":0.53}}," +
 			"{\"item_id\":383,\"name\":\"Marlin\",\"buy_price\":3522,\"target_sell_price\":3927," +
 			"\"quantity\":28392,\"total_profit\":9280000,\"profit_per_item\":327,\"position_cost\":100000000," +
 			"\"roi\":9.3,\"roi_per_day\":3.1,\"entry_discount_pct\":10.3,\"strategy\":\"standard\",\"members\":true," +
 			"\"horizon\":{\"recommended_days\":3}," +
-			"\"demand_trend\":{\"direction\":\"rising\"}," +
+			"\"demand_trend\":{\"direction\":\"rising\",\"ratio\":1.4}," +
+			"\"news\":{\"direction\":\"up\",\"confidence\":80}," +
 			"\"buy_fill\":{\"worst_case_hours\":108.0},\"sell_fill\":{\"worst_case_hours\":74.4}}" +
 			"]}";
 

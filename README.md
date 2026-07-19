@@ -1,6 +1,6 @@
 # GE Uncut
 
-**Find profitable OSRS flips in seconds, track your profit automatically, and never miss a buy-limit reset. Right inside RuneLite.**
+**Find profitable OSRS flips in seconds, track your profit automatically. Right inside RuneLite.**
 
 Free. Backed by the full [geuncut.app](https://geuncut.app) toolkit.
 
@@ -74,7 +74,7 @@ The entire toolkit is fully responsive, so you can scan flips, check movers, and
 
 ## Automatic profit tracking
 
-Link your account and the plugin reports your own GE offer fills, so every flip tracks itself in "My Flips" on geuncut.app. No spreadsheets, no manual entry. It also mirrors your live GE slots (working offers) and runs a rolling 4-hour buy-limit timer for every item.
+Link your account and the plugin reports your own GE offer fills, so every flip tracks itself in "My Flips" on geuncut.app. No spreadsheets, no manual entry. It also mirrors your live GE slots (working offers) with the game's own offer timers.
 
 ![My Flips: profit tracked automatically from your own offers](docs/screenshots/my-flips.png)
 

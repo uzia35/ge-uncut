@@ -45,6 +45,8 @@ public class Flip {
 	@SerializedName("demand_trend")
 	private final DemandTrend demandTrend;
 
+	private final NewsSignal news;
+
 	private final Boolean members;
 
 	@SerializedName("buy_fill")

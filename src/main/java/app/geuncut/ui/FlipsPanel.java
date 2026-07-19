@@ -819,9 +819,13 @@ public class FlipsPanel extends PluginPanel {
 			addLeft(card, metaLabel);
 		}
 
+		if (flip.getNews() != null) {
+			card.add(Box.createVerticalStrut(8));
+			addLeft(card, pill("Recent news", Theme.AMBER));
+		}
 		Pill demand = demandPill(flip.getDemandTrend());
 		if (demand != null) {
-			card.add(Box.createVerticalStrut(8));
+			card.add(Box.createVerticalStrut(flip.getNews() != null ? 4 : 8));
 			addLeft(card, demand);
 		}
 
@@ -909,11 +913,15 @@ public class FlipsPanel extends PluginPanel {
 		if (trend == null || trend.getDirection() == null) {
 			return null;
 		}
+		// The website's tag, compacted for 225px: label plus the volume pace.
+		String pace = trend.getRatio() != null ? " · " + trimNum(trend.getRatio()) + "× vol" : "";
 		switch (trend.getDirection()) {
 			case RISING:
-				return pill("Demand rising", Theme.UP);
+				return pill("Demand rising" + pace, Theme.UP);
 			case FALLING:
-				return pill("Demand falling", Theme.DOWN);
+				return pill("Demand falling" + pace, Theme.DOWN);
+			case STEADY:
+				return pill("Demand steady" + pace, Theme.MUTED);
 			default:
 				return null;
 		}
