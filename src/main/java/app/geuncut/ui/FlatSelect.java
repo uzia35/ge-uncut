@@ -83,6 +83,14 @@ class FlatSelect extends RoundedPanel {
 		this.onChange = onChange;
 	}
 
+	// The inner label owns most of the hover area, so a tooltip must ride on
+	// both components or it only shows over the padding.
+	@Override
+	public void setToolTipText(String text) {
+		super.setToolTipText(text);
+		valueLabel.setToolTipText(text);
+	}
+
 	String selectedValue() {
 		return values[selectedIndex];
 	}

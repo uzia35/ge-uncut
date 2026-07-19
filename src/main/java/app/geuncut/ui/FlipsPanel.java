@@ -406,6 +406,9 @@ public class FlipsPanel extends PluginPanel {
 		String previous = capitalPicker.selectedValue();
 		String desired = capitalTouched ? previous : (mine ? "" : CAPITAL_PRESET_VALUES[0]);
 		capitalPicker.setOptions(labels, values, desired);
+		capitalPicker.setToolTipText(mine
+				? "My capital is the amount saved in your website settings - edit it on the Flip Finder page"
+				: null);
 		if (!capitalPicker.selectedValue().equals(previous)) {
 			onRefresh.run();
 		}
