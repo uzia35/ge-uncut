@@ -12,6 +12,7 @@ import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
+import app.geuncut.dto.OfferPlacement;
 import app.geuncut.dto.PositionsResponse;
 
 /**
@@ -31,6 +32,7 @@ class MockGeUncutApi implements GeUncutApi {
 	FlipsResponse flipsResponse;
 	PositionsResponse positionsResponse;
 	Movers moversResponse;
+	List<OfferPlacement> placementsResponse;
 
 	final List<List<GeTradeEvent>> postedBatches = new ArrayList<>();
 	final List<List<GeOffer>> postedOffers = new ArrayList<>();
@@ -89,6 +91,15 @@ class MockGeUncutApi implements GeUncutApi {
 	public void restorePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError) {
 		restoredPositions.add(positionId);
 		onSuccess.run();
+	}
+
+	@Override
+	public void fetchOfferPlacements(Consumer<List<OfferPlacement>> onSuccess, Consumer<ApiFailure> onError) {
+		if (placementsResponse != null) {
+			onSuccess.accept(placementsResponse);
+		} else {
+			onError.accept(failure);
+		}
 	}
 
 	@Override

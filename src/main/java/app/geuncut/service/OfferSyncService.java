@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 
 import app.geuncut.dto.GeOffer;
+import app.geuncut.dto.OfferPlacement;
 import net.runelite.api.GrandExchangeOfferState;
 
 /**
@@ -18,4 +19,11 @@ public interface OfferSyncService extends SyncService {
 
 	/** Current working offers, for the in-client panel. */
 	List<GeOffer> current();
+
+	/**
+	 * Server-side placement times for the player's slots. An offer whose
+	 * identity matches keeps its original placement across client restarts
+	 * instead of restarting its age at login.
+	 */
+	void seed(List<OfferPlacement> placements);
 }

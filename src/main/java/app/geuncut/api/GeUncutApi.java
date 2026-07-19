@@ -9,6 +9,7 @@ import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
+import app.geuncut.dto.OfferPlacement;
 import app.geuncut.dto.PositionsResponse;
 
 /**
@@ -29,6 +30,10 @@ public interface GeUncutApi {
 	void fetchArchived(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError);
 
 	void restorePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError);
+
+	// Durable per-slot placement times, for seeding working-offer ages across
+	// client restarts.
+	void fetchOfferPlacements(Consumer<List<OfferPlacement>> onSuccess, Consumer<ApiFailure> onError);
 
 	void fetchMovers(Consumer<Movers> onSuccess, Consumer<ApiFailure> onError);
 

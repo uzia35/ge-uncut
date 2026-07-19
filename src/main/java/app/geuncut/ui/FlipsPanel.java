@@ -80,7 +80,13 @@ public class FlipsPanel extends PluginPanel {
 	private final JLabel offersCount = new JLabel("0");
 	private List<GeOffer> lastOffers = Collections.emptyList();
 	private Map<Integer, String> lastOfferNames = Collections.emptyMap();
-	private final javax.swing.Timer offerAgeTimer = new javax.swing.Timer(60_000, event -> renderOffers());
+	private boolean gameActive = true;
+	private final List<Runnable> offerAgeTicks = new ArrayList<>();
+	private final javax.swing.Timer offerAgeTimer = new javax.swing.Timer(1_000, event -> {
+		for (Runnable tick : offerAgeTicks) {
+			tick.run();
+		}
+	});
 
 	private final JPanel activeSection = new JPanel();
 	private final JPanel activeList = listPanel();
@@ -386,7 +392,23 @@ public class FlipsPanel extends PluginPanel {
 		renderOffers();
 	}
 
+	// Logged out, the panel can't see fills, so the ages stop ticking and dim
+	// rather than posing as live. The login replay catches everything up.
+	public void setGameActive(boolean active) {
+		if (gameActive == active) {
+			return;
+		}
+		gameActive = active;
+		if (active) {
+			offerAgeTimer.restart();
+		} else {
+			offerAgeTimer.stop();
+		}
+		renderOffers();
+	}
+
 	private void renderOffers() {
+		offerAgeTicks.clear();
 		offersCount.setText(Integer.toString(lastOffers.size()));
 		offersList.removeAll();
 		for (GeOffer offer : lastOffers) {
@@ -681,7 +703,7 @@ public class FlipsPanel extends PluginPanel {
 
 	// ---- cards ---------------------------------------------------------------
 
-	private static final long STUCK_OFFER_MINUTES = 30;
+	private static final long STUCK_OFFER_SECONDS = 30 * 60;
 
 	private RoundedPanel offerCard(GeOffer offer, String name) {
 		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
@@ -702,10 +724,24 @@ public class FlipsPanel extends PluginPanel {
 		JPanel top = new JPanel(new BorderLayout(6, 0));
 		top.setOpaque(false);
 		top.add(nameLabel(name), BorderLayout.CENTER);
-		Long ageMinutes = offerAgeMinutes(offer.getOccurredAt());
-		if (ageMinutes != null) {
-			boolean stuck = !full && ageMinutes >= STUCK_OFFER_MINUTES;
-			top.add(text(formatAge(ageMinutes), stuck ? Theme.AMBER : Theme.MUTED, Theme.NUM_TINY), BorderLayout.EAST);
+		Instant placed = parsePlacement(offer.getOccurredAt());
+		if (placed != null) {
+			// The in-game offer clock, seconds included. The label object updates
+			// in place on the 1s tick, so the card is never rebuilt for it. A
+			// completed offer stops ticking, and a logged-out client dims the age
+			// instead of pretending the panel still tracks fills.
+			JLabel age = text("", Theme.MUTED, Theme.NUM_TINY);
+			Runnable tick = () -> {
+				long seconds = Math.max(0, Duration.between(placed, Instant.now()).getSeconds());
+				age.setText(formatAge(seconds));
+				age.setForeground(seconds >= STUCK_OFFER_SECONDS && !full ? Theme.AMBER
+						: (gameActive ? Theme.MUTED : Theme.FAINT));
+			};
+			tick.run();
+			if (!full) {
+				offerAgeTicks.add(tick);
+			}
+			top.add(age, BorderLayout.EAST);
 		}
 		top.setAlignmentX(Component.LEFT_ALIGNMENT);
 		nameCol.add(top);
@@ -739,28 +775,24 @@ public class FlipsPanel extends PluginPanel {
 		return card;
 	}
 
-	private static Long offerAgeMinutes(String occurredAt) {
+	private static Instant parsePlacement(String occurredAt) {
 		if (occurredAt == null) {
 			return null;
 		}
 		try {
-			long minutes = Duration.between(Instant.parse(occurredAt), Instant.now()).toMinutes();
-			return minutes < 0 ? 0 : minutes;
+			return Instant.parse(occurredAt);
 		} catch (RuntimeException unparseable) {
 			return null;
 		}
 	}
 
-	private static String formatAge(long minutes) {
-		if (minutes < 60) {
-			return minutes + "m";
+	// The game's own offer-timer format (00:03:20); days spelled out past 24h.
+	private static String formatAge(long seconds) {
+		long days = seconds / 86_400;
+		if (days > 0) {
+			return days + "d " + String.format("%02d:%02d", (seconds % 86_400) / 3_600, (seconds % 3_600) / 60);
 		}
-		long hours = minutes / 60;
-		if (hours < 24) {
-			long rem = minutes % 60;
-			return rem == 0 ? hours + "h" : hours + "h " + rem + "m";
-		}
-		return (hours / 24) + "d";
+		return String.format("%02d:%02d:%02d", seconds / 3_600, (seconds % 3_600) / 60, seconds % 60);
 	}
 
 	private RoundedPanel finderCard(Flip flip) {
