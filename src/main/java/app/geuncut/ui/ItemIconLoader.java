@@ -32,10 +32,6 @@ public class ItemIconLoader {
 
 	private final OkHttpClient http;
 	private final ItemManager itemManager;
-	// Keyed by itemId AND render size: noted/unnoted variants share a name but
-	// not an id, and the same item appears at different sizes (26px card heads,
-	// 32px elsewhere) — a size-blind cache leaked oversized icons into small
-	// slots. Bounded LRU so a long session cannot grow it without limit.
 	private final Map<String, ImageIcon> cache = Collections.synchronizedMap(
 			new LinkedHashMap<String, ImageIcon>(64, 0.75f, true) {
 				@Override
@@ -57,9 +53,6 @@ public class ItemIconLoader {
 	}
 
 	void load(int itemId, String name, JLabel label, int size) {
-		// Inventory sprite first, so the row is never blank while the render
-		// loads — scaled to the slot, not slapped on at its native 36x32 (which
-		// overflowed the 26px card-head labels).
 		AsyncBufferedImage sprite = itemManager.getImage(itemId);
 		sprite.onLoaded(() -> SwingUtilities.invokeLater(() ->
 				label.setIcon(new ImageIcon(fit(sprite, size)))));

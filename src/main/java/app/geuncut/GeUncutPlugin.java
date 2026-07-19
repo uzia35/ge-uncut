@@ -134,17 +134,12 @@ public class GeUncutPlugin extends Plugin {
 		installPanel();
 
 		tradeSync.start(() -> Long.toString(client.getAccountHash()));
-		// Offers still record locally for the working-offers panel when unlinked, but
-		// only transmit when linked: a null hash makes the flush skip (see OfferSync).
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
 		positionsPoll = executor.scheduleWithFixedDelay(this::refreshPositions,
 				POSITIONS_POLL_SECONDS, POSITIONS_POLL_SECONDS, TimeUnit.SECONDS);
 		refreshFlips();
 	}
 
-	// Build the panel with the current theme and mount it. Extracted so a theme
-	// switch can tear the panel down and rebuild it with the new palette (Swing
-	// captures colours at construction, so a live re-theme means a rebuild).
 	private void installPanel() {
 		FlipsPanel.applyTheme(config.lightMode());
 		panel = new FlipsPanel(this::refreshFlips, this::linkAccount, this::unlinkAccount, this::openMovers,
@@ -165,8 +160,6 @@ public class GeUncutPlugin extends Plugin {
 		if (!GeUncutConfig.GROUP.equals(event.getGroup()) || !"lightMode".equals(event.getKey())) {
 			return;
 		}
-		// Rebuild on the EDT with the new palette, then repopulate from the last
-		// known state so the switch is seamless.
 		SwingUtilities.invokeLater(() -> {
 			clientToolbar.removeNavigation(navButton);
 			installPanel();
@@ -344,14 +337,9 @@ public class GeUncutPlugin extends Plugin {
 				}),
 				failure -> log.debug("event=positions_fetch_failed kind={} status={}",
 						failure.getKind(), failure.getStatusCode()));
-		// Keep the History tab in step with the flip list (archived fetch 401s
-		// harmlessly when unlinked).
 		refreshHistory();
 	}
 
-	// Panel "Not a flip": demote the position to History on the website, then
-	// refresh so it drops out of Active flips and into History. Best-effort — a
-	// failure just leaves the card in place (the next poll will reconcile).
 	private void markNotFlip(long positionId) {
 		api.archivePosition(positionId,
 				() -> SwingUtilities.invokeLater(() -> {
@@ -362,8 +350,6 @@ public class GeUncutPlugin extends Plugin {
 						positionId, failure.getKind(), failure.getStatusCode()));
 	}
 
-	// History tab "Make it a flip": restore an archived position, then refresh
-	// both lists so it moves back into Active flips.
 	private void restoreFlip(long positionId) {
 		api.restorePosition(positionId,
 				() -> SwingUtilities.invokeLater(() -> {

@@ -64,7 +64,6 @@ class MoversRotator extends JComponent {
 		setBackground(Theme.SURFACE);
 		setAlignmentX(Component.LEFT_ALIGNMENT);
 		setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-		// Whole row is the hit target: click a mover to open its item details.
 		addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent event) {
@@ -115,8 +114,6 @@ class MoversRotator extends JComponent {
 		return rows.isEmpty() ? 0 : (rows.size() + PAGE - 1) / PAGE;
 	}
 
-	// "20,589 gp · 1.2M vol" — the payload already ships both; null price means
-	// the second line shows only the change%.
 	private static String detailLine(MoverEntry entry) {
 		if (entry.getPrice() == null) {
 			return null;
@@ -223,15 +220,12 @@ class MoversRotator extends JComponent {
 			if (row.icon != null) {
 				g2.drawImage(row.icon, 0, rowY + (ROW_HEIGHT - ICON) / 2, ICON, ICON, null);
 			}
-			// Line 1: the name owns the row up to the ↗ (the whole-row click
-			// affordance), so it never fights the change% for width.
 			g2.setFont(Theme.BODY);
 			int arrowX = getWidth() - nameMetrics.stringWidth("↗");
 			g2.setColor(Theme.MUTED);
 			g2.drawString("↗", arrowX, line1);
 			g2.setColor(Theme.INK);
 			g2.drawString(truncate(row.name, nameMetrics, arrowX - NAME_GAP - TEXT_X), TEXT_X, line1);
-			// Line 2: price · volume on the left (full ink, readable), change% right.
 			g2.setFont(numberFont);
 			g2.setColor(pctColor);
 			int pctX = getWidth() - pctMetrics.stringWidth(row.pct);

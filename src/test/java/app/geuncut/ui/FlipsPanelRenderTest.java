@@ -24,8 +24,6 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 public class FlipsPanelRenderTest {
-	// Render at RuneLite's real sidebar width, not a guessed one — a wider
-	// harness hid name truncation that the live client then exposed.
 	private static final int PANEL_WIDTH = net.runelite.client.ui.PluginPanel.PANEL_WIDTH;
 	private static final LongConsumer noopArchive = id -> {
 	};
@@ -39,8 +37,6 @@ public class FlipsPanelRenderTest {
 	private static final String ARCHIVED_JSON = "{\"positions\":[" +
 			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480}]}";
 
-	// Long names + price/volume: the two-line mover rows must show the full name
-	// and the detail line at the real panel width.
 	private static final String MOVERS_JSON = "{\"risers\":[" +
 			"{\"item_id\":1,\"name\":\"Hueycoatl hide vambraces\",\"change_pct\":21.8,\"price\":38213,\"volume_day\":124000}," +
 			"{\"item_id\":2,\"name\":\"Watermelon seed\",\"change_pct\":31.6,\"price\":52,\"volume_day\":2400000}]," +
@@ -134,18 +130,14 @@ public class FlipsPanelRenderTest {
 		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
 		panel.showMovers(new Gson().fromJson(MOVERS_JSON, app.geuncut.dto.Movers.class));
 
-		// Expand the flip card so the tab screenshot shows the full detail state.
 		panel.toggleFlip(42);
 		for (String tab : new String[] { "finder", "flips", "movers", "history" }) {
 			panel.selectTab(tab);
 			write(paint(panel), "panel-tab-" + tab + ".png");
 		}
-		// The active-flip card lives under the Flips tab; expanded, it carries
-		// both actions.
 		panel.selectTab("flips");
 		assertNotNull(findLabel(panel, "Not a flip"));
 		assertNotNull(findLabel(panel, "Item details ↗"));
-		// The History tab shows the archived item with a restore button.
 		panel.selectTab("history");
 		assertNotNull(findLabel(panel, "Make it a flip"));
 	}
@@ -159,13 +151,10 @@ public class FlipsPanelRenderTest {
 		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive);
 		panel.showActiveFlips(new Gson().fromJson(ACTIVE_FLIPS_JSON, PositionsResponse.class));
 
-		// Collapsed by default: the actions are hidden, matching the mock.
 		assertTrue(findLabel(panel, "Not a flip") == null);
 		panel.toggleFlip(42);
 		assertNotNull(findLabel(panel, "Not a flip"));
 		assertNotNull(findLabel(panel, "Item details ↗"));
-		// The mock's P&L block: total leads, with the per-item average and the
-		// partial-fill split (this fixture has 400 of 1097 sold).
 		assertNotNull(findLabel(panel, "Total profit"));
 		assertNotNull(findLabel(panel, "Avg profit / ea"));
 		assertNotNull(findLabel(panel, "Unrealized P/L"));
@@ -182,16 +171,11 @@ public class FlipsPanelRenderTest {
 		IntConsumer noopItem = item -> {
 		};
 		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive);
-		// The layout that broke in the real client: stats hero with no offers and
-		// no active flips. CardLayout still gives the pane the tallest pane's
-		// height, so the hero must not stretch to fill it.
 		panel.showActiveFlips(new Gson().fromJson("{\"summary\":{},\"positions\":[]}", PositionsResponse.class));
 		panel.selectTab("flips");
 		BufferedImage image = paint(panel);
 		write(image, "panel-flips-sparse.png");
 
-		// Well below the stats, the pane must fall back to the SURFACE ground
-		// (0x28), not the raised card fill (0x33) that a stretched hero would show.
 		int red = new Color(image.getRGB(image.getWidth() / 2, image.getHeight() - 30)).getRed();
 		assertTrue("stats card stretched to fill the pane (red=" + red + ")", red < 0x2E);
 	}
@@ -229,10 +213,9 @@ public class FlipsPanelRenderTest {
 			panel.showFlips(response.getFlips(), true);
 			BufferedImage light = paint(panel);
 			write(light, "panel-light.png");
-			// A light panel's top-left is a near-white surface, not the dark grey.
 			assertTrue("light surface should be bright", new Color(light.getRGB(4, 4)).getRed() > 0xC0);
 		} finally {
-			FlipsPanel.applyTheme(false);   // restore dark for the other tests
+			FlipsPanel.applyTheme(false);
 		}
 	}
 
@@ -249,7 +232,6 @@ public class FlipsPanelRenderTest {
 		panel.toggleFlip(42);
 		write(paint(panel), "panel-active-flips.png");
 
-		// The demote affordance renders inside the expanded flip card.
 		assertNotNull("expected a 'Not a flip' control on the expanded flip card",
 				findLabel(panel, "Not a flip"));
 	}
@@ -274,7 +256,6 @@ public class FlipsPanelRenderTest {
 		for (MouseListener listener : notFlip.getMouseListeners()) {
 			listener.mouseClicked(click);
 		}
-		// The card's position id (42), not the item id — so the right flip is archived.
 		assertEquals(42L, captured[0]);
 	}
 
