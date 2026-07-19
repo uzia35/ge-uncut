@@ -56,6 +56,7 @@ public class FlipsPanel extends PluginPanel {
 	private static final int CONTENT_WIDTH = PANEL_WIDTH - 42;
 
 	private final ItemIconLoader iconLoader;
+	private final Runnable onRefresh;
 	private final IntConsumer onOpenItem;
 	private final LongConsumer onNotFlip;
 	private final LongConsumer onRestore;
@@ -112,9 +113,13 @@ public class FlipsPanel extends PluginPanel {
 			new String[] { "Standard", "Fast Fill", "High Volume" },
 			new String[] { "standard", "fast", "value" }, 2);
 	private final FlatSelect riskPicker = new FlatSelect(new String[] { "Conservative", "Balanced", "Aggressive" }, 1);
-	private final FlatSelect capitalPicker = new FlatSelect(
-			new String[] { "My capital", "1M gp", "5M gp", "10M gp", "50M gp", "100M gp", "500M gp", "1B gp" },
-			new String[] { "", "1000000", "5000000", "10000000", "50000000", "100000000", "500000000", "1000000000" }, 0);
+	// The website's capital presets, mirrored exactly. "My capital" is added by
+	// applyCapital once a linked flips response says what it resolves to.
+	private static final String[] CAPITAL_PRESET_LABELS = { "1M gp", "10M gp", "50M gp", "100M gp" };
+	private static final String[] CAPITAL_PRESET_VALUES = { "1000000", "10000000", "50000000", "100000000" };
+
+	private final FlatSelect capitalPicker = new FlatSelect(CAPITAL_PRESET_LABELS, CAPITAL_PRESET_VALUES, 0);
+	private boolean capitalTouched;
 	private final FlatSelect accountPicker = new FlatSelect(
 			new String[] { "All items", "Members", "Free-to-play" },
 			new String[] { "all", "members", "f2p" }, 0);
@@ -137,6 +142,7 @@ public class FlipsPanel extends PluginPanel {
 	public FlipsPanel(Runnable onRefresh, Runnable onLink, Runnable onUnlink, Runnable onOpenMovers,
 			Runnable onOpenWeb, ItemIconLoader iconLoader, IntConsumer onOpenItem, LongConsumer onNotFlip,
 			LongConsumer onRestore, LongConsumer onTrackPair) {
+		this.onRefresh = onRefresh;
 		this.iconLoader = iconLoader;
 		this.onOpenItem = onOpenItem;
 		this.onTrackPair = onTrackPair;
@@ -191,7 +197,11 @@ public class FlipsPanel extends PluginPanel {
 		});
 		scanPicker.setOnChange(onRefresh);
 		riskPicker.setOnChange(onRefresh);
-		capitalPicker.setOnChange(onRefresh);
+		// A manual pick sticks; applyCapital only moves an untouched selection.
+		capitalPicker.setOnChange(() -> {
+			capitalTouched = true;
+			onRefresh.run();
+		});
 		accountPicker.setOnChange(this::renderFlips);
 
 		selectTab("finder");
@@ -379,6 +389,33 @@ public class FlipsPanel extends PluginPanel {
 	public Long selectedCapital() {
 		String value = capitalPicker.selectedValue();
 		return value.isEmpty() ? null : Long.valueOf(value);
+	}
+
+	// Reshape the capital picker from a flips response: linked gets a "My
+	// capital" entry labelled with the bankroll saved on the website; unlinked
+	// gets the website's presets only, starting at 1M. An untouched selection
+	// follows the link state's default; if the effective value moved, re-scan.
+	public void applyCapital(boolean linked, Long myCapital) {
+		boolean mine = linked && myCapital != null && myCapital > 0;
+		String[] labels = CAPITAL_PRESET_LABELS;
+		String[] values = CAPITAL_PRESET_VALUES;
+		if (mine) {
+			labels = prepend("My capital (" + shortGp(myCapital) + " gp)", CAPITAL_PRESET_LABELS);
+			values = prepend("", CAPITAL_PRESET_VALUES);
+		}
+		String previous = capitalPicker.selectedValue();
+		String desired = capitalTouched ? previous : (mine ? "" : CAPITAL_PRESET_VALUES[0]);
+		capitalPicker.setOptions(labels, values, desired);
+		if (!capitalPicker.selectedValue().equals(previous)) {
+			onRefresh.run();
+		}
+	}
+
+	private static String[] prepend(String head, String[] rest) {
+		String[] combined = new String[rest.length + 1];
+		combined[0] = head;
+		System.arraycopy(rest, 0, combined, 1, rest.length);
+		return combined;
 	}
 
 	public void setLinked(boolean linked) {

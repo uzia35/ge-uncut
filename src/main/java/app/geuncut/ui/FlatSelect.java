@@ -20,8 +20,8 @@ import javax.swing.SwingUtilities;
  * a click opens a dark popup of the options.
  */
 class FlatSelect extends RoundedPanel {
-	private final String[] labels;
-	private final String[] values;
+	private String[] labels;
+	private String[] values;
 	private final JLabel valueLabel;
 	private int selectedIndex;
 	private Runnable onChange = () -> {
@@ -85,6 +85,22 @@ class FlatSelect extends RoundedPanel {
 
 	String selectedValue() {
 		return values[selectedIndex];
+	}
+
+	// Replace the option set, keeping the selection on desiredValue when it
+	// still exists (first option otherwise). Never fires onChange - the caller
+	// decides whether the effective value moved and what to do about it.
+	void setOptions(String[] labels, String[] values, String desiredValue) {
+		this.labels = labels;
+		this.values = values;
+		selectedIndex = 0;
+		for (int i = 0; i < values.length; i++) {
+			if (values[i].equals(desiredValue)) {
+				selectedIndex = i;
+				break;
+			}
+		}
+		valueLabel.setText(labels[selectedIndex]);
 	}
 
 	private void showMenu() {

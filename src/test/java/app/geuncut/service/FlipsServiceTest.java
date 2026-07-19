@@ -17,36 +17,38 @@ public class FlipsServiceTest {
 	@Test
 	public void nullFlipListSurfacesAsEmpty() {
 		MockGeUncutApi api = new MockGeUncutApi();
-		api.flipsResponse = FlipsResponse.builder().build();
+		api.flipsResponse = FlipsResponse.builder().myCapital(5_000_000L).build();
 
-		List<List<Flip>> received = new ArrayList<>();
+		List<FlipsResponse> received = new ArrayList<>();
 		new FlipsServiceImpl(api).fetch("standard", "balanced", null, received::add, error -> {
 		});
 
 		assertEquals(1, received.size());
-		assertTrue(received.get(0).isEmpty());
+		assertTrue(received.get(0).getFlips().isEmpty());
+		// Normalizing the flip list must not drop the rest of the response.
+		assertEquals(Long.valueOf(5_000_000L), received.get(0).getMyCapital());
 	}
 
 	@Test
-	public void fetchUnwrapsTheFlipList() {
+	public void fetchPassesTheResponseThrough() {
 		MockGeUncutApi api = new MockGeUncutApi();
 		api.flipsResponse = FlipsResponse.builder()
 				.flips(Collections.singletonList(Flip.builder().build()))
 				.build();
 
-		List<List<Flip>> received = new ArrayList<>();
+		List<FlipsResponse> received = new ArrayList<>();
 		new FlipsServiceImpl(api).fetch("standard", "balanced", null, received::add, error -> {
 		});
 
 		assertEquals(1, received.size());
-		assertEquals(1, received.get(0).size());
+		assertEquals(1, received.get(0).getFlips().size());
 	}
 
 	@Test
 	public void fetchSurfacesErrors() {
 		MockGeUncutApi api = new MockGeUncutApi();
 		List<ApiFailure> errors = new ArrayList<>();
-		new FlipsServiceImpl(api).fetch("standard", "balanced", null, flips -> {
+		new FlipsServiceImpl(api).fetch("standard", "balanced", null, response -> {
 		}, errors::add);
 
 		assertEquals(1, errors.size());
