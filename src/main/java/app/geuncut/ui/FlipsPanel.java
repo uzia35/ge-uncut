@@ -75,8 +75,10 @@ public class FlipsPanel extends PluginPanel {
 	private final JPanel moversSection = new JPanel();
 	private final JPanel gainersGroup = new JPanel();
 	private final JPanel losersGroup = new JPanel();
+	private final JPanel spikesGroup = new JPanel();
 	private final MoversRotator gainers;
 	private final MoversRotator losers;
+	private final MoversRotator spikes;
 
 	private final JPanel offersSection = new JPanel();
 	private final JPanel offersList = listPanel();
@@ -143,6 +145,11 @@ public class FlipsPanel extends PluginPanel {
 		// Row icons are inventory sprites (no network); the loader repaints as they decode.
 		gainers = new MoversRotator(Theme.NUM_SMALL, Theme.UP, iconLoader::sprite, onOpenItem);
 		losers = new MoversRotator(Theme.NUM_SMALL, Theme.DOWN, iconLoader::sprite, onOpenItem);
+		// Volume spikes show "N.N×" (today's volume over usual), not a percent.
+		spikes = new MoversRotator(Theme.NUM_SMALL, Theme.AMBER, iconLoader::sprite, onOpenItem,
+				entry -> entry.getVolumeRatio() != null
+						? String.format("%.1f×", entry.getVolumeRatio())
+						: String.format("%+.1f%%", entry.getChangePct()));
 
 		setLayout(new BorderLayout());
 		setBackground(Theme.SURFACE);
@@ -331,12 +338,14 @@ public class FlipsPanel extends PluginPanel {
 		moversSection.add(moversHeader, BorderLayout.NORTH);
 		buildMoverGroup(gainersGroup, "Gainers", gainers, 0);
 		buildMoverGroup(losersGroup, "Losers", losers, 10);
+		buildMoverGroup(spikesGroup, "Volume spikes", spikes, 10);
 		JPanel moversBody = new JPanel();
 		moversBody.setLayout(new BoxLayout(moversBody, BoxLayout.Y_AXIS));
 		moversBody.setBackground(Theme.SURFACE);
 		moversBody.setAlignmentX(Component.LEFT_ALIGNMENT);
 		moversBody.add(gainersGroup);
 		moversBody.add(losersGroup);
+		moversBody.add(spikesGroup);
 		moversSection.add(moversBody, BorderLayout.CENTER);
 		pane.add(moversSection);
 		return pane;
@@ -441,7 +450,9 @@ public class FlipsPanel extends PluginPanel {
 		// rather than NPEing the render.
 		PositionsSummary summary = response.getSummary() != null
 				? response.getSummary() : PositionsSummary.builder().build();
-		setStat(allTimeValue, summary.getTotalRealized());
+		// Same number as the website's Total profit hero: realized plus open
+		// unrealized, not realized alone under the same caption.
+		setStat(allTimeValue, summary.getTotalRealized() + summary.getOpenUnrealized());
 		setStat(todayValue, summary.getTodayRealized());
 		setStat(unrealizedValue, summary.getOpenUnrealized());
 		winValue.setText(summary.getWinRate() != null ? Math.round(summary.getWinRate()) + "%" : "—");
@@ -541,14 +552,18 @@ public class FlipsPanel extends PluginPanel {
 	public void showMovers(Movers movers) {
 		List<MoverEntry> risers = movers != null ? movers.getRisers() : null;
 		List<MoverEntry> fallers = movers != null ? movers.getFallers() : null;
+		List<MoverEntry> volumeSpikes = movers != null ? movers.getVolumeSpikes() : null;
 		gainers.setEntries(risers);
 		losers.setEntries(fallers);
+		spikes.setEntries(volumeSpikes);
 		// Hide an empty group so a one-sided day leaves no dangling header.
 		boolean hasGainers = risers != null && !risers.isEmpty();
 		boolean hasLosers = fallers != null && !fallers.isEmpty();
+		boolean hasSpikes = volumeSpikes != null && !volumeSpikes.isEmpty();
 		gainersGroup.setVisible(hasGainers);
 		losersGroup.setVisible(hasLosers);
-		moversSection.setVisible(hasGainers || hasLosers);
+		spikesGroup.setVisible(hasSpikes);
+		moversSection.setVisible(hasGainers || hasLosers || hasSpikes);
 		revalidate();
 		repaint();
 	}
@@ -826,6 +841,25 @@ public class FlipsPanel extends PluginPanel {
 
 		clickable(card, offer.getItemId());
 		return card;
+	}
+
+	// "2d of 3d" while a hold window exists, plain "2d" without one; "<1d" on
+	// day zero. Null when opened_at is missing or unparseable.
+	private static String heldText(String openedAt, Integer horizonDays) {
+		Instant opened = parsePlacement(openedAt);
+		if (opened == null && openedAt != null) {
+			try {
+				opened = java.time.LocalDateTime.parse(openedAt).toInstant(java.time.ZoneOffset.UTC);
+			} catch (RuntimeException unparseable) {
+				return null;
+			}
+		}
+		if (opened == null) {
+			return null;
+		}
+		long days = Math.max(0, Duration.between(opened, Instant.now()).toDays());
+		String held = days < 1 ? "<1d" : days + "d";
+		return horizonDays != null ? held + " of " + horizonDays + "d" : held;
 	}
 
 	private static Instant parsePlacement(String occurredAt) {
@@ -1147,6 +1181,23 @@ public class FlipsPanel extends PluginPanel {
 							: "— none yet",
 					hasSold ? Theme.INK : Theme.MUTED));
 			addLeft(card, detailRow("Cost", shortGp(position.getBuyPrice() * position.getQuantity()), Theme.INK));
+			// What the flip is aiming for: target, armed alert, hold progress.
+			if (position.getTargetSellPrice() != null || position.getAlertPrice() != null
+					|| position.getOpenedAt() != null) {
+				card.add(Box.createVerticalStrut(6));
+				addLeft(card, divider());
+				card.add(Box.createVerticalStrut(6));
+				if (position.getTargetSellPrice() != null) {
+					addLeft(card, detailRow("Sell target", "@ " + GP.format(position.getTargetSellPrice()), Theme.INK));
+				}
+				if (position.getAlertPrice() != null) {
+					addLeft(card, detailRow("Alert at", "@ " + GP.format(position.getAlertPrice()), Theme.INK));
+				}
+				String held = heldText(position.getOpenedAt(), position.getHorizonDays());
+				if (held != null) {
+					addLeft(card, detailRow("Held", held, Theme.INK));
+				}
+			}
 
 			JPanel actions = new JPanel();
 			actions.setLayout(new BoxLayout(actions, BoxLayout.X_AXIS));

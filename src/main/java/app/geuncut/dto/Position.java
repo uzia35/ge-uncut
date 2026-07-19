@@ -47,6 +47,20 @@ public class Position {
 	@SerializedName("closed_at")
 	private final String closedAt;
 
+	// What the flip is aiming for: sell target, armed alert, and the hold
+	// window for the expanded card.
+	@SerializedName("target_sell_price")
+	private final Long targetSellPrice;
+
+	@SerializedName("alert_price")
+	private final Long alertPrice;
+
+	@SerializedName("horizon_days")
+	private final Integer horizonDays;
+
+	@SerializedName("opened_at")
+	private final String openedAt;
+
 	private final Double roi;
 
 	private final String phase;
