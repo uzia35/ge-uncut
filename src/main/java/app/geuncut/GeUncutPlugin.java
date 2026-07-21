@@ -125,6 +125,12 @@ public class GeUncutPlugin extends Plugin {
 	private FlipsPanel panel;
 	private NavigationButton navButton;
 	private ScheduledFuture<?> positionsPoll;
+	// Set when a session drops (login screen / hop / disconnect) — the states
+	// that make the next login replay and re-stamp every GE offer. Consumed on
+	// the next LOGGED_IN so the placement seed is re-applied exactly once per
+	// login, not on every in-session region load (which shares the
+	// LOADING -> LOGGED_IN transition but never replays offers).
+	private boolean offerReplayPending;
 
 	private static final int POSITIONS_POLL_SECONDS = 30;
 	private static final int POST_FILL_REFRESH_SECONDS = 8;
@@ -138,9 +144,17 @@ public class GeUncutPlugin extends Plugin {
 		positionsPoll = executor.scheduleWithFixedDelay(this::refreshPositions,
 				POSITIONS_POLL_SECONDS, POSITIONS_POLL_SECONDS, TimeUnit.SECONDS);
 		refreshFlips();
-		// Durable placement times so working-offer ages survive a client restart
-		// (401s harmlessly when unlinked). Re-push so already-replayed slots pick
-		// up their seeded ages.
+		seedOfferPlacements();
+	}
+
+	// Durable placement times so working-offer ages survive a client restart AND
+	// a relog/world-hop: each login replays the offers and re-stamps them with
+	// the login time, so the seed must be re-fetched and re-applied every login,
+	// not just once at plugin load. 401s harmlessly when unlinked. The server's
+	// placed_at is durable (the offer-starts upsert keeps it while the same
+	// offer holds the slot), so a re-fetch after a login re-stamp still returns
+	// the true placement time. Re-push so already-replayed slots pick it up.
+	private void seedOfferPlacements() {
 		api.fetchOfferPlacements(
 				placements -> {
 					offerSync.seed(placements);
@@ -199,14 +213,25 @@ public class GeUncutPlugin extends Plugin {
 
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event) {
-		if (event.getGameState() == GameState.LOGIN_SCREEN || event.getGameState() == GameState.HOPPING) {
+		GameState current = event.getGameState();
+		if (current == GameState.LOGIN_SCREEN || current == GameState.HOPPING
+				|| current == GameState.CONNECTION_LOST) {
+			// The next login will replay and re-stamp every GE offer, so the
+			// placement seed must be re-applied then.
+			offerReplayPending = true;
+		}
+		if (current == GameState.LOGIN_SCREEN || current == GameState.HOPPING) {
 			offerTracker.reset();
 		}
 		// Offer ages only tick while a session can actually see fills. HOPPING
 		// stays live (the offers survive a hop); only a real logout pauses.
-		if (event.getGameState() == GameState.LOGGED_IN) {
+		if (current == GameState.LOGGED_IN) {
 			SwingUtilities.invokeLater(() -> panel.setGameActive(true));
-		} else if (event.getGameState() == GameState.LOGIN_SCREEN) {
+			if (offerReplayPending) {
+				offerReplayPending = false;
+				seedOfferPlacements();
+			}
+		} else if (current == GameState.LOGIN_SCREEN) {
 			SwingUtilities.invokeLater(() -> panel.setGameActive(false));
 		}
 	}
