@@ -95,6 +95,9 @@ public class FlipsPanel extends PluginPanel {
 
 	private final JPanel historySection = new JPanel();
 	private final JPanel historyList = listPanel();
+	private static final int HISTORY_PAGE = 10;
+	private PositionsResponse historyResponse;
+	private int historyVisible = HISTORY_PAGE;
 
 	private final JPanel content = new JPanel(new CardLayout());
 	private final Map<String, JLabel> tabButtons = new LinkedHashMap<>();
@@ -533,6 +536,18 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showHistory(PositionsResponse response) {
+		historyResponse = response;
+		historyVisible = HISTORY_PAGE;
+		renderHistory();
+	}
+
+	private void renderHistory() {
+		PositionsResponse response = historyResponse;
+		if (response == null) {
+			return;
+		}
+		List<Position> completed = response.getCompleted() != null
+				? response.getCompleted() : Collections.emptyList();
 		List<Position> positions = response.getPositions() != null
 				? response.getPositions() : Collections.emptyList();
 		List<MarginCheck> checks = response.getMarginChecks() != null
@@ -540,10 +555,15 @@ public class FlipsPanel extends PluginPanel {
 		List<ArchivedSell> sells = response.getArchivedSells() != null
 				? response.getArchivedSells() : Collections.emptyList();
 		List<Map.Entry<Instant, RoundedPanel>> entries = new ArrayList<>();
+		for (Position position : completed) {
+			entries.add(historyEntry(
+					position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt(),
+					historyCard(position, false)));
+		}
 		for (Position position : positions) {
 			entries.add(historyEntry(
 					position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt(),
-					historyCard(position)));
+					historyCard(position, true)));
 		}
 		for (MarginCheck check : checks) {
 			entries.add(historyEntry(check.getOccurredAt(), marginCheckCard(check)));
@@ -553,8 +573,16 @@ public class FlipsPanel extends PluginPanel {
 		}
 		entries.sort((a, b) -> b.getKey().compareTo(a.getKey()));
 		historyList.removeAll();
-		for (Map.Entry<Instant, RoundedPanel> entry : entries) {
-			addCard(historyList, entry.getValue());
+		int shown = Math.min(historyVisible, entries.size());
+		for (int i = 0; i < shown; i++) {
+			addCard(historyList, entries.get(i).getValue());
+		}
+		int hidden = entries.size() - shown;
+		if (hidden > 0) {
+			addCard(historyList, actionButton("Show " + hidden + " more", () -> {
+				historyVisible += HISTORY_PAGE;
+				renderHistory();
+			}));
 		}
 		revalidate();
 		repaint();
@@ -1296,7 +1324,7 @@ public class FlipsPanel extends PluginPanel {
 		return button;
 	}
 
-	private RoundedPanel historyCard(Position position) {
+	private RoundedPanel historyCard(Position position, boolean restorable) {
 		Long soldPrice = position.getSoldQty() != null && position.getSoldQty() > 0
 				&& position.getSoldAvgPrice() != null
 						? position.getSoldAvgPrice() : position.getExitPrice();
@@ -1313,12 +1341,14 @@ public class FlipsPanel extends PluginPanel {
 		addWhenRow(card, position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt());
 
 		clickable(card, position.getItemId());
-		boolean completed = position.getClosedAt() != null
-				|| (position.getSoldQty() != null && position.getSoldQty() > 0);
-		card.add(historyActions(
-				actionButton(completed ? "Restore" : "Track as a flip", () -> onRestore.accept(position.getId())),
-				completed ? "Puts this back in your flips under Completed. It counts again."
-						: "Starts tracking this as a live open flip. It counts again."));
+		if (restorable) {
+			boolean completed = position.getClosedAt() != null
+					|| (position.getSoldQty() != null && position.getSoldQty() > 0);
+			card.add(historyActions(
+					actionButton(completed ? "Restore" : "Track as a flip", () -> onRestore.accept(position.getId())),
+					completed ? "Puts this back in your flips under Completed. It counts again."
+							: "Starts tracking this as a live open flip. It counts again."));
+		}
 		return card;
 	}
 
