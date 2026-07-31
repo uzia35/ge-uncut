@@ -23,8 +23,10 @@ public class MarginCheck {
 	@SerializedName("sell_price")
 	private final long sellPrice;
 
-	/** After-tax result of the pair, computed server-side. Null on old payloads. */
+	/** After-tax result of the pair and the GE tax it paid, computed server-side. */
 	private final Long profit;
+
+	private final Long tax;
 
 	@SerializedName("occurred_at")
 	private final String occurredAt;

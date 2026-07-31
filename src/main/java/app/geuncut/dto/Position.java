@@ -39,6 +39,10 @@ public class Position {
 	@SerializedName("realized_profit")
 	private final Long realizedProfit;
 
+	// Archived payload only: what the completed flip paid in GE tax.
+	@SerializedName("tax_paid")
+	private final Long taxPaid;
+
 	// Archived-endpoint extras: a completed trade moved to History keeps its
 	// sale price and close time, so the panel can show and restore it right.
 	@SerializedName("exit_price")

@@ -42,8 +42,8 @@ public class FlipsPanelRenderTest {
 	private static final String ARCHIVED_JSON = "{\"positions\":[" +
 			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480,\"opened_at\":\"2026-07-10T12:00:00\"}," +
 			"{\"id\":9,\"item_id\":1637,\"item_name\":\"Sapphire ring\",\"quantity\":10,\"buy_price\":900," +
-			"\"exit_price\":1100,\"realized_profit\":1780,\"opened_at\":\"2026-07-15T09:00:00\",\"closed_at\":\"2026-07-18T10:00:00\"}]," +
-			"\"margin_checks\":[{\"sell_event_id\":501,\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"profit\":-52,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
+			"\"exit_price\":1100,\"realized_profit\":1780,\"tax_paid\":220,\"opened_at\":\"2026-07-15T09:00:00\",\"closed_at\":\"2026-07-18T10:00:00\"}]," +
+			"\"margin_checks\":[{\"sell_event_id\":501,\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"profit\":-52,\"tax\":52,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
 			"\"archived_sells\":[{\"item_id\":1601,\"item_name\":\"Diamond\",\"quantity\":8,\"price_each\":1640,\"occurred_at\":\"2026-07-19T09:00:00+00:00\"}]}";
 
 	private static final String MOVERS_JSON = "{\"risers\":[" +
@@ -159,14 +159,17 @@ public class FlipsPanelRenderTest {
 		// shows its manual-close sale price instead of a dash.
 		assertNotNull(findLabel(panel, "Restore"));
 		assertNotNull(findLabel(panel, "1,100"));
-		// Every History card says what it was: FLIPPED rows carry the after-tax
-		// result (the closed flip's realized profit, the pair's server-computed
-		// profit), everything else reads REGULAR TRADE. Columns match the
-		// website (Qty/Buy/Sold/When), so "When" rows exist for dated cards.
+		// Every History card says what it was: FLIPPED rows lead with a Made
+		// row (the closed flip's realized profit, the pair's server-computed
+		// profit) and the GE tax the trade paid; everything else reads
+		// REGULAR TRADE. Columns match the website (Qty/Buy/Sold/When).
 		assertNotNull(findLabel(panel, "FLIPPED"));
 		assertNotNull(findLabel(panel, "REGULAR TRADE"));
+		assertNotNull(findLabel(panel, "Made"));
 		assertNotNull(findLabel(panel, "+2k"));
 		assertNotNull(findLabel(panel, "−52"));
+		assertNotNull(findLabel(panel, "Tax paid"));
+		assertNotNull(findLabel(panel, "220"));
 		assertNotNull(findLabel(panel, "When"));
 		assertNotNull(findLabel(panel, "Qty"));
 		// Two linked accounts split the active list into website-style sections,

@@ -1359,9 +1359,10 @@ public class FlipsPanel extends PluginPanel {
 				&& position.getSoldAvgPrice() != null
 						? position.getSoldAvgPrice() : position.getExitPrice();
 		boolean flipped = soldPrice != null;
-		RoundedPanel card = historyCardShell(position.getItemId(), position.getName(),
-				flipped, flipped ? position.getRealizedProfit() : null);
-
+		RoundedPanel card = historyCardShell(position.getItemId(), position.getName(), flipped);
+		if (flipped) {
+			addMadeRows(card, position.getRealizedProfit(), position.getTaxPaid());
+		}
 		addLeft(card, detailRow("Qty", GP.format(position.getQuantity()), Theme.INK));
 		addLeft(card, detailRow("Buy", GP.format(position.getBuyPrice()), Theme.INK));
 		addLeft(card, detailRow("Sold",
@@ -1394,9 +1395,9 @@ public class FlipsPanel extends PluginPanel {
 		return button;
 	}
 
-	// The shared History card head: icon, name, and the label line that says
-	// what the row was — FLIPPED with its after-tax result, or REGULAR TRADE.
-	private RoundedPanel historyCardShell(int itemId, String name, boolean flipped, Long made) {
+	// The shared History card head: icon, name, and the tag line that says
+	// what the row was — FLIPPED or REGULAR TRADE (micro tag, same as the site).
+	private RoundedPanel historyCardShell(int itemId, String name, boolean flipped) {
 		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
 		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
 		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
@@ -1416,12 +1417,11 @@ public class FlipsPanel extends PluginPanel {
 		line2.setOpaque(false);
 		line2.setLayout(new BoxLayout(line2, BoxLayout.X_AXIS));
 		line2.setAlignmentX(Component.LEFT_ALIGNMENT);
-		line2.add(solidPill(flipped ? "FLIPPED" : "REGULAR TRADE",
-				flipped ? Theme.UP : Theme.MUTED));
-		if (made != null) {
-			line2.add(Box.createHorizontalStrut(6));
-			line2.add(text(pnlText(made), made >= 0 ? Theme.UP : Theme.DOWN, Theme.NUM_BOLD));
-		}
+		Pill tag = new Pill(flipped ? "FLIPPED" : "REGULAR TRADE",
+				flipped ? Theme.UP : Theme.MUTED,
+				Theme.soft(flipped ? Theme.UP : Theme.MUTED), null, 10);
+		tag.setFont(Theme.PILL);
+		line2.add(tag);
 		nameCol.add(line2);
 		head.add(nameCol, BorderLayout.CENTER);
 		card.add(head);
@@ -1439,9 +1439,28 @@ public class FlipsPanel extends PluginPanel {
 		}
 	}
 
+	// The headline of a flipped card: what it made after tax, in the large
+	// mono the finder cards use for profit, with the tax paid under it.
+	private void addMadeRows(RoundedPanel card, Long made, Long tax) {
+		if (made != null) {
+			JPanel row = new JPanel(new BorderLayout(8, 0));
+			row.setOpaque(false);
+			row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+			row.setPreferredSize(new Dimension(10, 24));
+			row.add(text("Made", Theme.INK, Theme.SMALL), BorderLayout.WEST);
+			JLabel value = text(pnlText(made), made >= 0 ? Theme.UP : Theme.DOWN, Theme.NUM_LG);
+			value.setHorizontalAlignment(SwingConstants.RIGHT);
+			row.add(value, BorderLayout.EAST);
+			addLeft(card, row);
+		}
+		if (tax != null) {
+			addLeft(card, detailRow("Tax paid", shortGp(tax), Theme.MUTED));
+		}
+	}
+
 	private RoundedPanel marginCheckCard(MarginCheck check) {
-		RoundedPanel card = historyCardShell(check.getItemId(), check.getItemName(),
-				true, check.getProfit());
+		RoundedPanel card = historyCardShell(check.getItemId(), check.getItemName(), true);
+		addMadeRows(card, check.getProfit(), check.getTax());
 		addLeft(card, detailRow("Qty", "1", Theme.INK));
 		addLeft(card, detailRow("Buy", GP.format(check.getBuyPrice()), Theme.INK));
 		addLeft(card, detailRow("Sold", GP.format(check.getSellPrice()), Theme.INK));
@@ -1459,7 +1478,7 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private RoundedPanel archivedSellCard(ArchivedSell sale) {
-		RoundedPanel card = historyCardShell(sale.getItemId(), sale.getItemName(), false, null);
+		RoundedPanel card = historyCardShell(sale.getItemId(), sale.getItemName(), false);
 		addLeft(card, detailRow("Qty", GP.format(sale.getQuantity()), Theme.INK));
 		addLeft(card, detailRow("Buy", "—", Theme.MUTED));
 		addLeft(card, detailRow("Sold",
