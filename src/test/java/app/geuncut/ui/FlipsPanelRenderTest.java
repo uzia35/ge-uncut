@@ -159,12 +159,12 @@ public class FlipsPanelRenderTest {
 		// shows its manual-close sale price instead of a dash.
 		assertNotNull(findLabel(panel, "Restore"));
 		assertNotNull(findLabel(panel, "1,100"));
-		// Every History card says what it was: FLIPPED rows lead with a Made
+		// Every History card says what it was: Flipped rows lead with a Made
 		// row (the closed flip's realized profit, the pair's server-computed
 		// profit) and the GE tax the trade paid; everything else reads
-		// REGULAR TRADE. Columns match the website (Qty/Buy/Sold/When).
-		assertNotNull(findLabel(panel, "FLIPPED"));
-		assertNotNull(findLabel(panel, "REGULAR TRADE"));
+		// Regular trade. Columns match the website (Qty/Buy/Sold/When).
+		assertNotNull(findLabel(panel, "Flipped"));
+		assertNotNull(findLabel(panel, "Regular trade"));
 		assertNotNull(findLabel(panel, "Made"));
 		assertNotNull(findLabel(panel, "+2k"));
 		assertNotNull(findLabel(panel, "−52"));

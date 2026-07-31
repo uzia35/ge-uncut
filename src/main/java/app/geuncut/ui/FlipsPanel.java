@@ -1417,11 +1417,11 @@ public class FlipsPanel extends PluginPanel {
 		line2.setOpaque(false);
 		line2.setLayout(new BoxLayout(line2, BoxLayout.X_AXIS));
 		line2.setAlignmentX(Component.LEFT_ALIGNMENT);
-		Pill tag = new Pill(flipped ? "FLIPPED" : "REGULAR TRADE",
-				flipped ? Theme.UP : Theme.MUTED,
-				Theme.soft(flipped ? Theme.UP : Theme.MUTED), null, 10);
-		tag.setFont(Theme.PILL);
-		line2.add(tag);
+		java.awt.Color hue = flipped ? Theme.UP : Theme.MUTED;
+		JLabel what = text(flipped ? "Flipped" : "Regular trade", hue, Theme.SMALL_BOLD);
+		what.setIcon(new TradeGlyph(flipped, hue, 13));
+		what.setIconTextGap(5);
+		line2.add(what);
 		nameCol.add(line2);
 		head.add(nameCol, BorderLayout.CENTER);
 		card.add(head);
