@@ -335,7 +335,7 @@ public class GeUncutPlugin extends Plugin {
 		line.setOriginalY(lineY);
 		line.setOriginalWidth(labelWidth);
 		line.setOriginalHeight(20);
-		line.setXTextAlignment(0);
+		line.setXTextAlignment(1);
 		line.setHasListener(true);
 		line.setAction(1, "Set GE Uncut value");
 		line.setOnOpListener((JavaScriptCallback) scriptEvent -> applyOfferValue(amount));
