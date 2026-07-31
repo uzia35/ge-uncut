@@ -99,6 +99,8 @@ public class FlipsPanel extends PluginPanel {
 	private PositionsResponse historyResponse;
 	private int historyVisible = HISTORY_PAGE;
 	private java.util.function.Consumer<String> onTabOpen;
+	private final JLabel flipsUpdated = text("", Theme.MUTED, Theme.SMALL);
+	private final JLabel historyUpdated = text("", Theme.MUTED, Theme.SMALL);
 
 	private final JPanel content = new JPanel(new CardLayout());
 	private final Map<String, JLabel> tabButtons = new LinkedHashMap<>();
@@ -270,20 +272,46 @@ public class FlipsPanel extends PluginPanel {
 		this.onTabOpen = onTabOpen;
 	}
 
-	private JPanel refreshRow(String tab, String hint) {
+	private JPanel refreshRow(String tab, JLabel status) {
 		JPanel row = new JPanel(new BorderLayout(8, 0));
 		row.setBackground(Theme.SURFACE);
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
-		JLabel hintLabel = text(hint, Theme.MUTED, Theme.SMALL);
-		shrinkToFit(hintLabel, PANEL_WIDTH - 50, 9.5f);
-		row.add(hintLabel, BorderLayout.WEST);
+		row.add(status, BorderLayout.WEST);
 		row.add(flatButton("↻", () -> {
+			markRefreshPending(tab);
 			if (onTabOpen != null) {
 				onTabOpen.accept(tab);
 			}
 		}), BorderLayout.EAST);
 		return row;
+	}
+
+	private JLabel refreshStatus(String tab) {
+		return "history".equals(tab) ? historyUpdated : flipsUpdated;
+	}
+
+	private void markRefreshPending(String tab) {
+		JLabel status = refreshStatus(tab);
+		status.setForeground(Theme.MUTED);
+		status.setText("Updating…");
+	}
+
+	private void markRefreshed(String tab) {
+		JLabel status = refreshStatus(tab);
+		status.setForeground(Theme.MUTED);
+		status.setText("Updated " + java.time.LocalTime.now()
+				.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")));
+	}
+
+	public void markRefreshFailed(String tab) {
+		JLabel status = refreshStatus(tab);
+		status.setForeground(Theme.DOWN);
+		status.setText("Couldn't update");
+	}
+
+	public void clearRefreshStatus(String tab) {
+		refreshStatus(tab).setText("");
 	}
 
 	private JPanel buildFinderPane(Runnable onRefresh) {
@@ -315,7 +343,7 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildFlipsPane(Runnable onOpenWeb) {
 		JPanel pane = pane();
-		pane.add(refreshRow("flips", "Live numbers update on refresh"));
+		pane.add(refreshRow("flips", flipsUpdated));
 		pane.add(strut(6));
 		pane.add(buildStats());
 		pane.add(strut(6));
@@ -382,7 +410,7 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildHistoryPane() {
 		JPanel pane = pane();
-		pane.add(refreshRow("history", "Every flip since launch, newest first"));
+		pane.add(refreshRow("history", historyUpdated));
 		pane.add(strut(6));
 		historySection.setLayout(new BorderLayout());
 		historySection.setBackground(Theme.SURFACE);
@@ -495,6 +523,7 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showActiveFlips(PositionsResponse response) {
+		markRefreshed("flips");
 		PositionsSummary summary = response.getSummary() != null
 				? response.getSummary() : PositionsSummary.builder().build();
 		setStat(allTimeValue, summary.getTotalRealized() + summary.getOpenUnrealized());
@@ -566,6 +595,7 @@ public class FlipsPanel extends PluginPanel {
 	public void showHistory(PositionsResponse response) {
 		historyResponse = response;
 		historyVisible = HISTORY_PAGE;
+		markRefreshed("history");
 		renderHistory();
 	}
 

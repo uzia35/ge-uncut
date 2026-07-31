@@ -486,10 +486,11 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshPositions() {
+		FlipsPanel target = panel;
 		if (!linked()) {
+			SwingUtilities.invokeLater(() -> target.clearRefreshStatus("flips"));
 			return;
 		}
-		FlipsPanel target = panel;
 		positions.fetch(
 				response -> {
 					latestPositions = response.getPositions() != null ? response.getPositions() : List.of();
@@ -499,8 +500,15 @@ public class GeUncutPlugin extends Plugin {
 						}
 					});
 				},
-				failure -> log.debug("event=positions_fetch_failed kind={} status={}",
-						failure.getKind(), failure.getStatusCode()));
+				failure -> {
+					log.debug("event=positions_fetch_failed kind={} status={}",
+							failure.getKind(), failure.getStatusCode());
+					SwingUtilities.invokeLater(() -> {
+						if (target == panel) {
+							target.markRefreshFailed("flips");
+						}
+					});
+				});
 	}
 
 	private void markNotFlip(long positionId) {
@@ -534,18 +542,26 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshHistory() {
+		FlipsPanel target = panel;
 		if (!linked()) {
+			SwingUtilities.invokeLater(() -> target.clearRefreshStatus("history"));
 			return;
 		}
-		FlipsPanel target = panel;
 		api.fetchArchived(
 				response -> SwingUtilities.invokeLater(() -> {
 					if (target == panel) {
 						target.showHistory(response);
 					}
 				}),
-				failure -> log.debug("event=archived_fetch_failed kind={} status={}",
-						failure.getKind(), failure.getStatusCode()));
+				failure -> {
+					log.debug("event=archived_fetch_failed kind={} status={}",
+							failure.getKind(), failure.getStatusCode());
+					SwingUtilities.invokeLater(() -> {
+						if (target == panel) {
+							target.markRefreshFailed("history");
+						}
+					});
+				});
 	}
 
 	private void refreshMovers() {
