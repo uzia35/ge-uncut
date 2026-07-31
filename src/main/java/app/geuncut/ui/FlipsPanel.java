@@ -98,6 +98,7 @@ public class FlipsPanel extends PluginPanel {
 	private static final int HISTORY_PAGE = 10;
 	private PositionsResponse historyResponse;
 	private int historyVisible = HISTORY_PAGE;
+	private java.util.function.Consumer<String> onTabOpen;
 
 	private final JPanel content = new JPanel(new CardLayout());
 	private final Map<String, JLabel> tabButtons = new LinkedHashMap<>();
@@ -260,6 +261,29 @@ public class FlipsPanel extends PluginPanel {
 		}
 		revalidate();
 		repaint();
+		if (onTabOpen != null) {
+			onTabOpen.accept(key);
+		}
+	}
+
+	public void setOnTabOpen(java.util.function.Consumer<String> onTabOpen) {
+		this.onTabOpen = onTabOpen;
+	}
+
+	private JPanel refreshRow(String tab, String hint) {
+		JPanel row = new JPanel(new BorderLayout(8, 0));
+		row.setBackground(Theme.SURFACE);
+		row.setAlignmentX(Component.LEFT_ALIGNMENT);
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 26));
+		JLabel hintLabel = text(hint, Theme.MUTED, Theme.SMALL);
+		shrinkToFit(hintLabel, PANEL_WIDTH - 50, 9.5f);
+		row.add(hintLabel, BorderLayout.WEST);
+		row.add(flatButton("↻", () -> {
+			if (onTabOpen != null) {
+				onTabOpen.accept(tab);
+			}
+		}), BorderLayout.EAST);
+		return row;
 	}
 
 	private JPanel buildFinderPane(Runnable onRefresh) {
@@ -291,6 +315,8 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildFlipsPane(Runnable onOpenWeb) {
 		JPanel pane = pane();
+		pane.add(refreshRow("flips", "Live numbers update on refresh"));
+		pane.add(strut(6));
 		pane.add(buildStats());
 		pane.add(strut(6));
 		webHint.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -356,6 +382,8 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildHistoryPane() {
 		JPanel pane = pane();
+		pane.add(refreshRow("history", "Every flip since launch, newest first"));
+		pane.add(strut(6));
 		historySection.setLayout(new BorderLayout());
 		historySection.setBackground(Theme.SURFACE);
 		historySection.setAlignmentX(Component.LEFT_ALIGNMENT);
