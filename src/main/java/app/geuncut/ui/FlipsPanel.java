@@ -1348,6 +1348,10 @@ public class FlipsPanel extends PluginPanel {
 					actionButton(completed ? "Restore" : "Track as a flip", () -> onRestore.accept(position.getId())),
 					completed ? "Puts this back in your flips under Completed. It counts again."
 							: "Starts tracking this as a live open flip. It counts again."));
+		} else {
+			card.add(historyActions(
+					actionButton("Not a flip", () -> onNotFlip.accept(position.getId())),
+					"Takes this out of your profit and win rate. Restore brings it back."));
 		}
 		return card;
 	}
