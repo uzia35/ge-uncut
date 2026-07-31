@@ -140,7 +140,10 @@ public class GeUncutPlugin extends Plugin {
 	private volatile List<Flip> latestFlips = List.of();
 	private volatile List<Position> latestPositions = List.of();
 	private String lastAutofillPrompt;
-	private Widget autofillLabel;
+	private Widget priceBadge;
+	private Widget qtyBadge;
+	private Widget offerBadgeContainer;
+	private String offerBadgeKey;
 
 	private static final int POSITIONS_POLL_SECONDS = 30;
 	private static final int POST_FILL_REFRESH_SECONDS = 8;
@@ -283,18 +286,22 @@ public class GeUncutPlugin extends Plugin {
 	@Subscribe
 	public void onGameTick(GameTick event) {
 		if (!config.autoFillOffers()) {
+			clearOfferBadges();
 			return;
 		}
+		updateOfferBadges();
+		prefillOfferPrompt();
+	}
+
+	private void prefillOfferPrompt() {
 		Widget title = client.getWidget(ComponentID.CHATBOX_TITLE);
 		if (title == null || title.isHidden()) {
 			lastAutofillPrompt = null;
-			hideAutofillLabel();
 			return;
 		}
 		OfferAutofill.Prompt kind = OfferAutofill.promptKind(title.getText());
 		if (kind == null) {
 			lastAutofillPrompt = null;
-			hideAutofillLabel();
 			return;
 		}
 		int itemId = client.getVarpValue(VarPlayer.CURRENT_GE_ITEM);
@@ -322,33 +329,71 @@ public class GeUncutPlugin extends Plugin {
 		}
 		input.setText(value + "*");
 		client.setVarcStrValue(VarClientStr.INPUT_TEXT, String.valueOf(value));
-		showAutofillLabel(kind, value);
 	}
 
-	private void showAutofillLabel(OfferAutofill.Prompt kind, long value) {
-		Widget container = client.getWidget(ComponentID.CHATBOX_CONTAINER);
-		if (container == null) {
+	private void updateOfferBadges() {
+		Widget container = client.getWidget(ComponentID.GRAND_EXCHANGE_OFFER_CONTAINER);
+		int itemId = client.getVarpValue(VarPlayer.CURRENT_GE_ITEM);
+		if (container == null || container.isHidden() || itemId <= 0) {
+			clearOfferBadges();
 			return;
 		}
+		if (container != offerBadgeContainer) {
+			clearOfferBadges();
+			offerBadgeContainer = container;
+		}
+		boolean sell = client.getVarbitValue(Varbits.GE_OFFER_CREATION_TYPE) == 1;
+		String hash = Long.toString(client.getAccountHash());
+		Long price = OfferAutofill.resolve(itemId, sell, OfferAutofill.Prompt.PRICE,
+				latestFlips, latestPositions, hash);
+		Long quantity = OfferAutofill.resolve(itemId, sell, OfferAutofill.Prompt.QUANTITY,
+				latestFlips, latestPositions, hash);
+		String key = itemId + ":" + sell + ":" + price + ":" + quantity;
+		if (key.equals(offerBadgeKey)) {
+			return;
+		}
+		hideBadges();
+		offerBadgeKey = key;
+		int half = container.getWidth() / 2;
+		int badgeY = container.getHeight() - 75;
+		if (quantity != null) {
+			qtyBadge = offerBadge(container, 0, half, badgeY, quantity);
+		}
+		if (price != null) {
+			priceBadge = offerBadge(container, half, half, badgeY, price);
+		}
+	}
+
+	private Widget offerBadge(Widget container, int x, int width, int y, long value) {
 		Widget label = container.createChild(-1, WidgetType.TEXT);
-		label.setText("GE Uncut " + (kind == OfferAutofill.Prompt.PRICE ? "price" : "quantity")
-				+ ": " + String.format("%,d", value) + " - press Enter");
+		label.setText("GE Uncut: " + String.format("%,d", value));
 		label.setFontId(FontID.VERDANA_11_BOLD);
 		label.setTextColor(0x2EC27E);
 		label.setTextShadowed(true);
-		label.setOriginalX(12);
-		label.setOriginalY(8);
-		label.setOriginalWidth(420);
+		label.setOriginalX(x);
+		label.setOriginalY(y);
+		label.setOriginalWidth(width);
 		label.setOriginalHeight(14);
+		label.setXTextAlignment(1);
 		label.revalidate();
-		autofillLabel = label;
+		return label;
 	}
 
-	private void hideAutofillLabel() {
-		if (autofillLabel != null) {
-			autofillLabel.setHidden(true);
-			autofillLabel = null;
+	private void hideBadges() {
+		if (priceBadge != null) {
+			priceBadge.setHidden(true);
+			priceBadge = null;
 		}
+		if (qtyBadge != null) {
+			qtyBadge.setHidden(true);
+			qtyBadge = null;
+		}
+	}
+
+	private void clearOfferBadges() {
+		hideBadges();
+		offerBadgeContainer = null;
+		offerBadgeKey = null;
 	}
 
 	@Subscribe
