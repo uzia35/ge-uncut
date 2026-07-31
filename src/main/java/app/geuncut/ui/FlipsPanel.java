@@ -101,6 +101,7 @@ public class FlipsPanel extends PluginPanel {
 	private java.util.function.Consumer<String> onTabOpen;
 	private final JLabel flipsUpdated = text("", Theme.MUTED, Theme.SMALL);
 	private final JLabel historyUpdated = text("", Theme.MUTED, Theme.SMALL);
+	private JPanel flipsRefreshRow;
 
 	private final JPanel content = new JPanel(new CardLayout());
 	private final Map<String, JLabel> tabButtons = new LinkedHashMap<>();
@@ -343,7 +344,8 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildFlipsPane(Runnable onOpenWeb) {
 		JPanel pane = pane();
-		pane.add(refreshRow("flips", flipsUpdated));
+		flipsRefreshRow = refreshRow("flips", flipsUpdated);
+		pane.add(flipsRefreshRow);
 		pane.add(strut(6));
 		pane.add(buildStats());
 		pane.add(strut(6));
@@ -689,6 +691,9 @@ public class FlipsPanel extends PluginPanel {
 		lastFlips = flips != null ? flips : Collections.emptyList();
 		promptShowing = false;
 		setLinked(linked);
+		if (flipsRefreshRow != null) {
+			flipsRefreshRow.setVisible(linked);
+		}
 		upsell.setVisible(!linked);
 		renderFlips();
 	}
