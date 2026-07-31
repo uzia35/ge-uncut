@@ -363,7 +363,7 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildHistoryPane() {
 		JPanel pane = pane();
-		JLabel blurb = text("Kept out of your P&L and win rate.", Theme.MUTED, Theme.SMALL);
+		JLabel blurb = text("Kept out of your profit and win rate.", Theme.MUTED, Theme.SMALL);
 		shrinkToFit(blurb, PANEL_WIDTH - 22, 9.5f);
 		blurb.setAlignmentX(Component.LEFT_ALIGNMENT);
 		pane.add(blurb);
@@ -775,7 +775,7 @@ public class FlipsPanel extends PluginPanel {
 		grid.setAlignmentX(Component.LEFT_ALIGNMENT);
 		grid.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 		grid.add(statTile("TODAY", todayValue));
-		grid.add(statTile("OPEN P/L", unrealizedValue));
+		grid.add(statTile("OPEN PROFIT", unrealizedValue));
 		grid.add(statTile("WIN RATE", winValue));
 		grid.add(statTile("AVG ROI", roiValue));
 		stats.add(grid);
@@ -1200,7 +1200,7 @@ public class FlipsPanel extends PluginPanel {
 		if (profit == null) {
 			JLabel dash = text("—", Theme.MUTED, Theme.NUM_BOLD);
 			if (position.isPriceStale()) {
-				dash.setToolTipText("Prices are stale, so P/L and sell signals are paused");
+				dash.setToolTipText("Prices are stale, so profit and sell signals are paused");
 			}
 			line2.add(dash);
 		} else {
@@ -1235,7 +1235,7 @@ public class FlipsPanel extends PluginPanel {
 			addLeft(card, divider());
 			card.add(Box.createVerticalStrut(8));
 			if (position.isPriceStale()) {
-				JLabel stale = text("Prices stale · P/L and signals paused", Theme.MUTED, Theme.SMALL);
+				JLabel stale = text("Prices stale · profit and signals paused", Theme.MUTED, Theme.SMALL);
 				stale.setAlignmentX(Component.LEFT_ALIGNMENT);
 				stale.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
 				card.add(stale);
@@ -1245,7 +1245,7 @@ public class FlipsPanel extends PluginPanel {
 					profit == null ? Theme.MUTED : (profit >= 0 ? Theme.UP : Theme.DOWN)));
 			boolean hasSold = position.getSoldQty() != null && position.getSoldQty() > 0;
 			if (hasSold && unrealized != null) {
-				addLeft(card, detailRow("Unrealized P/L", pnlText(unrealized),
+				addLeft(card, detailRow("Unrealized profit", pnlText(unrealized),
 						unrealized >= 0 ? Theme.UP : Theme.DOWN));
 			}
 			if (hasSold && realized != null) {

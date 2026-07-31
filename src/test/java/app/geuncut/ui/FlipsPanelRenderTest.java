@@ -256,7 +256,7 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "Item details ↗"));
 		assertNotNull(findLabel(panel, "Total profit"));
 		assertNotNull(findLabel(panel, "Avg profit / ea"));
-		assertNotNull(findLabel(panel, "Unrealized P/L"));
+		assertNotNull(findLabel(panel, "Unrealized profit"));
 		assertNotNull(findLabel(panel, "Realized so far"));
 		assertNotNull(findLabel(panel, "Avg ROI"));
 		panel.toggleFlip(42);
