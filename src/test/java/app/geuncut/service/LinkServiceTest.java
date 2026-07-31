@@ -118,7 +118,6 @@ public class LinkServiceTest {
 		api.deferNextPoll = true;
 		stalePoll.run();
 
-		// User abandons session 1 and starts a fresh session 2.
 		service.cancel();
 		api.session = LinkSession.builder()
 				.userCode("WXYZ-9999")
@@ -127,7 +126,6 @@ public class LinkServiceTest {
 				.build();
 		service.begin(shownCodes::add, () -> linkedCalls++, errors::add);
 
-		// The abandoned session-1 poll finally delivers a token.
 		api.linkToken = "stale-token";
 		api.firePendingPoll();
 

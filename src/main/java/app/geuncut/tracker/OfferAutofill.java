@@ -5,12 +5,6 @@ import java.util.List;
 import app.geuncut.dto.Flip;
 import app.geuncut.dto.Position;
 
-/**
- * Resolves what to pre-type into the GE offer setup's number prompt.
- * Buy offers take the finder card's price and quantity; sell offers on a
- * tracked flip take its sell target and whatever is left to sell. Pure logic;
- * the plugin does the widget work.
- */
 public final class OfferAutofill {
 	private OfferAutofill() {
 	}
@@ -19,7 +13,6 @@ public final class OfferAutofill {
 		PRICE, QUANTITY
 	}
 
-	/** The GE setup's chatbox prompt titles; anything else is not ours to fill. */
 	public static Prompt promptKind(String chatboxTitle) {
 		if (chatboxTitle == null) {
 			return null;
@@ -63,7 +56,6 @@ public final class OfferAutofill {
 			if (position.getItemId() != itemId) {
 				continue;
 			}
-			// An untagged position fills for any account; a tagged one only for its own.
 			if (position.getAccountHash() != null && accountHash != null
 					&& !position.getAccountHash().equals(accountHash)) {
 				continue;

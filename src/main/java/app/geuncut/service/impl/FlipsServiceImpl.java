@@ -10,9 +10,6 @@ import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.FlipsResponse;
 import app.geuncut.service.FlipsService;
 
-/**
- * Read side of the panel: the caller's personalized flip list.
- */
 @Singleton
 public class FlipsServiceImpl implements FlipsService {
 	private final GeUncutApi api;
@@ -29,7 +26,6 @@ public class FlipsServiceImpl implements FlipsService {
 				onError);
 	}
 
-	// The consumer contract: never null, never a null flip list.
 	private static FlipsResponse normalize(FlipsResponse response) {
 		if (response == null) {
 			return FlipsResponse.builder().flips(Collections.emptyList()).build();

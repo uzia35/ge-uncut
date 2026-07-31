@@ -57,7 +57,6 @@ public class OfferSyncServiceTest {
 		assertEquals(40, offer.getQuantityFilled());
 		assertEquals(100, offer.getQuantityTotal());
 		assertEquals(128, offer.getPriceEach());
-		// A monotonic snapshot time is sent so the server can drop out-of-order posts.
 		assertNotNull(api.lastOffersSyncedAt);
 	}
 

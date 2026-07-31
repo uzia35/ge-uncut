@@ -6,14 +6,6 @@ import java.util.List;
 import app.geuncut.dto.GeHistoryRow;
 import net.runelite.api.widgets.Widget;
 
-/**
- * Reads completed trades out of the in-game Grand Exchange trade history
- * window. Each entry is anchored by a "Bought:"/"Sold:" text child, followed
- * within a few children by the item (carries id + quantity) and a value text
- * ending in "= N each" ("105,350,000 coins (107,500,000 - 2,150,000) = 21,070
- * each"); single-unit rows only carry a "N coins" total. Color tags are
- * stripped before digit parsing so their hex codes never pollute a number.
- */
 public final class GeHistoryParser {
 	private static final int ROW_SCAN_LIMIT = 8;
 
@@ -62,7 +54,6 @@ public final class GeHistoryParser {
 		int priceEach = -1;
 		long totalValue = -1;
 		int end = Math.min(children.length, headerIndex + 1 + ROW_SCAN_LIMIT);
-		// Stops at the next header so a sparse row never bleeds into the following one.
 		for (int index = headerIndex + 1; index < end; index++) {
 			Widget child = children[index];
 			if (child == null) {

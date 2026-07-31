@@ -12,8 +12,6 @@ public class PositionsResponse {
 	private final List<Position> positions;
 	private final PositionsSummary summary;
 
-	// History-tab extras (archived endpoint only): the same content the
-	// website's History list shows beyond archived positions.
 	@SerializedName("margin_checks")
 	private final List<MarginCheck> marginChecks;
 

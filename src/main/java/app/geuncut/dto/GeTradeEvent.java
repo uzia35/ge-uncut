@@ -13,8 +13,6 @@ public class GeTradeEvent {
 	@SerializedName("idempotency_key")
 	private final String idempotencyKey;
 
-	// Stable per observed fill (minted once, survives retries), so the server
-	// can trace one event across transmission attempts.
 	@SerializedName("client_event_id")
 	private final String clientEventId;
 
@@ -33,8 +31,6 @@ public class GeTradeEvent {
 	@SerializedName("occurred_at")
 	private final String occurredAt;
 
-	// Wall clock of the transmission attempt, restamped per flush; the gap to
-	// occurred_at exposes catch-up lag.
 	@SerializedName("published_at")
 	private final String publishedAt;
 }

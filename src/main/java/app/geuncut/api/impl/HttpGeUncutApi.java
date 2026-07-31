@@ -38,10 +38,6 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
-/**
- * HTTP transport to geuncut.app. Nothing but HTTP lives here; payload shapes
- * are the dto package, business rules are the service layer.
- */
 @Slf4j
 @Singleton
 public class HttpGeUncutApi implements GeUncutApi {
@@ -62,12 +58,7 @@ public class HttpGeUncutApi implements GeUncutApi {
 		this(http, gson, config, executor, GeUncutConfig.API_BASE);
 	}
 
-	// Explicit base URL; the injected constructor above pins it to API_BASE. Lets a
-	// test point the transport at a local MockWebServer.
 	public HttpGeUncutApi(OkHttpClient http, Gson gson, GeUncutConfig config, ScheduledExecutorService executor, String baseUrl) {
-		// Plugin-scoped client derived from RuneLite's shared instance: same
-		// connection pool and dispatcher, but the auth interceptor only ever
-		// sees this plugin's requests.
 		this.http = http.newBuilder().addInterceptor(this::authorize).build();
 		this.gson = gson;
 		this.config = config;
@@ -87,7 +78,6 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	private static boolean isAnonymous(Request request) {
-		// Pairing runs before a token exists; those endpoints never carry one.
 		return request.url().encodedPath().startsWith("/api/plugin/link/");
 	}
 
@@ -303,7 +293,6 @@ public class HttpGeUncutApi implements GeUncutApi {
 			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
 			return;
 		}
-		// Token passed explicitly: config is already cleared, so the interceptor can't add it.
 		Request request = new Request.Builder()
 				.url(url)
 				.header("Authorization", "Bearer " + token)
@@ -346,8 +335,6 @@ public class HttpGeUncutApi implements GeUncutApi {
 						fail(ApiFailure.network("Empty response from geuncut.app"));
 						return;
 					}
-					// Only the read + parse are guarded here; a bug in the caller's own
-					// success handler must propagate, not be masked as a transport error.
 					onBody.accept(responseBody.string());
 				} catch (IOException | JsonParseException exception) {
 					log.debug("event=api_response_unreadable path={} error={}",
@@ -361,8 +348,6 @@ public class HttpGeUncutApi implements GeUncutApi {
 					fail(failure);
 					return;
 				}
-				// Jitter prevents a fleet of clients that failed together (server
-				// deploy, brief outage) from retrying in lockstep.
 				long delayMs = RETRY_BASE_DELAY_MS * attemptNumber
 						+ ThreadLocalRandom.current().nextLong(RETRY_JITTER_MS);
 				log.debug("event=api_retry path={} attempt={} delay_ms={} reason=\"{}\"",

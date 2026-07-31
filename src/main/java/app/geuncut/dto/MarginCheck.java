@@ -4,7 +4,6 @@ import com.google.gson.annotations.SerializedName;
 import lombok.Builder;
 import lombok.Value;
 
-/** A quarantined price-probe pair, listed in History and nowhere else. */
 @Value
 @Builder
 public class MarginCheck {
@@ -23,7 +22,6 @@ public class MarginCheck {
 	@SerializedName("sell_price")
 	private final long sellPrice;
 
-	/** After-tax result of the pair and the GE tax it paid, computed server-side. */
 	private final Long profit;
 
 	private final Long tax;

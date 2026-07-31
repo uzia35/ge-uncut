@@ -18,12 +18,6 @@ import app.geuncut.service.OfferSyncService;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GrandExchangeOfferState;
 
-/**
- * Keeps a per-slot view of the player's working offers and flushes the whole
- * set when it changes. A longer interval than the fill stream: this is a
- * glanceable mirror, not an audit log, and the coarse cadence keeps the plugin
- * well inside its request budget when a buy and a sell are filling at once.
- */
 @Slf4j
 @Singleton
 public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSyncService {
@@ -31,8 +25,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 
 	private final GeUncutApi api;
 	private final Map<Integer, GeOffer> slots = new HashMap<>();
-	// Server placement times keyed "accountHash|slot", consumed on first sight
-	// of a matching offer so an age survives a client restart.
 	private final Map<String, OfferPlacement> seeds = new HashMap<>();
 
 	private String lastAccountHash;
@@ -64,8 +56,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 					continue;
 				}
 				seeds.put(placement.getAccountHash() + "|" + placement.getSlot(), placement);
-				// Retro-apply: the login replay may have recorded the slot before
-				// this response arrived.
 				if (placement.getAccountHash().equals(lastAccountHash)) {
 					GeOffer existing = slots.get(placement.getSlot());
 					String placed = seededPlacement(placement, existing);
@@ -82,8 +72,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 	public void record(int slot, int itemId, GrandExchangeOfferState state,
 			int quantitySold, int totalQuantity, int price, Instant now) {
 		synchronized (slots) {
-			// Captured while a game event is firing, so it is always the hash of
-			// the logged-in account even if the flush tick lands after a logout.
 			lastAccountHash = accountHash();
 			if (state == GrandExchangeOfferState.EMPTY) {
 				if (slots.remove(slot) != null) {
@@ -92,9 +80,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 				return;
 			}
 			GeOffer offer = toOffer(slot, itemId, state, quantitySold, totalQuantity, price, now);
-			// A malformed slot (non-positive total or price) is dropped rather
-			// than queued: the server validates the whole snapshot, so one bad
-			// row would otherwise reject every working offer.
 			if (offer == null) {
 				return;
 			}
@@ -112,8 +97,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 					offer = withOccurredAt(offer, placed);
 				}
 			}
-			// GE offers only fire an event when something actually changed, so
-			// any recorded change is worth a flush; the interval caps the rate.
 			slots.put(slot, offer);
 			dirty = true;
 		}
@@ -132,14 +115,11 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 		List<GeOffer> snapshot;
 		String syncedAt;
 		synchronized (slots) {
-			// flushInFlight serializes the async posts: a slow/retrying request must
-			// never be overtaken by a newer one, or a stale snapshot could land last.
 			if (flushInFlight || !dirty || lastAccountHash == null) {
 				return;
 			}
 			hash = lastAccountHash;
 			snapshot = new ArrayList<>(slots.values());
-			// Monotonic snapshot time so the server can reject an out-of-order post.
 			syncedAt = Instant.now().toString();
 			dirty = false;
 			flushInFlight = true;
@@ -159,7 +139,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 						}
 					}
 					if (failure.isUnauthorized()) {
-						// Not linked: retrying re-hits the same rejection every tick.
 						log.warn("event=offer_sync_unauthorized offers={}", snapshot.size());
 					} else {
 						log.debug("event=offer_sync_requeued offers={} kind={} status={} reason=\"{}\"",
@@ -168,9 +147,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 				});
 	}
 
-	// The seed applies only to the offer it describes: same identity, and the
-	// server's filled count not ahead of the client's (ahead means the slot was
-	// re-placed with an identical offer since the server last saw it).
 	private static String seededPlacement(OfferPlacement placement, GeOffer offer) {
 		if (offer == null || placement.getSide() == null
 				|| placement.getItemId() != offer.getItemId()
@@ -183,7 +159,6 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 		return toInstantString(placement.getPlacedAt());
 	}
 
-	// The server sends naive-UTC timestamps; the panel parses Instant strings.
 	private static String toInstantString(String timestamp) {
 		try {
 			return Instant.parse(timestamp).toString();

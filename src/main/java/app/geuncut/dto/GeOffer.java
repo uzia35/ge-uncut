@@ -4,10 +4,6 @@ import com.google.gson.annotations.SerializedName;
 import lombok.Builder;
 import lombok.Value;
 
-/**
- * One live Grand Exchange slot as reported to geuncut.app. A snapshot of these
- * replaces the account's working offers wholesale on every sync.
- */
 @Value
 @Builder
 public class GeOffer {

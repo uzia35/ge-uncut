@@ -6,7 +6,6 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import javax.swing.JPanel;
 
-/** A panel that paints a rounded, optionally bordered background. */
 class RoundedPanel extends JPanel {
 	private final int arc;
 	private Color fill;

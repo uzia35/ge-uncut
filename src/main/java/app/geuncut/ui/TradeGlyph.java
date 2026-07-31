@@ -8,10 +8,6 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import javax.swing.Icon;
 
-/**
- * The History outcome glyph, matching the website: swap arrows for a completed
- * flip, a single arrow for a one-way trade. Painted vector, tinted by caller.
- */
 class TradeGlyph implements Icon {
 	private final boolean flipped;
 	private final Color color;
@@ -40,7 +36,6 @@ class TradeGlyph implements Icon {
 		g2.dispose();
 	}
 
-	// A horizontal shaft with a 4-unit chevron head at the pointed end.
 	private static void drawArrow(Graphics2D g2, float unit, int fromX, int toX, int yUnits, boolean right) {
 		int y = Math.round(yUnits * unit);
 		g2.drawLine(Math.round(fromX * unit), y, Math.round(toX * unit), y);

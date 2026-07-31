@@ -6,16 +6,10 @@ import java.awt.FontFormatException;
 import java.io.IOException;
 import java.io.InputStream;
 
-/**
- * GE Uncut brand palette and fonts for the panel, mirroring the website's
- * monochrome trading-desk theme: near-black surfaces, a near-white accent,
- * monospace numerals, and semantic colour only where it means something.
- */
 final class Theme {
 	private Theme() {
 	}
 
-	/** Panel colour mode. Dark is RuneLite's native look; light mirrors the website. */
 	enum Mode {
 		DARK, LIGHT
 	}
@@ -46,7 +40,6 @@ final class Theme {
 		return mode;
 	}
 
-	/** Repaint the palette for a mode. Call before rebuilding the panel. */
 	static void apply(Mode target) {
 		mode = target;
 		if (target == Mode.LIGHT) {
@@ -89,9 +82,6 @@ final class Theme {
 	}
 
 
-	// The website's faces, bundled so the panel matches it exactly: Inter for
-	// text, JetBrains Mono for numerals. Falls back to logical fonts if a
-	// resource is somehow missing.
 	private static final Font INTER = load("/fonts/Inter-Regular.ttf", Font.SANS_SERIF);
 	private static final Font INTER_SEMI = load("/fonts/Inter-SemiBold.ttf", Font.SANS_SERIF);
 	private static final Font MONO = load("/fonts/JetBrainsMono-Regular.ttf", Font.MONOSPACED);
@@ -116,7 +106,6 @@ final class Theme {
 				return Font.createFont(Font.TRUETYPE_FONT, in);
 			}
 		} catch (FontFormatException | IOException unreadable) {
-			// Fall through to the logical-font fallback.
 		}
 		return new Font(fallbackFamily, Font.PLAIN, 12);
 	}

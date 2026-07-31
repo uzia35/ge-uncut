@@ -4,7 +4,6 @@ import com.google.gson.annotations.SerializedName;
 import lombok.Builder;
 import lombok.Value;
 
-/** A Sold row the user moved to History: an untracked sale, aggregated per item. */
 @Value
 @Builder
 public class ArchivedSell {

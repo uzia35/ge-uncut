@@ -25,7 +25,6 @@ public class FlipsServiceTest {
 
 		assertEquals(1, received.size());
 		assertTrue(received.get(0).getFlips().isEmpty());
-		// Normalizing the flip list must not drop the rest of the response.
 		assertEquals(Long.valueOf(5_000_000L), received.get(0).getMyCapital());
 	}
 

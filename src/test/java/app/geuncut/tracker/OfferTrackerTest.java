@@ -134,12 +134,9 @@ public class OfferTrackerTest {
 		assertEquals(1_500_000, otherItem.get().getPriceEach());
 	}
 
-	// --- Residual fills: a slot that empties short of its total -----------------
 
 	@Test
 	public void completionRacingCollectionBooksTheResidualAtTheOfferPrice() {
-		// The 2026-07-19 bones case: login replays the sell at 3,430/4,000, the
-		// last 570 fill and collection collapse into EMPTY with no SOLD event.
 		change(2, TBOW, SELLING, 0, 0, 4_000, 21_000);
 		Optional<OfferDelta> catchUp = change(2, TBOW, SELLING, 3_430, 72_030_000, 4_000, 21_000);
 		assertTrue(catchUp.isPresent());
@@ -166,8 +163,6 @@ public class OfferTrackerTest {
 
 	@Test
 	public void abortedOfferClearsWithNoResidual() {
-		// An abort always shows its CANCELLED state before the collect empties
-		// the slot; the unfilled remainder was never traded.
 		change(0, TBOW, SELLING, 0, 0, 4_000, 21_000);
 		change(0, TBOW, SELLING, 3_430, 72_030_000, 4_000, 21_000);
 		change(0, TBOW, CANCELLED_SELL, 3_430, 72_030_000, 4_000, 21_000);
@@ -185,8 +180,6 @@ public class OfferTrackerTest {
 
 	@Test
 	public void slotCollectedWhileAwayHasNoSnapshotAndNoResidual() {
-		// Collected from another client while this one was off: the login replay
-		// is EMPTY with nothing known, so nothing may be invented.
 		assertFalse(change(3, TBOW, EMPTY, 0, 0, 0, 0).isPresent());
 	}
 }

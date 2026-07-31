@@ -11,7 +11,6 @@ import lombok.Value;
 public class FlipsResponse {
 	private final List<Flip> flips;
 
-	// The bankroll saved on the website; null when unlinked (or an old server).
 	@SerializedName("my_capital")
 	private final Long myCapital;
 }

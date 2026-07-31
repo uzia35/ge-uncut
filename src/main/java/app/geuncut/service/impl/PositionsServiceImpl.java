@@ -9,9 +9,6 @@ import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.PositionsResponse;
 import app.geuncut.service.PositionsService;
 
-/**
- * Read side of the panel: the caller's open flips and portfolio totals.
- */
 @Singleton
 public class PositionsServiceImpl implements PositionsService {
 	private final GeUncutApi api;

@@ -19,14 +19,6 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-/**
- * Loads the crisp wiki "detail" render for an item (the same image the website
- * shows), falling back to the in-game inventory sprite until it arrives or if
- * the fetch fails. Cached by name so a given item is only fetched once.
- *
- * Uses RuneLite's shared client, which carries no plugin auth, so the token is
- * never sent to the wiki.
- */
 public class ItemIconLoader {
 	private static final int MAX_CACHE = 512;
 
@@ -45,7 +37,6 @@ public class ItemIconLoader {
 		this.itemManager = itemManager;
 	}
 
-	// In-game inventory sprite, no network; onLoaded fires (on the EDT) once it decodes.
 	Image sprite(int itemId, Runnable onLoaded) {
 		AsyncBufferedImage image = itemManager.getImage(itemId);
 		image.onLoaded(() -> SwingUtilities.invokeLater(onLoaded));
@@ -69,7 +60,6 @@ public class ItemIconLoader {
 		http.newCall(new Request.Builder().url(detailUrl(name)).build()).enqueue(new Callback() {
 			@Override
 			public void onFailure(Call call, IOException exception) {
-				// Keep the sprite already on the label.
 			}
 
 			@Override
@@ -86,13 +76,11 @@ public class ItemIconLoader {
 					cache.put(key, icon);
 					SwingUtilities.invokeLater(() -> label.setIcon(icon));
 				} catch (IOException unreadable) {
-					// Keep the sprite.
 				}
 			}
 		});
 	}
 
-	// Scale to fit a size x size box while keeping the render's aspect ratio.
 	private static Image fit(BufferedImage image, int size) {
 		int width = image.getWidth();
 		int height = image.getHeight();

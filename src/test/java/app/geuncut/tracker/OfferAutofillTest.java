@@ -32,7 +32,6 @@ public class OfferAutofillTest {
 				List.of(FINDER), List.of(), "acct-a"));
 		assertEquals(Long.valueOf(10_000), OfferAutofill.resolve(1623, false, OfferAutofill.Prompt.QUANTITY,
 				List.of(FINDER), List.of(), "acct-a"));
-		// An item the finder never suggested fills nothing.
 		assertNull(OfferAutofill.resolve(4151, false, OfferAutofill.Prompt.PRICE,
 				List.of(FINDER), List.of(), "acct-a"));
 	}
@@ -41,20 +40,16 @@ public class OfferAutofillTest {
 	public void sellOffersTakeTheTrackedFlipsTargetAndRemainder() {
 		assertEquals(Long.valueOf(21_500), OfferAutofill.resolve(22124, true, OfferAutofill.Prompt.PRICE,
 				List.of(), List.of(TRACKED), "acct-a"));
-		// 1097 bought, 400 already sold: the sell offer is for what's left.
 		assertEquals(Long.valueOf(697), OfferAutofill.resolve(22124, true, OfferAutofill.Prompt.QUANTITY,
 				List.of(), List.of(TRACKED), "acct-a"));
-		// A finder card never feeds a sell, and an untracked item fills nothing.
 		assertNull(OfferAutofill.resolve(1623, true, OfferAutofill.Prompt.PRICE,
 				List.of(FINDER), List.of(), "acct-a"));
 	}
 
 	@Test
 	public void sellsRespectTheAccountAndMissingData() {
-		// Another account's flip must not price this account's offer.
 		assertNull(OfferAutofill.resolve(22124, true, OfferAutofill.Prompt.PRICE,
 				List.of(), List.of(TRACKED), "acct-b"));
-		// No sell target -> no price fill; a fully-sold flip -> no quantity fill.
 		Position noTarget = Position.builder().id(7).itemId(2).name("Cannonball").quantity(100).buyPrice(180).build();
 		assertNull(OfferAutofill.resolve(2, true, OfferAutofill.Prompt.PRICE, List.of(), List.of(noTarget), null));
 		Position soldOut = Position.builder().id(8).itemId(3).name("Feather").quantity(100)

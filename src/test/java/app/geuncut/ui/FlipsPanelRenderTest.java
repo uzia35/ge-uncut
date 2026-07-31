@@ -155,14 +155,8 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "Track as a flip"));
 		assertNotNull(findLabel(panel, "Uncut diamond"));
 		assertNotNull(findLabel(panel, "Diamond"));
-		// A completed trade moved to History restores back to Completed and
-		// shows its manual-close sale price instead of a dash.
 		assertNotNull(findLabel(panel, "Restore"));
 		assertNotNull(findLabel(panel, "1,100"));
-		// Every History card says what it was: Flipped rows lead with a Made
-		// row (the closed flip's realized profit, the pair's server-computed
-		// profit) and the GE tax the trade paid; everything else reads
-		// Regular trade. Columns match the website (Qty/Buy/Sold/When).
 		assertNotNull(findLabel(panel, "Flipped"));
 		assertNotNull(findLabel(panel, "Regular trade"));
 		assertNotNull(findLabel(panel, "Made"));
@@ -172,19 +166,14 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "220"));
 		assertNotNull(findLabel(panel, "When"));
 		assertNotNull(findLabel(panel, "Qty"));
-		// The "?" beside each action button invites the hover that explains it.
 		assertNotNull(findLabel(panel, "?"));
-		// Two linked accounts split the active list into website-style sections,
-		// and a hold-window exit is its own pill, not a SELL.
 		panel.selectTab("flips");
 		assertNotNull(findLabel(panel, "ACCOUNT 1"));
 		assertNotNull(findLabel(panel, "ACCOUNT 2"));
 		assertNotNull(findLabel(panel, "EXIT"));
-		// The expanded card shows what the flip is aiming for.
 		assertNotNull(findLabel(panel, "Sell target"));
 		assertNotNull(findLabel(panel, "Alert at"));
 		assertNotNull(findLabel(panel, "Held"));
-		// The Movers tab carries the website's third group.
 		panel.selectTab("movers");
 		assertNotNull(findLabel(panel, "Volume spikes"));
 	}
@@ -197,8 +186,6 @@ public class FlipsPanelRenderTest {
 		};
 		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
 		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
-		// Sell 07-19 09:00 > pair 07-19 08:00 > closed flip 07-18 > undated-close
-		// buy 07-10: one merged list, newest first, like the website table.
 		java.util.List<String> texts = new java.util.ArrayList<>();
 		collectAllLabelTexts(panel, texts);
 		int sell = texts.indexOf("Diamond");
@@ -218,8 +205,6 @@ public class FlipsPanelRenderTest {
 		};
 		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, capture);
 		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
-		// Both the completed card's restore and the pair card carry this label;
-		// clicking every one must route the pair's click to the sell event id.
 		java.util.List<JLabel> tracks = new java.util.ArrayList<>();
 		collectLabels(panel, "Restore", tracks);
 		assertTrue(tracks.size() >= 2);

@@ -16,11 +16,6 @@ import app.geuncut.model.OfferDelta;
 import app.geuncut.service.TradeSyncService;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Batches observed fills and reports them to geuncut.app. Failed batches are
- * requeued and retried on the next flush, so a network blip never loses a
- * fill; the server side dedupes on the idempotency key regardless.
- */
 @Slf4j
 @Singleton
 public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSyncService {
@@ -65,8 +60,6 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 			drained = new ArrayList<>(queue);
 			queue.clear();
 		}
-		// Restamped per transmission attempt; client_event_id stays fixed, so
-		// the pair separates "when it happened" from "when it finally got out".
 		String publishedAt = Instant.now().toString();
 		List<GeTradeEvent> batch = new ArrayList<>(drained.size());
 		for (GeTradeEvent event : drained) {
@@ -76,9 +69,6 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 				() -> log.debug("event=trade_sync_flushed count={}", batch.size()),
 				failure -> {
 					if (failure.isUnauthorized()) {
-						// Not linked (yet, or anymore). Requeueing would retry the
-						// same rejection every flush; the fills are dropped exactly
-						// as they would be with sync disabled.
 						log.warn("event=trade_sync_unauthorized dropped={}", batch.size());
 						return;
 					}
@@ -87,8 +77,6 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 						for (int index = batch.size() - 1; index >= 0; index--) {
 							queue.addFirst(batch.get(index));
 						}
-						// New fills may have arrived while the POST was in flight, so
-						// re-apply the cap here too, dropping oldest first.
 						while (queue.size() > MAX_QUEUED) {
 							queue.removeFirst();
 						}
