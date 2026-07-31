@@ -324,8 +324,7 @@ public class GeUncutPlugin extends Plugin {
 		Widget line = container.createChild(-1, WidgetType.TEXT);
 		line.setText("GE Uncut: set to " + String.format("%,d", amount));
 		line.setFontId(FontID.VERDANA_11_BOLD);
-		line.setTextColor(0x2EC27E);
-		line.setTextShadowed(true);
+		line.setTextColor(0x000000);
 		line.setOriginalX(0);
 		line.setOriginalY(8);
 		line.setOriginalWidth(container.getWidth() > 0 ? container.getWidth() - 12 : 500);
@@ -334,6 +333,8 @@ public class GeUncutPlugin extends Plugin {
 		line.setHasListener(true);
 		line.setAction(1, "Set GE Uncut value");
 		line.setOnOpListener((JavaScriptCallback) scriptEvent -> applyOfferValue(amount));
+		line.setOnMouseRepeatListener((JavaScriptCallback) scriptEvent -> line.setTextColor(0xFFFFFF));
+		line.setOnMouseLeaveListener((JavaScriptCallback) scriptEvent -> line.setTextColor(0x000000));
 		line.revalidate();
 		offerLine = line;
 	}
