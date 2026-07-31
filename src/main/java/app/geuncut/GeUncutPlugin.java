@@ -152,13 +152,32 @@ public class GeUncutPlugin extends Plugin {
 
 		tradeSync.start(() -> Long.toString(client.getAccountHash()));
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
-		positionsPoll = executor.scheduleWithFixedDelay(this::refreshPositions,
-				POSITIONS_POLL_SECONDS, POSITIONS_POLL_SECONDS, TimeUnit.SECONDS);
+		if (linked()) {
+			startPositionsPoll();
+		}
 		refreshFlips();
 		seedOfferPlacements();
 	}
 
+	private void startPositionsPoll() {
+		if (positionsPoll != null) {
+			return;
+		}
+		positionsPoll = executor.scheduleWithFixedDelay(this::refreshPositions,
+				POSITIONS_POLL_SECONDS, POSITIONS_POLL_SECONDS, TimeUnit.SECONDS);
+	}
+
+	private void stopPositionsPoll() {
+		if (positionsPoll != null) {
+			positionsPoll.cancel(false);
+			positionsPoll = null;
+		}
+	}
+
 	private void seedOfferPlacements() {
+		if (!linked()) {
+			return;
+		}
 		api.fetchOfferPlacements(
 				placements -> {
 					offerSync.seed(placements);
@@ -200,10 +219,7 @@ public class GeUncutPlugin extends Plugin {
 	@Override
 	protected void shutDown() {
 		link.cancel();
-		if (positionsPoll != null) {
-			positionsPoll.cancel(false);
-			positionsPoll = null;
-		}
+		stopPositionsPoll();
 		tradeSync.stop();
 		offerSync.stop();
 		clientToolbar.removeNavigation(navButton);
@@ -236,6 +252,7 @@ public class GeUncutPlugin extends Plugin {
 
 	private void unlinkAccount() {
 		link.cancel();
+		stopPositionsPoll();
 		String token = config.apiToken().trim();
 		if (!token.isEmpty()) {
 			api.unlinkAccount(token, () -> {}, failure ->
@@ -481,6 +498,9 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshPositions() {
+		if (!linked()) {
+			return;
+		}
 		FlipsPanel target = panel;
 		positions.fetch(
 				response -> {
@@ -491,8 +511,13 @@ public class GeUncutPlugin extends Plugin {
 						}
 					});
 				},
-				failure -> log.debug("event=positions_fetch_failed kind={} status={}",
-						failure.getKind(), failure.getStatusCode()));
+				failure -> {
+					if (failure.isUnauthorized()) {
+						stopPositionsPoll();
+					}
+					log.debug("event=positions_fetch_failed kind={} status={}",
+							failure.getKind(), failure.getStatusCode());
+				});
 		refreshHistory();
 	}
 
@@ -527,6 +552,9 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshHistory() {
+		if (!linked()) {
+			return;
+		}
 		FlipsPanel target = panel;
 		api.fetchArchived(
 				response -> SwingUtilities.invokeLater(() -> {
@@ -534,8 +562,13 @@ public class GeUncutPlugin extends Plugin {
 						target.showHistory(response);
 					}
 				}),
-				failure -> log.debug("event=archived_fetch_failed kind={} status={}",
-						failure.getKind(), failure.getStatusCode()));
+				failure -> {
+					if (failure.isUnauthorized()) {
+						stopPositionsPoll();
+					}
+					log.debug("event=archived_fetch_failed kind={} status={}",
+							failure.getKind(), failure.getStatusCode());
+				});
 	}
 
 	private void refreshMovers() {
@@ -557,7 +590,11 @@ public class GeUncutPlugin extends Plugin {
 		}
 		link.begin(
 				code -> SwingUtilities.invokeLater(() -> panel.showLinkCode(code)),
-				() -> SwingUtilities.invokeLater(this::refreshFlips),
+				() -> {
+					startPositionsPoll();
+					seedOfferPlacements();
+					SwingUtilities.invokeLater(this::refreshFlips);
+				},
 				failure -> SwingUtilities.invokeLater(() -> panel.showStatus(failure.getMessage())));
 	}
 }
