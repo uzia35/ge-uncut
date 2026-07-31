@@ -363,7 +363,7 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildHistoryPane() {
 		JPanel pane = pane();
-		JLabel blurb = text("Kept out of your stats. Restore anytime.", Theme.MUTED, Theme.SMALL);
+		JLabel blurb = text("Kept out of your P&L and win rate.", Theme.MUTED, Theme.SMALL);
 		shrinkToFit(blurb, PANEL_WIDTH - 22, 9.5f);
 		blurb.setAlignmentX(Component.LEFT_ALIGNMENT);
 		pane.add(blurb);
