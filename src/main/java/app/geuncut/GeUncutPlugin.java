@@ -324,8 +324,9 @@ public class GeUncutPlugin extends Plugin {
 		String label = "GE Uncut: set to " + String.format("%,d", amount);
 		int labelWidth = label.length() * 8 + 8;
 		int containerWidth = container.getWidth() > 0 ? container.getWidth() : 519;
-		int lineX = Math.max(0, containerWidth - labelWidth - 8);
-		int lineY = freeLineY(container, lineX, labelWidth);
+		int[] spot = lineSpot(container, labelWidth, containerWidth);
+		int lineX = spot[0];
+		int lineY = spot[1];
 		Widget line = container.createChild(-1, WidgetType.TEXT);
 		line.setText(label);
 		line.setFontId(FontID.VERDANA_11_BOLD);
@@ -344,14 +345,19 @@ public class GeUncutPlugin extends Plugin {
 		offerLine = line;
 	}
 
-	private int freeLineY(Widget container, int x, int width) {
+	private int[] lineSpot(Widget container, int labelWidth, int containerWidth) {
 		Widget[] children = container.getDynamicChildren();
+		int centerX = Math.max(0, (containerWidth - labelWidth) / 2);
+		if (!overlapsAny(children, centerX, 90, labelWidth)) {
+			return new int[] { centerX, 90 };
+		}
+		int rightX = Math.max(0, containerWidth - labelWidth - 8);
 		for (int y = 8; y <= 48; y += 20) {
-			if (!overlapsAny(children, x, y, width)) {
-				return y;
+			if (!overlapsAny(children, rightX, y, labelWidth)) {
+				return new int[] { rightX, y };
 			}
 		}
-		return 68;
+		return new int[] { rightX, 68 };
 	}
 
 	private static boolean overlapsAny(Widget[] children, int x, int y, int width) {
