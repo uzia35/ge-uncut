@@ -46,6 +46,7 @@ import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.FontID;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.ItemComposition;
@@ -54,6 +55,7 @@ import net.runelite.api.VarPlayer;
 import net.runelite.api.Varbits;
 import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetType;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
@@ -134,19 +136,11 @@ public class GeUncutPlugin extends Plugin {
 	private FlipsPanel panel;
 	private NavigationButton navButton;
 	private ScheduledFuture<?> positionsPoll;
-	// Set when a session drops (login screen / hop / disconnect) — the states
-	// that make the next login replay and re-stamp every GE offer. Consumed on
-	// the next LOGGED_IN so the placement seed is re-applied exactly once per
-	// login, not on every in-session region load (which shares the
-	// LOADING -> LOGGED_IN transition but never replays offers).
 	private boolean offerReplayPending;
-	// The freshest finder list and open flips, for the offer auto-fill. Written
-	// on fetch callbacks (OkHttp threads), read on the client thread each tick.
 	private volatile List<Flip> latestFlips = List.of();
 	private volatile List<Position> latestPositions = List.of();
-	// One fill per prompt-open: cleared when the prompt closes, so reopening the
-	// same prompt fills again but we never fight what the player types.
 	private String lastAutofillPrompt;
+	private Widget autofillLabel;
 
 	private static final int POSITIONS_POLL_SECONDS = 30;
 	private static final int POST_FILL_REFRESH_SECONDS = 8;
@@ -163,13 +157,6 @@ public class GeUncutPlugin extends Plugin {
 		seedOfferPlacements();
 	}
 
-	// Durable placement times so working-offer ages survive a client restart AND
-	// a relog/world-hop: each login replays the offers and re-stamps them with
-	// the login time, so the seed must be re-fetched and re-applied every login,
-	// not just once at plugin load. 401s harmlessly when unlinked. The server's
-	// placed_at is durable (the offer-starts upsert keeps it while the same
-	// offer holds the slot), so a re-fetch after a login re-stamp still returns
-	// the true placement time. Re-push so already-replayed slots pick it up.
 	private void seedOfferPlacements() {
 		api.fetchOfferPlacements(
 				placements -> {
@@ -219,8 +206,6 @@ public class GeUncutPlugin extends Plugin {
 		tradeSync.stop();
 		offerSync.stop();
 		clientToolbar.removeNavigation(navButton);
-		// The trackers are only ever mutated on the client thread; hop the resets
-		// there too so shutDown (which may run off it) can't race an offer event.
 		clientThread.invoke(() -> {
 			offerTracker.reset();
 			buyLimits.reset();
@@ -232,15 +217,11 @@ public class GeUncutPlugin extends Plugin {
 		GameState current = event.getGameState();
 		if (current == GameState.LOGIN_SCREEN || current == GameState.HOPPING
 				|| current == GameState.CONNECTION_LOST) {
-			// The next login will replay and re-stamp every GE offer, so the
-			// placement seed must be re-applied then.
 			offerReplayPending = true;
 		}
 		if (current == GameState.LOGIN_SCREEN || current == GameState.HOPPING) {
 			offerTracker.reset();
 		}
-		// Offer ages only tick while a session can actually see fills. HOPPING
-		// stays live (the offers survive a hop); only a real logout pauses.
 		if (current == GameState.LOGGED_IN) {
 			SwingUtilities.invokeLater(() -> panel.setGameActive(true));
 			if (offerReplayPending) {
@@ -256,7 +237,6 @@ public class GeUncutPlugin extends Plugin {
 		link.cancel();
 		String token = config.apiToken().trim();
 		if (!token.isEmpty()) {
-			// Best-effort server revoke so the site's device list matches; the local token clears regardless.
 			api.unlinkAccount(token, () -> {}, failure ->
 					log.debug("event=unlink_revoke_failed status={} message=\"{}\"",
 							failure.getStatusCode(), failure.getMessage()));
@@ -291,7 +271,6 @@ public class GeUncutPlugin extends Plugin {
 		pushOffers();
 	}
 
-	// Resolve names on the client thread; the panel only has item ids.
 	private void pushOffers() {
 		List<GeOffer> working = offerSync.current();
 		Map<Integer, String> itemNames = new HashMap<>();
@@ -301,10 +280,6 @@ public class GeUncutPlugin extends Plugin {
 		SwingUtilities.invokeLater(() -> panel.showOffers(working, itemNames));
 	}
 
-	// Offer assist: when the GE setup's number prompt opens for an item we know
-	// (a suggested flip on the buy side, a tracked flip on the sell side), the
-	// value types itself in and the player just presses Enter. One input per
-	// action; nothing is submitted for them.
 	@Subscribe
 	public void onGameTick(GameTick event) {
 		if (!config.autoFillOffers()) {
@@ -313,11 +288,13 @@ public class GeUncutPlugin extends Plugin {
 		Widget title = client.getWidget(ComponentID.CHATBOX_TITLE);
 		if (title == null || title.isHidden()) {
 			lastAutofillPrompt = null;
+			hideAutofillLabel();
 			return;
 		}
 		OfferAutofill.Prompt kind = OfferAutofill.promptKind(title.getText());
 		if (kind == null) {
 			lastAutofillPrompt = null;
+			hideAutofillLabel();
 			return;
 		}
 		int itemId = client.getVarpValue(VarPlayer.CURRENT_GE_ITEM);
@@ -330,7 +307,6 @@ public class GeUncutPlugin extends Plugin {
 			return;
 		}
 		lastAutofillPrompt = promptKey;
-		// A head start only: if the player already started typing, it's theirs.
 		String typed = client.getVarcStrValue(VarClientStr.INPUT_TEXT);
 		if (typed != null && !typed.isEmpty()) {
 			return;
@@ -346,6 +322,33 @@ public class GeUncutPlugin extends Plugin {
 		}
 		input.setText(value + "*");
 		client.setVarcStrValue(VarClientStr.INPUT_TEXT, String.valueOf(value));
+		showAutofillLabel(kind, value);
+	}
+
+	private void showAutofillLabel(OfferAutofill.Prompt kind, long value) {
+		Widget container = client.getWidget(ComponentID.CHATBOX_CONTAINER);
+		if (container == null) {
+			return;
+		}
+		Widget label = container.createChild(-1, WidgetType.TEXT);
+		label.setText("GE Uncut " + (kind == OfferAutofill.Prompt.PRICE ? "price" : "quantity")
+				+ ": " + String.format("%,d", value) + " - press Enter");
+		label.setFontId(FontID.VERDANA_11_BOLD);
+		label.setTextColor(0x2EC27E);
+		label.setTextShadowed(true);
+		label.setOriginalX(12);
+		label.setOriginalY(8);
+		label.setOriginalWidth(420);
+		label.setOriginalHeight(14);
+		label.revalidate();
+		autofillLabel = label;
+	}
+
+	private void hideAutofillLabel() {
+		if (autofillLabel != null) {
+			autofillLabel.setHidden(true);
+			autofillLabel = null;
+		}
 	}
 
 	@Subscribe
@@ -387,8 +390,6 @@ public class GeUncutPlugin extends Plugin {
 		if (delta.getSide() == OfferDelta.Side.BUY) {
 			buyLimits.recordBuy(delta.getItemId(), delta.getQuantity(), delta.getOccurredAt());
 		}
-		// Only transmit trades when linked; an unlinked player has no account to sync
-		// to and the buy limit above is already tracked locally.
 		if (linked()) {
 			tradeSync.accept(delta);
 			executor.schedule(this::refreshPositions, POST_FILL_REFRESH_SECONDS, TimeUnit.SECONDS);
@@ -396,8 +397,6 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshFlips() {
-		// Capture the panel so a fetch that resolves after a disable/re-enable can't
-		// write its stale result into the fresh panel from the next startUp.
 		FlipsPanel target = panel;
 		boolean linked = linked();
 		SwingUtilities.invokeLater(() -> target.showStatus("Scanning..."));
@@ -410,8 +409,6 @@ public class GeUncutPlugin extends Plugin {
 					if (target != panel) {
 						return;
 					}
-					// Picker first: if the link state moved the effective capital,
-					// applyCapital re-scans and this render is replaced anyway.
 					target.applyCapital(linked, response.getMyCapital());
 					target.showFlips(response.getFlips(), linked);
 					});
@@ -420,8 +417,6 @@ public class GeUncutPlugin extends Plugin {
 					if (target != panel) {
 						return;
 					}
-					// Unauthorized means unlinked (never paired, revoked, or the
-					// token aged out): offer pairing instead of an error message.
 					if (failure.isUnauthorized()) {
 						target.showLinkPrompt();
 					} else {
@@ -443,8 +438,6 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshPositions() {
-		// Best-effort: an unlinked or offline fetch leaves the last known flips in
-		// place; the flip scan above is what surfaces the link prompt.
 		FlipsPanel target = panel;
 		positions.fetch(
 				response -> {
@@ -470,8 +463,6 @@ public class GeUncutPlugin extends Plugin {
 						positionId, failure.getKind(), failure.getStatusCode()));
 	}
 
-	// History "Track as a flip" on a quarantined pair: it becomes a real
-	// completed flip server-side, then both lists refresh.
 	private void trackPair(long sellEventId) {
 		api.trackPair(sellEventId,
 				() -> SwingUtilities.invokeLater(() -> {
@@ -505,7 +496,6 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshMovers() {
-		// Public feed, so it fills in linked or not; best-effort like positions.
 		FlipsPanel target = panel;
 		api.fetchMovers(
 				movers -> SwingUtilities.invokeLater(() -> {
@@ -524,8 +514,6 @@ public class GeUncutPlugin extends Plugin {
 		}
 		link.begin(
 				code -> SwingUtilities.invokeLater(() -> panel.showLinkCode(code)),
-				// onLinked fires on an OkHttp thread; hop to the EDT before refreshFlips
-				// reads the panel's picker state, as the other two callbacks already do.
 				() -> SwingUtilities.invokeLater(this::refreshFlips),
 				failure -> SwingUtilities.invokeLater(() -> panel.showStatus(failure.getMessage())));
 	}
