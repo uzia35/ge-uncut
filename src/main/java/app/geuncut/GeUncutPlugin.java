@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
@@ -136,14 +135,12 @@ public class GeUncutPlugin extends Plugin {
 
 	private FlipsPanel panel;
 	private NavigationButton navButton;
-	private ScheduledFuture<?> positionsPoll;
 	private boolean offerReplayPending;
 	private volatile List<Flip> latestFlips = List.of();
 	private volatile List<Position> latestPositions = List.of();
 	private String lastAutofillPrompt;
 	private Widget offerLine;
 
-	private static final int POSITIONS_POLL_SECONDS = 30;
 	private static final int POST_FILL_REFRESH_SECONDS = 8;
 
 	@Override
@@ -152,25 +149,17 @@ public class GeUncutPlugin extends Plugin {
 
 		tradeSync.start(() -> Long.toString(client.getAccountHash()));
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
-		if (linked()) {
-			startPositionsPoll();
-		}
 		refreshFlips();
 		seedOfferPlacements();
 	}
 
-	private void startPositionsPoll() {
-		if (positionsPoll != null) {
-			return;
-		}
-		positionsPoll = executor.scheduleWithFixedDelay(this::refreshPositions,
-				POSITIONS_POLL_SECONDS, POSITIONS_POLL_SECONDS, TimeUnit.SECONDS);
-	}
-
-	private void stopPositionsPoll() {
-		if (positionsPoll != null) {
-			positionsPoll.cancel(false);
-			positionsPoll = null;
+	private void onTabOpened(String tab) {
+		if ("flips".equals(tab)) {
+			refreshPositions();
+		} else if ("history".equals(tab)) {
+			refreshHistory();
+		} else if ("movers".equals(tab)) {
+			refreshMovers();
 		}
 	}
 
@@ -193,6 +182,7 @@ public class GeUncutPlugin extends Plugin {
 				this::openMyFlips, new ItemIconLoader(okHttpClient, itemManager), this::openItem, this::markNotFlip,
 				this::restoreFlip, this::trackPair);
 		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
+		panel.setOnTabOpen(this::onTabOpened);
 		navButton = NavigationButton.builder()
 				.tooltip("GE Uncut")
 				.icon(icon)
@@ -219,7 +209,6 @@ public class GeUncutPlugin extends Plugin {
 	@Override
 	protected void shutDown() {
 		link.cancel();
-		stopPositionsPoll();
 		tradeSync.stop();
 		offerSync.stop();
 		clientToolbar.removeNavigation(navButton);
@@ -252,7 +241,6 @@ public class GeUncutPlugin extends Plugin {
 
 	private void unlinkAccount() {
 		link.cancel();
-		stopPositionsPoll();
 		String token = config.apiToken().trim();
 		if (!token.isEmpty()) {
 			api.unlinkAccount(token, () -> {}, failure ->
@@ -511,14 +499,8 @@ public class GeUncutPlugin extends Plugin {
 						}
 					});
 				},
-				failure -> {
-					if (failure.isUnauthorized()) {
-						stopPositionsPoll();
-					}
-					log.debug("event=positions_fetch_failed kind={} status={}",
-							failure.getKind(), failure.getStatusCode());
-				});
-		refreshHistory();
+				failure -> log.debug("event=positions_fetch_failed kind={} status={}",
+						failure.getKind(), failure.getStatusCode()));
 	}
 
 	private void markNotFlip(long positionId) {
@@ -562,13 +544,8 @@ public class GeUncutPlugin extends Plugin {
 						target.showHistory(response);
 					}
 				}),
-				failure -> {
-					if (failure.isUnauthorized()) {
-						stopPositionsPoll();
-					}
-					log.debug("event=archived_fetch_failed kind={} status={}",
-							failure.getKind(), failure.getStatusCode());
-				});
+				failure -> log.debug("event=archived_fetch_failed kind={} status={}",
+						failure.getKind(), failure.getStatusCode()));
 	}
 
 	private void refreshMovers() {
@@ -591,7 +568,6 @@ public class GeUncutPlugin extends Plugin {
 		link.begin(
 				code -> SwingUtilities.invokeLater(() -> panel.showLinkCode(code)),
 				() -> {
-					startPositionsPoll();
 					seedOfferPlacements();
 					SwingUtilities.invokeLater(this::refreshFlips);
 				},
