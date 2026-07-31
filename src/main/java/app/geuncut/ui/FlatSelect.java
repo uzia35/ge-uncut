@@ -14,11 +14,6 @@ import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
 
-/**
- * A flat, brand-styled dropdown that replaces the default Swing combo box (a
- * beveled, Windows-era control). Shows the current value and a painted chevron;
- * a click opens a dark popup of the options.
- */
 class FlatSelect extends RoundedPanel {
 	private String[] labels;
 	private String[] values;
@@ -83,8 +78,6 @@ class FlatSelect extends RoundedPanel {
 		this.onChange = onChange;
 	}
 
-	// The inner label owns most of the hover area, so a tooltip must ride on
-	// both components or it only shows over the padding.
 	@Override
 	public void setToolTipText(String text) {
 		super.setToolTipText(text);
@@ -95,9 +88,6 @@ class FlatSelect extends RoundedPanel {
 		return values[selectedIndex];
 	}
 
-	// Replace the option set, keeping the selection on desiredValue when it
-	// still exists (first option otherwise). Never fires onChange - the caller
-	// decides whether the effective value moved and what to do about it.
 	void setOptions(String[] labels, String[] values, String desiredValue) {
 		this.labels = labels;
 		this.values = values;

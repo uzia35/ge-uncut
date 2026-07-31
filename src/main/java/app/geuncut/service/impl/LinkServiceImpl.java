@@ -16,11 +16,6 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.util.LinkBrowser;
 
-/**
- * Device-link pairing state machine. Starts a session, surfaces the short
- * code for the user to type at geuncut.app/link, polls until the claim lands,
- * then writes the delivered token into the plugin config itself.
- */
 @Slf4j
 @Singleton
 public class LinkServiceImpl implements LinkService {
@@ -41,9 +36,6 @@ public class LinkServiceImpl implements LinkService {
 		this.executor = executor;
 	}
 
-	// session and poller are mutated from the UI thread (begin, cancel) and the
-	// scheduler thread (poll callbacks); every transition is synchronized so a
-	// cancel can never interleave with a start or a poll reading half a state.
 
 	@Override
 	public synchronized boolean isPairing() {

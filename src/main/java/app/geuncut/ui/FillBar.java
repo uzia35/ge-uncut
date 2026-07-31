@@ -7,7 +7,6 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import javax.swing.JComponent;
 
-/** A slim progress bar: a dark track with a coloured fill for offer progress. */
 class FillBar extends JComponent {
 	private final double fraction;
 	private final Color fill;

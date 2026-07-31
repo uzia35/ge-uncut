@@ -22,12 +22,6 @@ import javax.swing.Timer;
 
 import app.geuncut.dto.MoverEntry;
 
-/**
- * A paged list of movers, two text lines per row: the name owns line one (with
- * the ↗ click affordance), price and day volume fill line two beside the
- * change%. Extra pages fade in and out on a timer, an alpha dip rather than a
- * scroll, so nothing moves per frame. Clicking a row opens its item details.
- */
 class MoversRotator extends JComponent {
 	private static final int PAGE = 5;
 	private static final int DWELL_MS = 10_000;
@@ -38,7 +32,6 @@ class MoversRotator extends JComponent {
 	private static final int TEXT_X = ICON + 8;
 	private static final int NAME_GAP = 8;
 
-	/** Supplies the row icon and repaints the strip once the sprite decodes. */
 	interface IconProvider {
 		Image icon(int itemId, Runnable onLoaded);
 	}
@@ -52,7 +45,7 @@ class MoversRotator extends JComponent {
 	private final Timer timer;
 
 	private int page;
-	private int fadingFrom = -1; // page dipping out, or -1 when settled
+	private int fadingFrom = -1;
 	private long fadeStartNanos;
 	private long pageShownNanos;
 
@@ -88,14 +81,11 @@ class MoversRotator extends JComponent {
 		rows.clear();
 		if (next != null) {
 			for (MoverEntry entry : next) {
-				// A malformed feed entry (Gson leaves an absent name null) must not
-				// NPE every paint of the strip.
 				if (entry == null || entry.getName() == null) {
 					continue;
 				}
 				Row row = new Row(entry.getName(), valueText.apply(entry),
 						detailLine(entry), entry.getItemId());
-				// Fetch the sprite once here (not per paint) so onLoaded is registered once.
 				row.icon = icons.icon(entry.getItemId(), this::repaint);
 				rows.add(row);
 			}
@@ -143,7 +133,6 @@ class MoversRotator extends JComponent {
 		return Long.toString(value);
 	}
 
-	// Package-private so the offscreen render harness can step the animation.
 	void tick() {
 		long now = nowNanos();
 		if (fadingFrom >= 0) {
@@ -160,7 +149,6 @@ class MoversRotator extends JComponent {
 		}
 	}
 
-	// Overridable clock so the harness can drive the fade deterministically.
 	long nowNanos() {
 		return System.nanoTime();
 	}
@@ -168,8 +156,6 @@ class MoversRotator extends JComponent {
 	@Override
 	public void addNotify() {
 		super.addNotify();
-		// Re-added after a panel switch (removeNotify stopped the timer). Restart
-		// the dwell from now so the page doesn't fade the instant it reappears.
 		if (totalPages() > 1 && !timer.isRunning()) {
 			fadingFrom = -1;
 			pageShownNanos = nowNanos();
@@ -195,7 +181,6 @@ class MoversRotator extends JComponent {
 		g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 		g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 		if (fadingFrom >= 0) {
-			// Dip the old page out, then the new one in; they never overlap (no text smear).
 			double progress = (nowNanos() - fadeStartNanos) / (FADE_MS * 1_000_000.0);
 			progress = Math.max(0.0, Math.min(1.0, progress));
 			if (progress < 0.5) {

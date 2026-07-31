@@ -30,8 +30,6 @@ public class BuyLimitTrackerImpl implements BuyLimitTracker {
 			return 0;
 		}
 		Instant cutoff = now.minus(WINDOW);
-		// removeIf, not front-only peek: a backward wall-clock adjustment can leave an
-		// out-of-order entry the front-only sweep would never reach.
 		purchases.removeIf(purchase -> purchase.getBoughtAt().isBefore(cutoff));
 		if (purchases.isEmpty()) {
 			purchasesByItem.remove(itemId);

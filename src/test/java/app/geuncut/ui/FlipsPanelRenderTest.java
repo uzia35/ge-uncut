@@ -40,11 +40,11 @@ public class FlipsPanelRenderTest {
 			"\"account_hash\":\"acct-b\"}]}";
 
 	private static final String ARCHIVED_JSON = "{\"positions\":[" +
-			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480}," +
+			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480,\"opened_at\":\"2026-07-10T12:00:00\"}," +
 			"{\"id\":9,\"item_id\":1637,\"item_name\":\"Sapphire ring\",\"quantity\":10,\"buy_price\":900," +
-			"\"exit_price\":1100,\"closed_at\":\"2026-07-18T10:00:00\"}]," +
-			"\"margin_checks\":[{\"sell_event_id\":501,\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
-			"\"archived_sells\":[{\"item_id\":1601,\"item_name\":\"Diamond\",\"quantity\":8,\"price_each\":1640,\"occurred_at\":\"2026-07-19T09:00:00\"}]}";
+			"\"exit_price\":1100,\"realized_profit\":1780,\"tax_paid\":220,\"opened_at\":\"2026-07-15T09:00:00\",\"closed_at\":\"2026-07-18T10:00:00\"}]," +
+			"\"margin_checks\":[{\"sell_event_id\":501,\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"profit\":-52,\"tax\":52,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
+			"\"archived_sells\":[{\"item_id\":1601,\"item_name\":\"Diamond\",\"quantity\":8,\"price_each\":1640,\"occurred_at\":\"2026-07-19T09:00:00+00:00\"}]}";
 
 	private static final String MOVERS_JSON = "{\"risers\":[" +
 			"{\"item_id\":1,\"name\":\"Hueycoatl hide vambraces\",\"change_pct\":21.8,\"price\":38213,\"volume_day\":124000}," +
@@ -155,23 +155,44 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "Track as a flip"));
 		assertNotNull(findLabel(panel, "Uncut diamond"));
 		assertNotNull(findLabel(panel, "Diamond"));
-		// A completed trade moved to History restores back to Completed and
-		// shows its manual-close sale price instead of "— not sold".
 		assertNotNull(findLabel(panel, "Restore"));
 		assertNotNull(findLabel(panel, "1,100"));
-		// Two linked accounts split the active list into website-style sections,
-		// and a hold-window exit is its own pill, not a SELL.
+		assertNotNull(findLabel(panel, "Flipped"));
+		assertNotNull(findLabel(panel, "Regular trade"));
+		assertNotNull(findLabel(panel, "Made"));
+		assertNotNull(findLabel(panel, "+2k"));
+		assertNotNull(findLabel(panel, "−52"));
+		assertNotNull(findLabel(panel, "Tax paid"));
+		assertNotNull(findLabel(panel, "220"));
+		assertNotNull(findLabel(panel, "When"));
+		assertNotNull(findLabel(panel, "Qty"));
+		assertNotNull(findLabel(panel, "?"));
 		panel.selectTab("flips");
 		assertNotNull(findLabel(panel, "ACCOUNT 1"));
 		assertNotNull(findLabel(panel, "ACCOUNT 2"));
 		assertNotNull(findLabel(panel, "EXIT"));
-		// The expanded card shows what the flip is aiming for.
 		assertNotNull(findLabel(panel, "Sell target"));
 		assertNotNull(findLabel(panel, "Alert at"));
 		assertNotNull(findLabel(panel, "Held"));
-		// The Movers tab carries the website's third group.
 		panel.selectTab("movers");
 		assertNotNull(findLabel(panel, "Volume spikes"));
+	}
+
+	@Test
+	public void historySortsNewestFirstAcrossCardTypes() {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
+		java.util.List<String> texts = new java.util.ArrayList<>();
+		collectAllLabelTexts(panel, texts);
+		int sell = texts.indexOf("Diamond");
+		int pair = texts.indexOf("Uncut diamond");
+		int flip = texts.indexOf("Sapphire ring");
+		int buy = texts.indexOf("Snape grass");
+		assertTrue(sell >= 0 && pair > sell && flip > pair && buy > flip);
 	}
 
 	@Test
@@ -184,8 +205,6 @@ public class FlipsPanelRenderTest {
 		};
 		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, capture);
 		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
-		// Both the completed card's restore and the pair card carry this label;
-		// clicking every one must route the pair's click to the sell event id.
 		java.util.List<JLabel> tracks = new java.util.ArrayList<>();
 		collectLabels(panel, "Restore", tracks);
 		assertTrue(tracks.size() >= 2);
@@ -224,7 +243,7 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "Item details ↗"));
 		assertNotNull(findLabel(panel, "Total profit"));
 		assertNotNull(findLabel(panel, "Avg profit / ea"));
-		assertNotNull(findLabel(panel, "Unrealized P/L"));
+		assertNotNull(findLabel(panel, "Unrealized profit"));
 		assertNotNull(findLabel(panel, "Realized so far"));
 		assertNotNull(findLabel(panel, "Avg ROI"));
 		panel.toggleFlip(42);
@@ -324,6 +343,17 @@ public class FlipsPanelRenderTest {
 			listener.mouseClicked(click);
 		}
 		assertEquals(42L, captured[0]);
+	}
+
+	private static void collectAllLabelTexts(Component component, java.util.List<String> out) {
+		if (component instanceof JLabel) {
+			out.add(((JLabel) component).getText());
+		}
+		if (component instanceof Container) {
+			for (Component child : ((Container) component).getComponents()) {
+				collectAllLabelTexts(child, out);
+			}
+		}
 	}
 
 	private static JLabel findLabel(Component component, String text) {

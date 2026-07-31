@@ -106,7 +106,6 @@ public class TradeSyncServiceTest {
 		for (int quantity = 1; quantity <= 200; quantity++) {
 			service.accept(buy(quantity));
 		}
-		// Hold the flush's POST so accepts can interleave the way a real outage allows.
 		api.deferNextPost = true;
 		flushTick.run();
 		for (int quantity = 201; quantity <= 400; quantity++) {
@@ -150,10 +149,8 @@ public class TradeSyncServiceTest {
 
 		assertEquals(1, api.postedBatches.size());
 		GeTradeEvent event = api.postedBatches.get(0).get(0);
-		// Minted at accept time, so the retry re-sends the same identity.
 		assertEquals(36, java.util.UUID.fromString(event.getClientEventId()).toString().length());
 		assertTrue(event.getPublishedAt() != null && !event.getPublishedAt().isEmpty());
-		// Publication is the transmission attempt, distinct from the fill time.
 		assertTrue(Instant.parse(event.getPublishedAt()).isAfter(T0));
 	}
 }

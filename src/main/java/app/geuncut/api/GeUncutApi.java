@@ -12,14 +12,6 @@ import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
 import app.geuncut.dto.PositionsResponse;
 
-/**
- * The plugin's contract with geuncut.app. Services depend on this seam, never
- * on the HTTP implementation, so they are testable without a network.
- *
- * Authentication is entirely the transport's concern: callers never see the
- * token, and an expired or missing link surfaces as an unauthorized
- * ApiFailure.
- */
 public interface GeUncutApi {
 	void fetchFlips(String scanType, String risk, Long capital, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
 
@@ -31,11 +23,8 @@ public interface GeUncutApi {
 
 	void restorePosition(long positionId, Runnable onSuccess, Consumer<ApiFailure> onError);
 
-	// History "Track as a flip" on a quarantined pair, same as the website.
 	void trackPair(long sellEventId, Runnable onSuccess, Consumer<ApiFailure> onError);
 
-	// Durable per-slot placement times, for seeding working-offer ages across
-	// client restarts.
 	void fetchOfferPlacements(Consumer<List<OfferPlacement>> onSuccess, Consumer<ApiFailure> onError);
 
 	void fetchMovers(Consumer<Movers> onSuccess, Consumer<ApiFailure> onError);
@@ -50,6 +39,5 @@ public interface GeUncutApi {
 
 	void pollLink(String deviceCode, Consumer<String> onToken, Runnable onPending, Consumer<ApiFailure> onError);
 
-	// Token passed explicitly: the caller clears config first, so the interceptor can no longer add it.
 	void unlinkAccount(String token, Runnable onSuccess, Consumer<ApiFailure> onError);
 }

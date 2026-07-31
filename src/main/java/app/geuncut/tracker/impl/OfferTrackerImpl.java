@@ -14,19 +14,10 @@ import app.geuncut.tracker.OfferTracker;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.GrandExchangeOfferState;
 
-/**
- * Turns raw GrandExchangeOfferChanged events into fill deltas.
- *
- * The client replays the state of every slot on login. The first event seen
- * for a slot therefore only establishes a baseline and never emits a delta;
- * without this, every login would double count the standing offers.
- */
 @Slf4j
 @Singleton
 public class OfferTrackerImpl implements OfferTracker {
 	private final Map<Integer, OfferSnapshot> slots = new HashMap<>();
-	// Slots whose first post-reset event has been seen. Only that first event is a
-	// login/hop replay to baseline; a slot reused later in the same session is not.
 	private final Set<Integer> replayedSlots = new HashSet<>();
 
 	@Override
@@ -70,12 +61,6 @@ public class OfferTrackerImpl implements OfferTracker {
 		return Optional.of(new OfferDelta(itemId, side, quantityDelta, priceEach, slot, now));
 	}
 
-	// A slot that empties while its offer was still BUYING/SELLING and short of
-	// its total means the final fill's event never arrived - it can land in the
-	// same tick as the collection and collapse straight to EMPTY. Book the
-	// unaccounted units at the offer price rather than losing them. An abort
-	// always shows its CANCELLED state first, so those clear with no residual;
-	// a slot collected while this client was away has no snapshot and is skipped.
 	private Optional<OfferDelta> residualFill(OfferSnapshot last, int slot, Instant now) {
 		if (last == null || !isActiveState(last.getState())) {
 			return Optional.empty();

@@ -4,10 +4,6 @@ import com.google.gson.annotations.SerializedName;
 import lombok.Builder;
 import lombok.Value;
 
-/**
- * One open flip with its live evaluation. unrealizedProfit and roi are null
- * when the item's price is stale, so no P&L can be derived.
- */
 @Value
 @Builder
 public class Position {
@@ -39,16 +35,15 @@ public class Position {
 	@SerializedName("realized_profit")
 	private final Long realizedProfit;
 
-	// Archived-endpoint extras: a completed trade moved to History keeps its
-	// sale price and close time, so the panel can show and restore it right.
+	@SerializedName("tax_paid")
+	private final Long taxPaid;
+
 	@SerializedName("exit_price")
 	private final Long exitPrice;
 
 	@SerializedName("closed_at")
 	private final String closedAt;
 
-	// What the flip is aiming for: sell target, armed alert, and the hold
-	// window for the expanded card.
 	@SerializedName("target_sell_price")
 	private final Long targetSellPrice;
 

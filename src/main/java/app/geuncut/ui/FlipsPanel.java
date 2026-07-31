@@ -45,11 +45,6 @@ import app.geuncut.dto.PositionsSummary;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.ImageUtil;
 
-/**
- * The GE Uncut side panel, styled to the website: near-black surfaces, a
- * monochrome accent, monospace numerals. One scrolling column of sections,
- * summary first, then live GE state, then the flip finder.
- */
 public class FlipsPanel extends PluginPanel {
 	private static final NumberFormat GP = NumberFormat.getIntegerInstance();
 
@@ -113,8 +108,6 @@ public class FlipsPanel extends PluginPanel {
 			new String[] { "Standard", "Fast Fill", "High Volume" },
 			new String[] { "standard", "fast", "value" }, 2);
 	private final FlatSelect riskPicker = new FlatSelect(new String[] { "Conservative", "Balanced", "Aggressive" }, 1);
-	// The website's capital presets, mirrored exactly. "My capital" is added by
-	// applyCapital once a linked flips response says what it resolves to.
 	private static final String[] CAPITAL_PRESET_LABELS = { "1M gp", "10M gp", "50M gp", "100M gp" };
 	private static final String[] CAPITAL_PRESET_VALUES = { "1000000", "10000000", "50000000", "100000000" };
 
@@ -148,10 +141,8 @@ public class FlipsPanel extends PluginPanel {
 		this.onTrackPair = onTrackPair;
 		this.onNotFlip = onNotFlip;
 		this.onRestore = onRestore;
-		// Row icons are inventory sprites (no network); the loader repaints as they decode.
 		gainers = new MoversRotator(Theme.NUM_SMALL, Theme.UP, iconLoader::sprite, onOpenItem);
 		losers = new MoversRotator(Theme.NUM_SMALL, Theme.DOWN, iconLoader::sprite, onOpenItem);
-		// Volume spikes show "N.N×" (today's volume over usual), not a percent.
 		spikes = new MoversRotator(Theme.NUM_SMALL, Theme.AMBER, iconLoader::sprite, onOpenItem,
 				entry -> entry.getVolumeRatio() != null
 						? String.format("%.1f×", entry.getVolumeRatio())
@@ -197,7 +188,6 @@ public class FlipsPanel extends PluginPanel {
 		});
 		scanPicker.setOnChange(onRefresh);
 		riskPicker.setOnChange(onRefresh);
-		// A manual pick sticks; applyCapital only moves an untouched selection.
 		capitalPicker.setOnChange(() -> {
 			capitalTouched = true;
 			onRefresh.run();
@@ -363,11 +353,6 @@ public class FlipsPanel extends PluginPanel {
 
 	private JPanel buildHistoryPane() {
 		JPanel pane = pane();
-		JLabel blurb = text("Kept out of your stats. Restore anytime.", Theme.MUTED, Theme.SMALL);
-		shrinkToFit(blurb, PANEL_WIDTH - 22, 9.5f);
-		blurb.setAlignmentX(Component.LEFT_ALIGNMENT);
-		pane.add(blurb);
-		pane.add(strut(8));
 		historySection.setLayout(new BorderLayout());
 		historySection.setBackground(Theme.SURFACE);
 		historySection.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -376,7 +361,6 @@ public class FlipsPanel extends PluginPanel {
 		return pane;
 	}
 
-	// ---- public updates (call on the EDT) ------------------------------------
 
 	public String selectedScan() {
 		return scanPicker.selectedValue();
@@ -391,10 +375,6 @@ public class FlipsPanel extends PluginPanel {
 		return value.isEmpty() ? null : Long.valueOf(value);
 	}
 
-	// Reshape the capital picker from a flips response: linked gets a "My
-	// capital" entry labelled with the bankroll saved on the website; unlinked
-	// gets the website's presets only, starting at 1M. An untouched selection
-	// follows the link state's default; if the effective value moved, re-scan.
 	public void applyCapital(boolean linked, Long myCapital) {
 		boolean mine = linked && myCapital != null && myCapital > 0;
 		String[] labels = CAPITAL_PRESET_LABELS;
@@ -444,8 +424,6 @@ public class FlipsPanel extends PluginPanel {
 		renderOffers();
 	}
 
-	// Logged out, the panel can't see fills, so the ages stop ticking and dim
-	// rather than posing as live. The login replay catches everything up.
 	public void setGameActive(boolean active) {
 		if (gameActive == active) {
 			return;
@@ -486,12 +464,8 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	public void showActiveFlips(PositionsResponse response) {
-		// A degraded 200 can omit summary/positions; treat absence as an empty state
-		// rather than NPEing the render.
 		PositionsSummary summary = response.getSummary() != null
 				? response.getSummary() : PositionsSummary.builder().build();
-		// Same number as the website's Total profit hero: realized plus open
-		// unrealized, not realized alone under the same caption.
 		setStat(allTimeValue, summary.getTotalRealized() + summary.getOpenUnrealized());
 		setStat(todayValue, summary.getTodayRealized());
 		setStat(unrealizedValue, summary.getOpenUnrealized());
@@ -506,8 +480,6 @@ public class FlipsPanel extends PluginPanel {
 	private void renderActiveFlips() {
 		activeCount.setText(Integer.toString(lastPositions.size()));
 		activeList.removeAll();
-		// The website's account sections: distinct hashes sorted so "Account 1"
-		// never changes identity, unassigned flips last with no label.
 		java.util.TreeSet<String> accounts = new java.util.TreeSet<>();
 		for (Position position : lastPositions) {
 			if (position.getAccountHash() != null) {
@@ -530,8 +502,6 @@ public class FlipsPanel extends PluginPanel {
 		repaint();
 	}
 
-	// One account's slice of the active list: a small label row, then its cards.
-	// A null label collects the unassigned (no account hash) flips, unlabeled.
 	private void addAccountSection(String label, String hash) {
 		boolean any = false;
 		for (Position position : lastPositions) {
@@ -569,22 +539,32 @@ public class FlipsPanel extends PluginPanel {
 				? response.getMarginChecks() : Collections.emptyList();
 		List<ArchivedSell> sells = response.getArchivedSells() != null
 				? response.getArchivedSells() : Collections.emptyList();
-		historyList.removeAll();
+		List<Map.Entry<Instant, RoundedPanel>> entries = new ArrayList<>();
 		for (Position position : positions) {
-			addCard(historyList, historyCard(position));
+			entries.add(historyEntry(
+					position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt(),
+					historyCard(position)));
 		}
 		for (MarginCheck check : checks) {
-			addCard(historyList, marginCheckCard(check));
+			entries.add(historyEntry(check.getOccurredAt(), marginCheckCard(check)));
 		}
 		for (ArchivedSell sale : sells) {
-			addCard(historyList, archivedSellCard(sale));
+			entries.add(historyEntry(sale.getOccurredAt(), archivedSellCard(sale)));
+		}
+		entries.sort((a, b) -> b.getKey().compareTo(a.getKey()));
+		historyList.removeAll();
+		for (Map.Entry<Instant, RoundedPanel> entry : entries) {
+			addCard(historyList, entry.getValue());
 		}
 		revalidate();
 		repaint();
 	}
 
-	// Back to the zeros-and-dashes empty state; the positions fetch 401s once
-	// unlinked, so it can never clear the previous account's numbers itself.
+	private static Map.Entry<Instant, RoundedPanel> historyEntry(String when, RoundedPanel card) {
+		Instant at = parseWhen(when);
+		return new java.util.AbstractMap.SimpleImmutableEntry<>(at != null ? at : Instant.EPOCH, card);
+	}
+
 	public void clearAccountData() {
 		showActiveFlips(PositionsResponse.builder().build());
 	}
@@ -596,7 +576,6 @@ public class FlipsPanel extends PluginPanel {
 		gainers.setEntries(risers);
 		losers.setEntries(fallers);
 		spikes.setEntries(volumeSpikes);
-		// Hide an empty group so a one-sided day leaves no dangling header.
 		boolean hasGainers = risers != null && !risers.isEmpty();
 		boolean hasLosers = fallers != null && !fallers.isEmpty();
 		boolean hasSpikes = volumeSpikes != null && !volumeSpikes.isEmpty();
@@ -624,8 +603,6 @@ public class FlipsPanel extends PluginPanel {
 		lastFlips = flips != null ? flips : Collections.emptyList();
 		promptShowing = false;
 		setLinked(linked);
-		// Unlinked callers see the free (non-members) tier, so invite them to link
-		// for the members-item flips rather than gating the panel behind an account.
 		upsell.setVisible(!linked);
 		renderFlips();
 	}
@@ -697,7 +674,6 @@ public class FlipsPanel extends PluginPanel {
 		repaint();
 	}
 
-	// ---- section builders ----------------------------------------------------
 
 	private JPanel buildHeader() {
 		JPanel header = new JPanel(new BorderLayout());
@@ -761,7 +737,7 @@ public class FlipsPanel extends PluginPanel {
 		grid.setAlignmentX(Component.LEFT_ALIGNMENT);
 		grid.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 		grid.add(statTile("TODAY", todayValue));
-		grid.add(statTile("OPEN P/L", unrealizedValue));
+		grid.add(statTile("OPEN PROFIT", unrealizedValue));
 		grid.add(statTile("WIN RATE", winValue));
 		grid.add(statTile("AVG ROI", roiValue));
 		stats.add(grid);
@@ -809,7 +785,6 @@ public class FlipsPanel extends PluginPanel {
 		return button;
 	}
 
-	// ---- cards ---------------------------------------------------------------
 
 	private static final long STUCK_OFFER_SECONDS = 30 * 60;
 
@@ -834,10 +809,6 @@ public class FlipsPanel extends PluginPanel {
 		top.add(nameLabel(name), BorderLayout.CENTER);
 		Instant placed = parsePlacement(offer.getOccurredAt());
 		if (placed != null) {
-			// The in-game offer clock, seconds included. The label object updates
-			// in place on the 1s tick, so the card is never rebuilt for it. A
-			// completed offer stops ticking, and a logged-out client dims the age
-			// instead of pretending the panel still tracks fills.
 			JLabel age = text("", Theme.MUTED, Theme.NUM_TINY);
 			Runnable tick = () -> {
 				long seconds = Math.max(0, Duration.between(placed, Instant.now()).getSeconds());
@@ -883,8 +854,6 @@ public class FlipsPanel extends PluginPanel {
 		return card;
 	}
 
-	// "2d of 3d" while a hold window exists, plain "2d" without one; "<1d" on
-	// day zero. Null when opened_at is missing or unparseable.
 	private static String heldText(String openedAt, Integer horizonDays) {
 		Instant opened = parsePlacement(openedAt);
 		if (opened == null && openedAt != null) {
@@ -913,7 +882,40 @@ public class FlipsPanel extends PluginPanel {
 		}
 	}
 
-	// The game's own offer-timer format (00:03:20); days spelled out past 24h.
+	private static Instant parseWhen(String when) {
+		Instant parsed = parsePlacement(when);
+		if (parsed != null || when == null) {
+			return parsed;
+		}
+		try {
+			return java.time.OffsetDateTime.parse(when).toInstant();
+		} catch (RuntimeException notOffset) {
+			try {
+				return java.time.LocalDateTime.parse(when).toInstant(java.time.ZoneOffset.UTC);
+			} catch (RuntimeException unparseable) {
+				return null;
+			}
+		}
+	}
+
+	private static String agoText(String when) {
+		Instant at = parseWhen(when);
+		if (at == null) {
+			return null;
+		}
+		long seconds = Math.max(0, Duration.between(at, Instant.now()).getSeconds());
+		if (seconds < 60) {
+			return "just now";
+		}
+		if (seconds < 3_600) {
+			return Math.round(seconds / 60.0) + "m ago";
+		}
+		if (seconds < 86_400) {
+			return Math.round(seconds / 3_600.0) + "h ago";
+		}
+		return Math.round(seconds / 86_400.0) + "d ago";
+	}
+
 	private static String formatAge(long seconds) {
 		long days = seconds / 86_400;
 		if (days > 0) {
@@ -1040,7 +1042,6 @@ public class FlipsPanel extends PluginPanel {
 		if (trend == null || trend.getDirection() == null) {
 			return null;
 		}
-		// The website's tag, compacted for 225px: label plus the volume pace.
 		String pace = trend.getRatio() != null ? " · " + trimNum(trend.getRatio()) + "× vol" : "";
 		switch (trend.getDirection()) {
 			case RISING:
@@ -1133,8 +1134,6 @@ public class FlipsPanel extends PluginPanel {
 		sub.setMaximumSize(sub.getPreferredSize());
 		line2.add(sub);
 		line2.add(Box.createHorizontalGlue());
-		// The website's two distinct states: SELL is a live profit signal, EXIT
-		// means the hold window is over, not a win.
 		if ("sell".equals(position.getPhase())) {
 			line2.add(solidPill("SELL", Theme.AMBER));
 			line2.add(Box.createHorizontalStrut(6));
@@ -1149,7 +1148,7 @@ public class FlipsPanel extends PluginPanel {
 		if (profit == null) {
 			JLabel dash = text("—", Theme.MUTED, Theme.NUM_BOLD);
 			if (position.isPriceStale()) {
-				dash.setToolTipText("Prices are stale, so P/L and sell signals are paused");
+				dash.setToolTipText("Prices are stale, so profit and sell signals are paused");
 			}
 			line2.add(dash);
 		} else {
@@ -1184,7 +1183,7 @@ public class FlipsPanel extends PluginPanel {
 			addLeft(card, divider());
 			card.add(Box.createVerticalStrut(8));
 			if (position.isPriceStale()) {
-				JLabel stale = text("Prices stale · P/L and signals paused", Theme.MUTED, Theme.SMALL);
+				JLabel stale = text("Prices stale · profit and signals paused", Theme.MUTED, Theme.SMALL);
 				stale.setAlignmentX(Component.LEFT_ALIGNMENT);
 				stale.setBorder(BorderFactory.createEmptyBorder(0, 0, 6, 0));
 				card.add(stale);
@@ -1194,7 +1193,7 @@ public class FlipsPanel extends PluginPanel {
 					profit == null ? Theme.MUTED : (profit >= 0 ? Theme.UP : Theme.DOWN)));
 			boolean hasSold = position.getSoldQty() != null && position.getSoldQty() > 0;
 			if (hasSold && unrealized != null) {
-				addLeft(card, detailRow("Unrealized P/L", pnlText(unrealized),
+				addLeft(card, detailRow("Unrealized profit", pnlText(unrealized),
 						unrealized >= 0 ? Theme.UP : Theme.DOWN));
 			}
 			if (hasSold && realized != null) {
@@ -1221,7 +1220,6 @@ public class FlipsPanel extends PluginPanel {
 							: "— none yet",
 					hasSold ? Theme.INK : Theme.MUTED));
 			addLeft(card, detailRow("Cost", shortGp(position.getBuyPrice() * position.getQuantity()), Theme.INK));
-			// What the flip is aiming for: target, armed alert, hold progress.
 			if (position.getTargetSellPrice() != null || position.getAlertPrice() != null
 					|| position.getOpenedAt() != null) {
 				card.add(Box.createVerticalStrut(6));
@@ -1276,9 +1274,6 @@ public class FlipsPanel extends PluginPanel {
 		text.setHorizontalAlignment(SwingConstants.CENTER);
 		text.setMinimumSize(new Dimension(24, text.getPreferredSize().height));
 		button.add(text, BorderLayout.CENTER);
-		// A few px of slack over the measured label: live-client font metrics can
-		// run a hair wider than construction-time ones, and the frozen preferred
-		// width was ellipsizing "Track as a flip" mid-word.
 		Dimension size = new Dimension(button.getPreferredSize().width + 6, BUTTON_HEIGHT);
 		button.setPreferredSize(size);
 		button.setMaximumSize(size);
@@ -1302,50 +1297,45 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private RoundedPanel historyCard(Position position) {
-		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
-		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
-
-		JPanel head = new JPanel(new BorderLayout(9, 0));
-		head.setOpaque(false);
-		head.setAlignmentX(Component.LEFT_ALIGNMENT);
-		head.add(icon(position.getItemId(), position.getName(), 26), BorderLayout.WEST);
-		JPanel nameCol = new JPanel();
-		nameCol.setOpaque(false);
-		nameCol.setLayout(new BoxLayout(nameCol, BoxLayout.Y_AXIS));
-		JLabel name = nameLabel(position.getName());
-		shrinkToFit(name, CONTENT_WIDTH - 26 - 9);
-		name.setAlignmentX(Component.LEFT_ALIGNMENT);
-		nameCol.add(name);
-		head.add(nameCol, BorderLayout.CENTER);
-		card.add(head);
-
-		card.add(Box.createVerticalStrut(8));
-		addLeft(card, detailRow("Quantity", GP.format(position.getQuantity()), Theme.INK));
-		addLeft(card, detailRow("Bought at", GP.format(position.getBuyPrice()), Theme.INK));
-		// Same fallback the website uses: plugin-fill average first, then the
-		// manual close's exit price, so a hand-closed flip never reads unsold.
 		Long soldPrice = position.getSoldQty() != null && position.getSoldQty() > 0
 				&& position.getSoldAvgPrice() != null
 						? position.getSoldAvgPrice() : position.getExitPrice();
-		addLeft(card, detailRow("Sold at",
-				soldPrice != null ? GP.format(soldPrice) : "— not sold",
+		boolean flipped = soldPrice != null;
+		RoundedPanel card = historyCardShell(position.getItemId(), position.getName(), flipped);
+		if (flipped) {
+			addMadeRows(card, position.getRealizedProfit(), position.getTaxPaid());
+		}
+		addLeft(card, detailRow("Qty", GP.format(position.getQuantity()), Theme.INK));
+		addLeft(card, detailRow("Buy", GP.format(position.getBuyPrice()), Theme.INK));
+		addLeft(card, detailRow("Sold",
+				soldPrice != null ? GP.format(soldPrice) : "—",
 				soldPrice != null ? Theme.INK : Theme.MUTED));
-		addLeft(card, detailRow("Spent", shortGp(position.getBuyPrice() * position.getQuantity()), Theme.INK));
+		addWhenRow(card, position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt());
 
 		clickable(card, position.getItemId());
-		JPanel actions = new JPanel(new BorderLayout());
+		boolean completed = position.getClosedAt() != null
+				|| (position.getSoldQty() != null && position.getSoldQty() > 0);
+		card.add(historyActions(
+				actionButton(completed ? "Restore" : "Track as a flip", () -> onRestore.accept(position.getId())),
+				completed ? "Puts this back in your flips under Completed. It counts again."
+						: "Starts tracking this as a live open flip. It counts again."));
+		return card;
+	}
+
+	private JPanel historyActions(RoundedPanel button, String tip) {
+		JPanel actions = new JPanel();
+		actions.setLayout(new BoxLayout(actions, BoxLayout.X_AXIS));
 		actions.setOpaque(false);
 		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
 		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
-		boolean completed = position.getClosedAt() != null
-				|| (position.getSoldQty() != null && position.getSoldQty() > 0);
-		actions.add(withTooltip(actionButton(completed ? "Restore" : "Track as a flip",
-				() -> onRestore.accept(position.getId())),
-				completed ? "Restores under Completed on geuncut.app"
-						: "Back to your active flips"), BorderLayout.EAST);
-		card.add(actions);
-		return card;
+		actions.add(Box.createHorizontalGlue());
+		actions.add(withTooltip(button, tip));
+		actions.add(Box.createHorizontalStrut(6));
+		Pill help = new Pill("?", Theme.MUTED, Theme.soft(Theme.MUTED), null);
+		help.setFont(Theme.SMALL_BOLD);
+		help.setToolTipText(tip);
+		actions.add(help);
+		return actions;
 	}
 
 	private static RoundedPanel withTooltip(RoundedPanel button, String tip) {
@@ -1358,7 +1348,7 @@ public class FlipsPanel extends PluginPanel {
 		return button;
 	}
 
-	private RoundedPanel plainHistoryCard(int itemId, String name) {
+	private RoundedPanel historyCardShell(int itemId, String name, boolean flipped) {
 		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
 		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
 		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
@@ -1366,38 +1356,77 @@ public class FlipsPanel extends PluginPanel {
 		head.setOpaque(false);
 		head.setAlignmentX(Component.LEFT_ALIGNMENT);
 		head.add(icon(itemId, name, 26), BorderLayout.WEST);
+		JPanel nameCol = new JPanel();
+		nameCol.setOpaque(false);
+		nameCol.setLayout(new BoxLayout(nameCol, BoxLayout.Y_AXIS));
 		JLabel nameHead = nameLabel(name);
 		shrinkToFit(nameHead, CONTENT_WIDTH - 26 - 9);
-		head.add(nameHead, BorderLayout.CENTER);
+		nameHead.setAlignmentX(Component.LEFT_ALIGNMENT);
+		nameCol.add(nameHead);
+		nameCol.add(Box.createVerticalStrut(4));
+		JPanel line2 = new JPanel();
+		line2.setOpaque(false);
+		line2.setLayout(new BoxLayout(line2, BoxLayout.X_AXIS));
+		line2.setAlignmentX(Component.LEFT_ALIGNMENT);
+		java.awt.Color hue = flipped ? Theme.UP : Theme.MUTED;
+		JLabel what = text(flipped ? "Flipped" : "Regular trade", hue, Theme.SMALL_BOLD);
+		what.setIcon(new TradeGlyph(flipped, hue, 13));
+		what.setIconTextGap(5);
+		line2.add(what);
+		nameCol.add(line2);
+		head.add(nameCol, BorderLayout.CENTER);
 		card.add(head);
 		card.add(Box.createVerticalStrut(8));
-		clickable(card, itemId);
 		return card;
 	}
 
+	private void addWhenRow(RoundedPanel card, String when) {
+		String ago = agoText(when);
+		if (ago != null) {
+			addLeft(card, detailRow("When", ago, Theme.INK));
+		}
+	}
+
+	private void addMadeRows(RoundedPanel card, Long made, Long tax) {
+		if (made != null) {
+			JPanel row = new JPanel(new BorderLayout(8, 0));
+			row.setOpaque(false);
+			row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
+			row.setPreferredSize(new Dimension(10, 24));
+			row.add(text("Made", Theme.INK, Theme.SMALL), BorderLayout.WEST);
+			JLabel value = text(pnlText(made), made >= 0 ? Theme.UP : Theme.DOWN, Theme.NUM_LG);
+			value.setHorizontalAlignment(SwingConstants.RIGHT);
+			row.add(value, BorderLayout.EAST);
+			addLeft(card, row);
+		}
+		if (tax != null) {
+			addLeft(card, detailRow("Tax paid", shortGp(tax), Theme.MUTED));
+		}
+	}
+
 	private RoundedPanel marginCheckCard(MarginCheck check) {
-		RoundedPanel card = plainHistoryCard(check.getItemId(), check.getItemName());
-		addLeft(card, detailRow("Quantity", "1", Theme.INK));
-		addLeft(card, detailRow("Bought at", GP.format(check.getBuyPrice()), Theme.INK));
-		addLeft(card, detailRow("Sold at", GP.format(check.getSellPrice()), Theme.INK));
-		JPanel actions = new JPanel(new BorderLayout());
-		actions.setOpaque(false);
-		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
-		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
-		actions.add(withTooltip(actionButton("Restore",
-				() -> onTrackPair.accept(check.getSellEventId())),
-				"Restores under Completed on geuncut.app"), BorderLayout.EAST);
-		card.add(actions);
+		RoundedPanel card = historyCardShell(check.getItemId(), check.getItemName(), true);
+		addMadeRows(card, check.getProfit(), check.getTax());
+		addLeft(card, detailRow("Qty", "1", Theme.INK));
+		addLeft(card, detailRow("Buy", GP.format(check.getBuyPrice()), Theme.INK));
+		addLeft(card, detailRow("Sold", GP.format(check.getSellPrice()), Theme.INK));
+		addWhenRow(card, check.getOccurredAt());
+		clickable(card, check.getItemId());
+		card.add(historyActions(
+				actionButton("Restore", () -> onTrackPair.accept(check.getSellEventId())),
+				"Puts this back in your flips under Completed. It counts again."));
 		return card;
 	}
 
 	private RoundedPanel archivedSellCard(ArchivedSell sale) {
-		RoundedPanel card = plainHistoryCard(sale.getItemId(), sale.getItemName());
-		addLeft(card, detailRow("Quantity", GP.format(sale.getQuantity()), Theme.INK));
-		addLeft(card, detailRow("Bought at", "—", Theme.MUTED));
-		addLeft(card, detailRow("Sold at",
+		RoundedPanel card = historyCardShell(sale.getItemId(), sale.getItemName(), false);
+		addLeft(card, detailRow("Qty", GP.format(sale.getQuantity()), Theme.INK));
+		addLeft(card, detailRow("Buy", "—", Theme.MUTED));
+		addLeft(card, detailRow("Sold",
 				sale.getPriceEach() != null ? GP.format(sale.getPriceEach()) : "—",
 				sale.getPriceEach() != null ? Theme.INK : Theme.MUTED));
+		addWhenRow(card, sale.getOccurredAt());
+		clickable(card, sale.getItemId());
 		return card;
 	}
 
@@ -1410,9 +1439,6 @@ public class FlipsPanel extends PluginPanel {
 		return label;
 	}
 
-	// Item rows open the full item page on geuncut.app, with a hover highlight so
-	// the row reads as tappable. Installed across the whole subtree so a click
-	// anywhere in the card counts, not just the padding between labels.
 	private void clickable(RoundedPanel card, int itemId) {
 		installHoverClick(card, () -> onOpenItem.accept(itemId));
 	}
@@ -1499,16 +1525,12 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private static JPanel listPanel() {
-		// BoxLayout, not GridLayout: cards must size to their own content. GridLayout
-		// stretched every card to the tallest one, leaving whitespace under short ones.
 		JPanel list = new JPanel();
 		list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
 		list.setBackground(Theme.SURFACE);
 		return list;
 	}
 
-	// Add a full-width card, capped to its own height so the vertical box never
-	// stretches it, with a 6px gap above every card after the first.
 	private static void addCard(JPanel list, JComponent card) {
 		if (list.getComponentCount() > 0) {
 			list.add(Box.createVerticalStrut(6));
@@ -1518,8 +1540,6 @@ public class FlipsPanel extends PluginPanel {
 		list.add(card);
 	}
 
-	// Item name that never widens the card past the panel: a long name clips (with
-	// the full name on hover) instead of forcing a minimum width wider than 225px.
 	private JLabel nameLabel(String name) {
 		JLabel label = text(name, Theme.WHITE, Theme.BODY_BOLD);
 		label.setToolTipText(name);

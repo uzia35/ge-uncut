@@ -4,11 +4,6 @@ import com.google.gson.annotations.SerializedName;
 import lombok.Builder;
 import lombok.Value;
 
-/**
- * One GE slot's durable placement record from the server: when the offer the
- * slot currently holds was placed, with the identity fields needed to apply it
- * only to that offer. Survives client restarts, unlike the local slot state.
- */
 @Value
 @Builder
 public class OfferPlacement {

@@ -6,9 +6,6 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Value;
 
-/**
- * A failed API call. statusCode is only meaningful for HTTP failures.
- */
 @Value
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ApiFailure {

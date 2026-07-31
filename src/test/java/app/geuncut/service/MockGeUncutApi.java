@@ -15,10 +15,6 @@ import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
 import app.geuncut.dto.PositionsResponse;
 
-/**
- * Scriptable in-memory GeUncutApi. Calls are recorded; outcomes are whatever
- * the test arms before acting.
- */
 class MockGeUncutApi implements GeUncutApi {
 	boolean failNextPost;
 	boolean failNextOffers;
@@ -134,8 +130,6 @@ class MockGeUncutApi implements GeUncutApi {
 		onSuccess.run();
 	}
 
-	// Fire a post outcome that postGeEvents held back (deferNextPost), so a test can
-	// let accept() calls interleave between a flush's clear and its failure callback.
 	void firePendingPostFailure() {
 		Runnable held = pendingPostFailure;
 		pendingPostFailure = null;
@@ -184,8 +178,6 @@ class MockGeUncutApi implements GeUncutApi {
 		deliverPoll(onToken, onPending, onError);
 	}
 
-	// Fire a poll outcome that pollLink held back (deferNextPoll), so a test can cancel
-	// and restart a session before the stale poll's response lands.
 	void firePendingPoll() {
 		Runnable held = pendingPoll;
 		pendingPoll = null;

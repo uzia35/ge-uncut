@@ -4,7 +4,6 @@ import com.google.gson.annotations.SerializedName;
 import lombok.Builder;
 import lombok.Value;
 
-/** Portfolio totals for the panel's stats strip. */
 @Value
 @Builder
 public class PositionsSummary {

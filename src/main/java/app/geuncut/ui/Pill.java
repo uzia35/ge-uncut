@@ -7,7 +7,6 @@ import java.awt.RenderingHints;
 import javax.swing.BorderFactory;
 import javax.swing.JLabel;
 
-/** A small rounded badge/chip: coloured text on a translucent ground. */
 class Pill extends JLabel {
 	private final Color ground;
 	private final Color border;
