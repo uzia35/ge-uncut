@@ -135,12 +135,14 @@ public class GeUncutPlugin extends Plugin {
 
 	private FlipsPanel panel;
 	private NavigationButton navButton;
+	private java.util.concurrent.ScheduledFuture<?> positionsPoll;
 	private boolean offerReplayPending;
 	private volatile List<Flip> latestFlips = List.of();
 	private volatile List<Position> latestPositions = List.of();
 	private String lastAutofillPrompt;
 	private Widget offerLine;
 
+	private static final int POSITIONS_POLL_SECONDS = 30;
 	private static final int POST_FILL_REFRESH_SECONDS = 8;
 
 	@Override
@@ -149,8 +151,26 @@ public class GeUncutPlugin extends Plugin {
 
 		tradeSync.start(() -> Long.toString(client.getAccountHash()));
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
+		if (linked()) {
+			startPositionsPoll();
+		}
 		refreshFlips();
 		seedOfferPlacements();
+	}
+
+	private void startPositionsPoll() {
+		if (positionsPoll != null) {
+			return;
+		}
+		positionsPoll = executor.scheduleWithFixedDelay(this::refreshPositions,
+				POSITIONS_POLL_SECONDS, POSITIONS_POLL_SECONDS, TimeUnit.SECONDS);
+	}
+
+	private void stopPositionsPoll() {
+		if (positionsPoll != null) {
+			positionsPoll.cancel(false);
+			positionsPoll = null;
+		}
 	}
 
 	private void onTabOpened(String tab) {
@@ -209,6 +229,7 @@ public class GeUncutPlugin extends Plugin {
 	@Override
 	protected void shutDown() {
 		link.cancel();
+		stopPositionsPoll();
 		tradeSync.stop();
 		offerSync.stop();
 		clientToolbar.removeNavigation(navButton);
@@ -241,6 +262,7 @@ public class GeUncutPlugin extends Plugin {
 
 	private void unlinkAccount() {
 		link.cancel();
+		stopPositionsPoll();
 		String token = config.apiToken().trim();
 		if (!token.isEmpty()) {
 			api.unlinkAccount(token, () -> {}, failure ->
@@ -501,6 +523,9 @@ public class GeUncutPlugin extends Plugin {
 					});
 				},
 				failure -> {
+					if (failure.isUnauthorized()) {
+						stopPositionsPoll();
+					}
 					log.debug("event=positions_fetch_failed kind={} status={}",
 							failure.getKind(), failure.getStatusCode());
 					SwingUtilities.invokeLater(() -> {
@@ -584,6 +609,7 @@ public class GeUncutPlugin extends Plugin {
 		link.begin(
 				code -> SwingUtilities.invokeLater(() -> panel.showLinkCode(code)),
 				() -> {
+					startPositionsPoll();
 					seedOfferPlacements();
 					SwingUtilities.invokeLater(this::refreshFlips);
 				},
