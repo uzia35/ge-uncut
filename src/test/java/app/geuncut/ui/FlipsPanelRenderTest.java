@@ -43,6 +43,9 @@ public class FlipsPanelRenderTest {
 			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480,\"opened_at\":\"2026-07-10T12:00:00\"}," +
 			"{\"id\":9,\"item_id\":1637,\"item_name\":\"Sapphire ring\",\"quantity\":10,\"buy_price\":900," +
 			"\"exit_price\":1100,\"realized_profit\":1780,\"tax_paid\":220,\"opened_at\":\"2026-07-15T09:00:00\",\"closed_at\":\"2026-07-18T10:00:00\"}]," +
+			"\"completed\":[{\"id\":11,\"item_id\":22124,\"item_name\":\"Superior dragon bones\",\"quantity\":3200,\"buy_price\":19825," +
+			"\"sold_qty\":3200,\"sold_avg_price\":20500,\"realized_profit\":848000,\"tax_paid\":1312000," +
+			"\"opened_at\":\"2026-07-20T05:00:00\",\"closed_at\":\"2026-07-20T13:43:00\"}]," +
 			"\"margin_checks\":[{\"sell_event_id\":501,\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"profit\":-52,\"tax\":52,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
 			"\"archived_sells\":[{\"item_id\":1601,\"item_name\":\"Diamond\",\"quantity\":8,\"price_each\":1640,\"occurred_at\":\"2026-07-19T09:00:00+00:00\"}]}";
 
@@ -188,11 +191,41 @@ public class FlipsPanelRenderTest {
 		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
 		java.util.List<String> texts = new java.util.ArrayList<>();
 		collectAllLabelTexts(panel, texts);
+		int done = texts.indexOf("Superior dragon bones");
 		int sell = texts.indexOf("Diamond");
 		int pair = texts.indexOf("Uncut diamond");
 		int flip = texts.indexOf("Sapphire ring");
 		int buy = texts.indexOf("Snape grass");
-		assertTrue(sell >= 0 && pair > sell && flip > pair && buy > flip);
+		assertTrue(done >= 0 && sell > done && pair > sell && flip > pair && buy > flip);
+	}
+
+	@Test
+	public void historyFoldsPastTenCards() {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		java.util.List<app.geuncut.dto.ArchivedSell> sells = new java.util.ArrayList<>();
+		for (int i = 0; i < 12; i++) {
+			sells.add(app.geuncut.dto.ArchivedSell.builder()
+					.itemId(1601 + i).itemName("Item " + i).quantity(1).priceEach(100L)
+					.occurredAt("2026-07-19T09:" + String.format("%02d", i) + ":00+00:00").build());
+		}
+		panel.showHistory(PositionsResponse.builder().archivedSells(sells).build());
+		java.util.List<String> texts = new java.util.ArrayList<>();
+		collectAllLabelTexts(panel, texts);
+		assertEquals(10, texts.stream().filter("Regular trade"::equals).count());
+		JLabel more = findLabel(panel, "Show 2 more");
+		assertNotNull(more);
+
+		MouseEvent click = new MouseEvent(more, MouseEvent.MOUSE_CLICKED, 0L, 0, 1, 1, 1, false);
+		for (MouseListener listener : more.getMouseListeners()) {
+			listener.mouseClicked(click);
+		}
+		texts.clear();
+		collectAllLabelTexts(panel, texts);
+		assertEquals(12, texts.stream().filter("Regular trade"::equals).count());
 	}
 
 	@Test

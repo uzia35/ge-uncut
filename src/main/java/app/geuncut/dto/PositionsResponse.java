@@ -10,6 +10,7 @@ import lombok.Value;
 @Builder
 public class PositionsResponse {
 	private final List<Position> positions;
+	private final List<Position> completed;
 	private final PositionsSummary summary;
 
 	@SerializedName("margin_checks")
