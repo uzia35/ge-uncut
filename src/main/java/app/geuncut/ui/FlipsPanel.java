@@ -362,12 +362,8 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private JPanel buildHistoryPane() {
+		// No header line: the buttons' tooltips explain what History does.
 		JPanel pane = pane();
-		JLabel blurb = text("Kept out of your profit and win rate.", Theme.MUTED, Theme.SMALL);
-		shrinkToFit(blurb, PANEL_WIDTH - 22, 9.5f);
-		blurb.setAlignmentX(Component.LEFT_ALIGNMENT);
-		pane.add(blurb);
-		pane.add(strut(8));
 		historySection.setLayout(new BorderLayout());
 		historySection.setBackground(Theme.SURFACE);
 		historySection.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1371,18 +1367,31 @@ public class FlipsPanel extends PluginPanel {
 		addWhenRow(card, position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt());
 
 		clickable(card, position.getItemId());
-		JPanel actions = new JPanel(new BorderLayout());
+		boolean completed = position.getClosedAt() != null
+				|| (position.getSoldQty() != null && position.getSoldQty() > 0);
+		card.add(historyActions(
+				actionButton(completed ? "Restore" : "Track as a flip", () -> onRestore.accept(position.getId())),
+				completed ? "Puts this back in your flips under Completed. It counts again."
+						: "Starts tracking this as a live open flip. It counts again."));
+		return card;
+	}
+
+	// The History action row: the button, and a small "?" that invites the
+	// hover — both carry the same plain explanation of what the button does.
+	private JPanel historyActions(RoundedPanel button, String tip) {
+		JPanel actions = new JPanel();
+		actions.setLayout(new BoxLayout(actions, BoxLayout.X_AXIS));
 		actions.setOpaque(false);
 		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
 		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
-		boolean completed = position.getClosedAt() != null
-				|| (position.getSoldQty() != null && position.getSoldQty() > 0);
-		actions.add(withTooltip(actionButton(completed ? "Restore" : "Track as a flip",
-				() -> onRestore.accept(position.getId())),
-				completed ? "Restores under Completed on geuncut.app"
-						: "Back to your active flips"), BorderLayout.EAST);
-		card.add(actions);
-		return card;
+		actions.add(Box.createHorizontalGlue());
+		actions.add(withTooltip(button, tip));
+		actions.add(Box.createHorizontalStrut(6));
+		Pill help = new Pill("?", Theme.MUTED, Theme.soft(Theme.MUTED), null);
+		help.setFont(Theme.SMALL_BOLD);
+		help.setToolTipText(tip);
+		actions.add(help);
+		return actions;
 	}
 
 	private static RoundedPanel withTooltip(RoundedPanel button, String tip) {
@@ -1466,14 +1475,9 @@ public class FlipsPanel extends PluginPanel {
 		addLeft(card, detailRow("Sold", GP.format(check.getSellPrice()), Theme.INK));
 		addWhenRow(card, check.getOccurredAt());
 		clickable(card, check.getItemId());
-		JPanel actions = new JPanel(new BorderLayout());
-		actions.setOpaque(false);
-		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
-		actions.setBorder(BorderFactory.createEmptyBorder(9, 0, 0, 0));
-		actions.add(withTooltip(actionButton("Restore",
-				() -> onTrackPair.accept(check.getSellEventId())),
-				"Restores under Completed on geuncut.app"), BorderLayout.EAST);
-		card.add(actions);
+		card.add(historyActions(
+				actionButton("Restore", () -> onTrackPair.accept(check.getSellEventId())),
+				"Puts this back in your flips under Completed. It counts again."));
 		return card;
 	}
 
