@@ -85,6 +85,7 @@ public class HttpGeUncutApiTest {
 		assertEquals("GET", recorded.getMethod());
 		assertEquals("/api/plugin/flips?scan_type=standard", recorded.getPath());
 		assertEquals("Bearer " + TOKEN, recorded.getHeader("Authorization"));
+		assertEquals("no-cache, no-store", recorded.getHeader("Cache-Control"));
 	}
 
 	@Test
