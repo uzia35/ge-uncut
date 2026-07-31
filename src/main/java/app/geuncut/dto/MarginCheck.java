@@ -22,4 +22,10 @@ public class MarginCheck {
 
 	@SerializedName("sell_price")
 	private final long sellPrice;
+
+	/** After-tax result of the pair, computed server-side. Null on old payloads. */
+	private final Long profit;
+
+	@SerializedName("occurred_at")
+	private final String occurredAt;
 }

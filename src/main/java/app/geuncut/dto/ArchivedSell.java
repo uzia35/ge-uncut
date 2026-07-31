@@ -18,4 +18,7 @@ public class ArchivedSell {
 
 	@SerializedName("price_each")
 	private final Long priceEach;
+
+	@SerializedName("occurred_at")
+	private final String occurredAt;
 }

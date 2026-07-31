@@ -569,18 +569,32 @@ public class FlipsPanel extends PluginPanel {
 				? response.getMarginChecks() : Collections.emptyList();
 		List<ArchivedSell> sells = response.getArchivedSells() != null
 				? response.getArchivedSells() : Collections.emptyList();
-		historyList.removeAll();
+		// One newest-first list across all card types, same order as the
+		// website's History table. Undated rows sink to the bottom.
+		List<Map.Entry<Instant, RoundedPanel>> entries = new ArrayList<>();
 		for (Position position : positions) {
-			addCard(historyList, historyCard(position));
+			entries.add(historyEntry(
+					position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt(),
+					historyCard(position)));
 		}
 		for (MarginCheck check : checks) {
-			addCard(historyList, marginCheckCard(check));
+			entries.add(historyEntry(check.getOccurredAt(), marginCheckCard(check)));
 		}
 		for (ArchivedSell sale : sells) {
-			addCard(historyList, archivedSellCard(sale));
+			entries.add(historyEntry(sale.getOccurredAt(), archivedSellCard(sale)));
+		}
+		entries.sort((a, b) -> b.getKey().compareTo(a.getKey()));
+		historyList.removeAll();
+		for (Map.Entry<Instant, RoundedPanel> entry : entries) {
+			addCard(historyList, entry.getValue());
 		}
 		revalidate();
 		repaint();
+	}
+
+	private static Map.Entry<Instant, RoundedPanel> historyEntry(String when, RoundedPanel card) {
+		Instant at = parseWhen(when);
+		return new java.util.AbstractMap.SimpleImmutableEntry<>(at != null ? at : Instant.EPOCH, card);
 	}
 
 	// Back to the zeros-and-dashes empty state; the positions fetch 401s once
@@ -911,6 +925,43 @@ public class FlipsPanel extends PluginPanel {
 		} catch (RuntimeException unparseable) {
 			return null;
 		}
+	}
+
+	// The backend emits all three timestamp shapes across History payloads:
+	// Z-instants, +00:00 offsets, and naive UTC. Accept them all.
+	private static Instant parseWhen(String when) {
+		Instant parsed = parsePlacement(when);
+		if (parsed != null || when == null) {
+			return parsed;
+		}
+		try {
+			return java.time.OffsetDateTime.parse(when).toInstant();
+		} catch (RuntimeException notOffset) {
+			try {
+				return java.time.LocalDateTime.parse(when).toInstant(java.time.ZoneOffset.UTC);
+			} catch (RuntimeException unparseable) {
+				return null;
+			}
+		}
+	}
+
+	// The website's timeAgo wording, verbatim.
+	private static String agoText(String when) {
+		Instant at = parseWhen(when);
+		if (at == null) {
+			return null;
+		}
+		long seconds = Math.max(0, Duration.between(at, Instant.now()).getSeconds());
+		if (seconds < 60) {
+			return "just now";
+		}
+		if (seconds < 3_600) {
+			return Math.round(seconds / 60.0) + "m ago";
+		}
+		if (seconds < 86_400) {
+			return Math.round(seconds / 3_600.0) + "h ago";
+		}
+		return Math.round(seconds / 86_400.0) + "d ago";
 	}
 
 	// The game's own offer-timer format (00:03:20); days spelled out past 24h.
@@ -1302,36 +1353,21 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private RoundedPanel historyCard(Position position) {
-		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
-		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
-
-		JPanel head = new JPanel(new BorderLayout(9, 0));
-		head.setOpaque(false);
-		head.setAlignmentX(Component.LEFT_ALIGNMENT);
-		head.add(icon(position.getItemId(), position.getName(), 26), BorderLayout.WEST);
-		JPanel nameCol = new JPanel();
-		nameCol.setOpaque(false);
-		nameCol.setLayout(new BoxLayout(nameCol, BoxLayout.Y_AXIS));
-		JLabel name = nameLabel(position.getName());
-		shrinkToFit(name, CONTENT_WIDTH - 26 - 9);
-		name.setAlignmentX(Component.LEFT_ALIGNMENT);
-		nameCol.add(name);
-		head.add(nameCol, BorderLayout.CENTER);
-		card.add(head);
-
-		card.add(Box.createVerticalStrut(8));
-		addLeft(card, detailRow("Quantity", GP.format(position.getQuantity()), Theme.INK));
-		addLeft(card, detailRow("Bought at", GP.format(position.getBuyPrice()), Theme.INK));
 		// Same fallback the website uses: plugin-fill average first, then the
 		// manual close's exit price, so a hand-closed flip never reads unsold.
 		Long soldPrice = position.getSoldQty() != null && position.getSoldQty() > 0
 				&& position.getSoldAvgPrice() != null
 						? position.getSoldAvgPrice() : position.getExitPrice();
-		addLeft(card, detailRow("Sold at",
-				soldPrice != null ? GP.format(soldPrice) : "— not sold",
+		boolean flipped = soldPrice != null;
+		RoundedPanel card = historyCardShell(position.getItemId(), position.getName(),
+				flipped, flipped ? position.getRealizedProfit() : null);
+
+		addLeft(card, detailRow("Qty", GP.format(position.getQuantity()), Theme.INK));
+		addLeft(card, detailRow("Buy", GP.format(position.getBuyPrice()), Theme.INK));
+		addLeft(card, detailRow("Sold",
+				soldPrice != null ? GP.format(soldPrice) : "—",
 				soldPrice != null ? Theme.INK : Theme.MUTED));
-		addLeft(card, detailRow("Spent", shortGp(position.getBuyPrice() * position.getQuantity()), Theme.INK));
+		addWhenRow(card, position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt());
 
 		clickable(card, position.getItemId());
 		JPanel actions = new JPanel(new BorderLayout());
@@ -1358,7 +1394,9 @@ public class FlipsPanel extends PluginPanel {
 		return button;
 	}
 
-	private RoundedPanel plainHistoryCard(int itemId, String name) {
+	// The shared History card head: icon, name, and the label line that says
+	// what the row was — FLIPPED with its after-tax result, or REGULAR TRADE.
+	private RoundedPanel historyCardShell(int itemId, String name, boolean flipped, Long made) {
 		RoundedPanel card = new RoundedPanel(10, Theme.RAISED, Theme.LINE);
 		card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
 		card.setBorder(BorderFactory.createEmptyBorder(10, 11, 10, 11));
@@ -1366,20 +1404,49 @@ public class FlipsPanel extends PluginPanel {
 		head.setOpaque(false);
 		head.setAlignmentX(Component.LEFT_ALIGNMENT);
 		head.add(icon(itemId, name, 26), BorderLayout.WEST);
+		JPanel nameCol = new JPanel();
+		nameCol.setOpaque(false);
+		nameCol.setLayout(new BoxLayout(nameCol, BoxLayout.Y_AXIS));
 		JLabel nameHead = nameLabel(name);
 		shrinkToFit(nameHead, CONTENT_WIDTH - 26 - 9);
-		head.add(nameHead, BorderLayout.CENTER);
+		nameHead.setAlignmentX(Component.LEFT_ALIGNMENT);
+		nameCol.add(nameHead);
+		nameCol.add(Box.createVerticalStrut(4));
+		JPanel line2 = new JPanel();
+		line2.setOpaque(false);
+		line2.setLayout(new BoxLayout(line2, BoxLayout.X_AXIS));
+		line2.setAlignmentX(Component.LEFT_ALIGNMENT);
+		line2.add(solidPill(flipped ? "FLIPPED" : "REGULAR TRADE",
+				flipped ? Theme.UP : Theme.MUTED));
+		if (made != null) {
+			line2.add(Box.createHorizontalStrut(6));
+			line2.add(text(pnlText(made), made >= 0 ? Theme.UP : Theme.DOWN, Theme.NUM_BOLD));
+		}
+		nameCol.add(line2);
+		head.add(nameCol, BorderLayout.CENTER);
 		card.add(head);
 		card.add(Box.createVerticalStrut(8));
-		clickable(card, itemId);
+		// No clickable() here: callers install it after their detail rows so the
+		// whole card opens the item, and before any action button so Restore
+		// stays just Restore.
 		return card;
 	}
 
+	private void addWhenRow(RoundedPanel card, String when) {
+		String ago = agoText(when);
+		if (ago != null) {
+			addLeft(card, detailRow("When", ago, Theme.INK));
+		}
+	}
+
 	private RoundedPanel marginCheckCard(MarginCheck check) {
-		RoundedPanel card = plainHistoryCard(check.getItemId(), check.getItemName());
-		addLeft(card, detailRow("Quantity", "1", Theme.INK));
-		addLeft(card, detailRow("Bought at", GP.format(check.getBuyPrice()), Theme.INK));
-		addLeft(card, detailRow("Sold at", GP.format(check.getSellPrice()), Theme.INK));
+		RoundedPanel card = historyCardShell(check.getItemId(), check.getItemName(),
+				true, check.getProfit());
+		addLeft(card, detailRow("Qty", "1", Theme.INK));
+		addLeft(card, detailRow("Buy", GP.format(check.getBuyPrice()), Theme.INK));
+		addLeft(card, detailRow("Sold", GP.format(check.getSellPrice()), Theme.INK));
+		addWhenRow(card, check.getOccurredAt());
+		clickable(card, check.getItemId());
 		JPanel actions = new JPanel(new BorderLayout());
 		actions.setOpaque(false);
 		actions.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1392,12 +1459,14 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private RoundedPanel archivedSellCard(ArchivedSell sale) {
-		RoundedPanel card = plainHistoryCard(sale.getItemId(), sale.getItemName());
-		addLeft(card, detailRow("Quantity", GP.format(sale.getQuantity()), Theme.INK));
-		addLeft(card, detailRow("Bought at", "—", Theme.MUTED));
-		addLeft(card, detailRow("Sold at",
+		RoundedPanel card = historyCardShell(sale.getItemId(), sale.getItemName(), false, null);
+		addLeft(card, detailRow("Qty", GP.format(sale.getQuantity()), Theme.INK));
+		addLeft(card, detailRow("Buy", "—", Theme.MUTED));
+		addLeft(card, detailRow("Sold",
 				sale.getPriceEach() != null ? GP.format(sale.getPriceEach()) : "—",
 				sale.getPriceEach() != null ? Theme.INK : Theme.MUTED));
+		addWhenRow(card, sale.getOccurredAt());
+		clickable(card, sale.getItemId());
 		return card;
 	}
 

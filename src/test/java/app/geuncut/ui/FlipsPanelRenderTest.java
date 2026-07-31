@@ -40,11 +40,11 @@ public class FlipsPanelRenderTest {
 			"\"account_hash\":\"acct-b\"}]}";
 
 	private static final String ARCHIVED_JSON = "{\"positions\":[" +
-			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480}," +
+			"{\"id\":7,\"item_id\":231,\"item_name\":\"Snape grass\",\"quantity\":600,\"buy_price\":480,\"opened_at\":\"2026-07-10T12:00:00\"}," +
 			"{\"id\":9,\"item_id\":1637,\"item_name\":\"Sapphire ring\",\"quantity\":10,\"buy_price\":900," +
-			"\"exit_price\":1100,\"closed_at\":\"2026-07-18T10:00:00\"}]," +
-			"\"margin_checks\":[{\"sell_event_id\":501,\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
-			"\"archived_sells\":[{\"item_id\":1601,\"item_name\":\"Diamond\",\"quantity\":8,\"price_each\":1640,\"occurred_at\":\"2026-07-19T09:00:00\"}]}";
+			"\"exit_price\":1100,\"realized_profit\":1780,\"opened_at\":\"2026-07-15T09:00:00\",\"closed_at\":\"2026-07-18T10:00:00\"}]," +
+			"\"margin_checks\":[{\"sell_event_id\":501,\"item_id\":1623,\"item_name\":\"Uncut diamond\",\"buy_price\":2633,\"sell_price\":2633,\"profit\":-52,\"occurred_at\":\"2026-07-19T08:00:00\"}]," +
+			"\"archived_sells\":[{\"item_id\":1601,\"item_name\":\"Diamond\",\"quantity\":8,\"price_each\":1640,\"occurred_at\":\"2026-07-19T09:00:00+00:00\"}]}";
 
 	private static final String MOVERS_JSON = "{\"risers\":[" +
 			"{\"item_id\":1,\"name\":\"Hueycoatl hide vambraces\",\"change_pct\":21.8,\"price\":38213,\"volume_day\":124000}," +
@@ -156,9 +156,19 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "Uncut diamond"));
 		assertNotNull(findLabel(panel, "Diamond"));
 		// A completed trade moved to History restores back to Completed and
-		// shows its manual-close sale price instead of "— not sold".
+		// shows its manual-close sale price instead of a dash.
 		assertNotNull(findLabel(panel, "Restore"));
 		assertNotNull(findLabel(panel, "1,100"));
+		// Every History card says what it was: FLIPPED rows carry the after-tax
+		// result (the closed flip's realized profit, the pair's server-computed
+		// profit), everything else reads REGULAR TRADE. Columns match the
+		// website (Qty/Buy/Sold/When), so "When" rows exist for dated cards.
+		assertNotNull(findLabel(panel, "FLIPPED"));
+		assertNotNull(findLabel(panel, "REGULAR TRADE"));
+		assertNotNull(findLabel(panel, "+2k"));
+		assertNotNull(findLabel(panel, "−52"));
+		assertNotNull(findLabel(panel, "When"));
+		assertNotNull(findLabel(panel, "Qty"));
 		// Two linked accounts split the active list into website-style sections,
 		// and a hold-window exit is its own pill, not a SELL.
 		panel.selectTab("flips");
@@ -172,6 +182,25 @@ public class FlipsPanelRenderTest {
 		// The Movers tab carries the website's third group.
 		panel.selectTab("movers");
 		assertNotNull(findLabel(panel, "Volume spikes"));
+	}
+
+	@Test
+	public void historySortsNewestFirstAcrossCardTypes() {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.showHistory(new Gson().fromJson(ARCHIVED_JSON, PositionsResponse.class));
+		// Sell 07-19 09:00 > pair 07-19 08:00 > closed flip 07-18 > undated-close
+		// buy 07-10: one merged list, newest first, like the website table.
+		java.util.List<String> texts = new java.util.ArrayList<>();
+		collectAllLabelTexts(panel, texts);
+		int sell = texts.indexOf("Diamond");
+		int pair = texts.indexOf("Uncut diamond");
+		int flip = texts.indexOf("Sapphire ring");
+		int buy = texts.indexOf("Snape grass");
+		assertTrue(sell >= 0 && pair > sell && flip > pair && buy > flip);
 	}
 
 	@Test
@@ -324,6 +353,17 @@ public class FlipsPanelRenderTest {
 			listener.mouseClicked(click);
 		}
 		assertEquals(42L, captured[0]);
+	}
+
+	private static void collectAllLabelTexts(Component component, java.util.List<String> out) {
+		if (component instanceof JLabel) {
+			out.add(((JLabel) component).getText());
+		}
+		if (component instanceof Container) {
+			for (Component child : ((Container) component).getComponents()) {
+				collectAllLabelTexts(child, out);
+			}
+		}
 	}
 
 	private static JLabel findLabel(Component component, String text) {
