@@ -24,4 +24,9 @@ public interface GeUncutConfig extends Config {
 	default boolean lightMode() {
 		return false;
 	}
+
+	@ConfigItem(keyName = "autoFillOffers", name = "Auto-fill GE offers", description = "Pre-types the price and quantity when you set up a buy on a suggested flip or a sell on a tracked one - just press Enter", position = 3)
+	default boolean autoFillOffers() {
+		return true;
+	}
 }

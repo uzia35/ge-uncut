@@ -172,6 +172,8 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "220"));
 		assertNotNull(findLabel(panel, "When"));
 		assertNotNull(findLabel(panel, "Qty"));
+		// The "?" beside each action button invites the hover that explains it.
+		assertNotNull(findLabel(panel, "?"));
 		// Two linked accounts split the active list into website-style sections,
 		// and a hold-window exit is its own pill, not a SELL.
 		panel.selectTab("flips");

@@ -14,9 +14,12 @@ import javax.swing.SwingUtilities;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.api.impl.HttpGeUncutApi;
 import app.geuncut.config.GeUncutConfig;
+import app.geuncut.dto.Flip;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
+import app.geuncut.dto.Position;
 import app.geuncut.model.OfferDelta;
+import app.geuncut.tracker.OfferAutofill;
 import app.geuncut.service.FlipsService;
 import app.geuncut.service.impl.FlipsServiceImpl;
 import app.geuncut.service.impl.LinkServiceImpl;
@@ -39,12 +42,18 @@ import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.ItemComposition;
+import net.runelite.api.VarClientStr;
+import net.runelite.api.VarPlayer;
+import net.runelite.api.Varbits;
+import net.runelite.api.widgets.ComponentID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
@@ -131,6 +140,13 @@ public class GeUncutPlugin extends Plugin {
 	// login, not on every in-session region load (which shares the
 	// LOADING -> LOGGED_IN transition but never replays offers).
 	private boolean offerReplayPending;
+	// The freshest finder list and open flips, for the offer auto-fill. Written
+	// on fetch callbacks (OkHttp threads), read on the client thread each tick.
+	private volatile List<Flip> latestFlips = List.of();
+	private volatile List<Position> latestPositions = List.of();
+	// One fill per prompt-open: cleared when the prompt closes, so reopening the
+	// same prompt fills again but we never fight what the player types.
+	private String lastAutofillPrompt;
 
 	private static final int POSITIONS_POLL_SECONDS = 30;
 	private static final int POST_FILL_REFRESH_SECONDS = 8;
@@ -285,6 +301,53 @@ public class GeUncutPlugin extends Plugin {
 		SwingUtilities.invokeLater(() -> panel.showOffers(working, itemNames));
 	}
 
+	// Offer assist: when the GE setup's number prompt opens for an item we know
+	// (a suggested flip on the buy side, a tracked flip on the sell side), the
+	// value types itself in and the player just presses Enter. One input per
+	// action; nothing is submitted for them.
+	@Subscribe
+	public void onGameTick(GameTick event) {
+		if (!config.autoFillOffers()) {
+			return;
+		}
+		Widget title = client.getWidget(ComponentID.CHATBOX_TITLE);
+		if (title == null || title.isHidden()) {
+			lastAutofillPrompt = null;
+			return;
+		}
+		OfferAutofill.Prompt kind = OfferAutofill.promptKind(title.getText());
+		if (kind == null) {
+			lastAutofillPrompt = null;
+			return;
+		}
+		int itemId = client.getVarpValue(VarPlayer.CURRENT_GE_ITEM);
+		if (itemId <= 0) {
+			return;
+		}
+		boolean sell = client.getVarbitValue(Varbits.GE_OFFER_CREATION_TYPE) == 1;
+		String promptKey = itemId + ":" + sell + ":" + kind;
+		if (promptKey.equals(lastAutofillPrompt)) {
+			return;
+		}
+		lastAutofillPrompt = promptKey;
+		// A head start only: if the player already started typing, it's theirs.
+		String typed = client.getVarcStrValue(VarClientStr.INPUT_TEXT);
+		if (typed != null && !typed.isEmpty()) {
+			return;
+		}
+		Long value = OfferAutofill.resolve(itemId, sell, kind, latestFlips, latestPositions,
+				Long.toString(client.getAccountHash()));
+		if (value == null) {
+			return;
+		}
+		Widget input = client.getWidget(ComponentID.CHATBOX_FULL_INPUT);
+		if (input == null) {
+			return;
+		}
+		input.setText(value + "*");
+		client.setVarcStrValue(VarClientStr.INPUT_TEXT, String.valueOf(value));
+	}
+
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event) {
 		if (event.getGroupId() != InterfaceID.GE_HISTORY || !linked()) {
@@ -341,7 +404,9 @@ public class GeUncutPlugin extends Plugin {
 		refreshPositions();
 		refreshMovers();
 		flips.fetch(target.selectedScan(), target.selectedRisk(), target.selectedCapital(),
-				response -> SwingUtilities.invokeLater(() -> {
+				response -> {
+					latestFlips = response.getFlips() != null ? response.getFlips() : List.of();
+					SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
 						return;
 					}
@@ -349,7 +414,8 @@ public class GeUncutPlugin extends Plugin {
 					// applyCapital re-scans and this render is replaced anyway.
 					target.applyCapital(linked, response.getMyCapital());
 					target.showFlips(response.getFlips(), linked);
-				}),
+					});
+				},
 				failure -> SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
 						return;
@@ -381,11 +447,14 @@ public class GeUncutPlugin extends Plugin {
 		// place; the flip scan above is what surfaces the link prompt.
 		FlipsPanel target = panel;
 		positions.fetch(
-				response -> SwingUtilities.invokeLater(() -> {
-					if (target == panel) {
-						target.showActiveFlips(response);
-					}
-				}),
+				response -> {
+					latestPositions = response.getPositions() != null ? response.getPositions() : List.of();
+					SwingUtilities.invokeLater(() -> {
+						if (target == panel) {
+							target.showActiveFlips(response);
+						}
+					});
+				},
 				failure -> log.debug("event=positions_fetch_failed kind={} status={}",
 						failure.getKind(), failure.getStatusCode()));
 		refreshHistory();
