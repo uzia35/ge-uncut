@@ -321,15 +321,18 @@ public class GeUncutPlugin extends Plugin {
 			return;
 		}
 		long amount = value;
+		String label = "GE Uncut: set to " + String.format("%,d", amount);
+		int labelWidth = label.length() * 8 + 8;
+		int containerWidth = container.getWidth() > 0 ? container.getWidth() : 519;
 		Widget line = container.createChild(-1, WidgetType.TEXT);
-		line.setText("GE Uncut: set to " + String.format("%,d", amount));
+		line.setText(label);
 		line.setFontId(FontID.VERDANA_11_BOLD);
 		line.setTextColor(0x000000);
-		line.setOriginalX(0);
+		line.setOriginalX(Math.max(0, containerWidth - labelWidth - 8));
 		line.setOriginalY(8);
-		line.setOriginalWidth(container.getWidth() > 0 ? container.getWidth() - 12 : 500);
+		line.setOriginalWidth(labelWidth);
 		line.setOriginalHeight(20);
-		line.setXTextAlignment(2);
+		line.setXTextAlignment(0);
 		line.setHasListener(true);
 		line.setAction(1, "Set GE Uncut value");
 		line.setOnOpListener((JavaScriptCallback) scriptEvent -> applyOfferValue(amount));
