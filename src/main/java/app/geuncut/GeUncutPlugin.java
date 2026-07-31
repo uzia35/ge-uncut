@@ -324,12 +324,14 @@ public class GeUncutPlugin extends Plugin {
 		String label = "GE Uncut: set to " + String.format("%,d", amount);
 		int labelWidth = label.length() * 8 + 8;
 		int containerWidth = container.getWidth() > 0 ? container.getWidth() : 519;
+		int lineX = Math.max(0, containerWidth - labelWidth - 8);
+		int lineY = freeLineY(container, lineX, labelWidth);
 		Widget line = container.createChild(-1, WidgetType.TEXT);
 		line.setText(label);
 		line.setFontId(FontID.VERDANA_11_BOLD);
 		line.setTextColor(0x000000);
-		line.setOriginalX(Math.max(0, containerWidth - labelWidth - 8));
-		line.setOriginalY(8);
+		line.setOriginalX(lineX);
+		line.setOriginalY(lineY);
 		line.setOriginalWidth(labelWidth);
 		line.setOriginalHeight(20);
 		line.setXTextAlignment(0);
@@ -340,6 +342,35 @@ public class GeUncutPlugin extends Plugin {
 		line.setOnMouseLeaveListener((JavaScriptCallback) scriptEvent -> line.setTextColor(0x000000));
 		line.revalidate();
 		offerLine = line;
+	}
+
+	private int freeLineY(Widget container, int x, int width) {
+		Widget[] children = container.getDynamicChildren();
+		for (int y = 8; y <= 48; y += 20) {
+			if (!overlapsAny(children, x, y, width)) {
+				return y;
+			}
+		}
+		return 68;
+	}
+
+	private static boolean overlapsAny(Widget[] children, int x, int y, int width) {
+		if (children == null) {
+			return false;
+		}
+		for (Widget child : children) {
+			if (child == null || child.isHidden()) {
+				continue;
+			}
+			boolean apart = x + width <= child.getOriginalX()
+					|| child.getOriginalX() + child.getOriginalWidth() <= x
+					|| y + 20 <= child.getOriginalY()
+					|| child.getOriginalY() + child.getOriginalHeight() <= y;
+			if (!apart) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private void applyOfferValue(long value) {
