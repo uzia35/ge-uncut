@@ -27,6 +27,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.CacheControl;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.HttpUrl;
@@ -68,13 +69,13 @@ public class HttpGeUncutApi implements GeUncutApi {
 
 	private Response authorize(Interceptor.Chain chain) throws IOException {
 		Request request = chain.request();
+		Request.Builder builder = request.newBuilder()
+				.cacheControl(new CacheControl.Builder().noCache().noStore().build());
 		String token = config.apiToken().trim();
-		if (token.isEmpty() || isAnonymous(request)) {
-			return chain.proceed(request);
+		if (!token.isEmpty() && !isAnonymous(request)) {
+			builder.header("Authorization", "Bearer " + token);
 		}
-		return chain.proceed(request.newBuilder()
-				.header("Authorization", "Bearer " + token)
-				.build());
+		return chain.proceed(builder.build());
 	}
 
 	private static boolean isAnonymous(Request request) {
