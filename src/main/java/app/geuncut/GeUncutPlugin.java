@@ -138,6 +138,7 @@ public class GeUncutPlugin extends Plugin {
 	private java.util.concurrent.ScheduledFuture<?> positionsPoll;
 	private boolean offerReplayPending;
 	private volatile List<Flip> latestFlips = List.of();
+	private volatile Instant flipsFetchedAt;
 	private volatile List<Position> latestPositions = List.of();
 	private String lastAutofillPrompt;
 	private Widget offerLine;
@@ -338,7 +339,11 @@ public class GeUncutPlugin extends Plugin {
 		}
 		lastAutofillPrompt = promptKey;
 		hideOfferLine();
-		Long value = OfferAutofill.resolve(itemId, sell, kind, latestFlips, latestPositions,
+		Instant fetched = flipsFetchedAt;
+		boolean scanFresh = fetched != null
+				&& java.time.Duration.between(fetched, Instant.now()).toMinutes() < 10;
+		Long value = OfferAutofill.resolve(itemId, sell, kind,
+				scanFresh ? latestFlips : List.of(), latestPositions,
 				Long.toString(client.getAccountHash()));
 		if (value == null) {
 			return;
@@ -423,6 +428,9 @@ public class GeUncutPlugin extends Plugin {
 
 	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event) {
+		if (event.getGroupId() == InterfaceID.GE_OFFERS) {
+			refreshFlips();
+		}
 		if (event.getGroupId() != InterfaceID.GE_HISTORY || !linked()) {
 			return;
 		}
@@ -475,6 +483,7 @@ public class GeUncutPlugin extends Plugin {
 		flips.fetch(target.selectedScan(), target.selectedRisk(), target.selectedCapital(),
 				response -> {
 					latestFlips = response.getFlips() != null ? response.getFlips() : List.of();
+					flipsFetchedAt = Instant.now();
 					SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
 						return;
