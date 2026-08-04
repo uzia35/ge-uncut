@@ -1,9 +1,11 @@
 package app.geuncut.tracker;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import app.geuncut.dto.Flip;
 import app.geuncut.dto.Position;
+import lombok.Value;
 
 public final class OfferAutofill {
 	private OfferAutofill() {
@@ -11,6 +13,13 @@ public final class OfferAutofill {
 
 	public enum Prompt {
 		PRICE, QUANTITY
+	}
+
+	@Value
+	public static class Choice {
+		String label;
+		long value;
+		boolean base;
 	}
 
 	public static Prompt promptKind(String chatboxTitle) {
@@ -34,6 +43,31 @@ public final class OfferAutofill {
 		}
 		Long value = sell ? forSell(itemId, prompt, positions, accountHash) : forBuy(itemId, prompt, flips);
 		return value != null && value > 0 ? value : null;
+	}
+
+	public static List<Choice> choices(Long resolved, Prompt prompt, int percent) {
+		if (resolved == null || resolved <= 0) {
+			return List.of();
+		}
+		long base = resolved;
+		if (prompt != Prompt.PRICE || percent <= 0) {
+			return List.of(new Choice(format(base), base, true));
+		}
+		List<Choice> choices = new ArrayList<>(3);
+		choices.add(new Choice("-" + percent + "% " + format(scale(base, 100 - percent)),
+				scale(base, 100 - percent), false));
+		choices.add(new Choice(format(base), base, true));
+		choices.add(new Choice("+" + percent + "% " + format(scale(base, 100 + percent)),
+				scale(base, 100 + percent), false));
+		return choices;
+	}
+
+	private static long scale(long base, int percentOfBase) {
+		return Math.max(1, Math.round(base * percentOfBase / 100.0));
+	}
+
+	private static String format(long value) {
+		return String.format("%,d", value);
 	}
 
 	private static Long forBuy(int itemId, Prompt prompt, List<Flip> flips) {

@@ -3,6 +3,7 @@ package app.geuncut.config;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Range;
 
 @ConfigGroup(GeUncutConfig.GROUP)
 public interface GeUncutConfig extends Config {
@@ -20,8 +21,14 @@ public interface GeUncutConfig extends Config {
 		return false;
 	}
 
-	@ConfigItem(keyName = "autoFillOffers", name = "GE offer helper", description = "Adds a clickable GE Uncut line to the price and quantity prompts for suggested and tracked flips - click it to enter the value", position = 3)
+	@ConfigItem(keyName = "autoFillOffers", name = "Show GE price tips", description = "Puts clickable GE Uncut prices in the buy and sell offer prompts for suggested and tracked flips - click one to enter it", position = 3)
 	default boolean autoFillOffers() {
 		return true;
+	}
+
+	@Range(min = 0, max = 50)
+	@ConfigItem(keyName = "offerAdjustPercent", name = "Offer adjustment", description = "Also offer this far above and below our price in the GE prompts - 0 shows our price only", position = 4)
+	default int offerAdjustPercent() {
+		return 2;
 	}
 }
