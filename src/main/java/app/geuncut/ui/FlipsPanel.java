@@ -123,6 +123,14 @@ public class FlipsPanel extends PluginPanel {
 	private final FlatSelect accountPicker = new FlatSelect(
 			new String[] { "All items", "Members", "Free-to-play" },
 			new String[] { "all", "members", "f2p" }, 0);
+	private static final String[] OFFER_PERCENT_LABELS = {
+			"No adjustment", "Offer ± 1%", "Offer ± 2%", "Offer ± 3%", "Offer ± 5%", "Offer ± 10%" };
+	private static final String[] OFFER_PERCENT_VALUES = { "0", "1", "2", "3", "5", "10" };
+	private final FlatToggle offerHelperToggle = new FlatToggle("Show GE price tips", true);
+	private final FlatSelect offerPercentPicker = new FlatSelect(
+			OFFER_PERCENT_LABELS, OFFER_PERCENT_VALUES, 2);
+	private Runnable onOfferSettingsChange = () -> {
+	};
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
 	private final JButton linkButton = styledButton("Link account");
@@ -200,6 +208,12 @@ public class FlipsPanel extends PluginPanel {
 			onRefresh.run();
 		});
 		accountPicker.setOnChange(this::renderFlips);
+		offerHelperToggle.setOnChange(() -> {
+			syncOfferPercentEnabled();
+			onOfferSettingsChange.run();
+		});
+		offerPercentPicker.setOnChange(() -> onOfferSettingsChange.run());
+		syncOfferPercentEnabled();
 
 		selectTab("finder");
 		add(column, BorderLayout.NORTH);
@@ -861,7 +875,67 @@ public class FlipsPanel extends PluginPanel {
 		pickers.add(capitalPicker);
 		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(accountPicker);
+		pickers.add(Box.createVerticalStrut(7));
+		offerHelperToggle.setToolTipText("Puts GE Uncut prices in the buy and sell offer prompts - click one to enter it");
+		offerPercentPicker.setToolTipText("Also offer this far above and below our price");
+		pickers.add(offerHelperToggle);
+		pickers.add(Box.createVerticalStrut(7));
+		pickers.add(offerPercentPicker);
 		return pickers;
+	}
+
+	private void syncOfferPercentEnabled() {
+		offerPercentPicker.setVisible(offerHelperEnabled());
+	}
+
+	public boolean offerHelperEnabled() {
+		return offerHelperToggle.isOn();
+	}
+
+	public int offerAdjustPercent() {
+		try {
+			return Integer.parseInt(offerPercentPicker.selectedValue());
+		} catch (NumberFormatException ignored) {
+			return 0;
+		}
+	}
+
+	public void setOnOfferSettingsChange(Runnable listener) {
+		this.onOfferSettingsChange = listener;
+	}
+
+	public void applyOfferSettings(boolean enabled, int percent) {
+		offerHelperToggle.set(enabled);
+		String[] labels = OFFER_PERCENT_LABELS;
+		String[] values = OFFER_PERCENT_VALUES;
+		String desired = Integer.toString(percent);
+		if (indexOf(values, desired) < 0) {
+			labels = withPercentOption(OFFER_PERCENT_LABELS, "Offer ± " + percent + "%", percent);
+			values = withPercentOption(OFFER_PERCENT_VALUES, desired, percent);
+		}
+		offerPercentPicker.setOptions(labels, values, desired);
+		syncOfferPercentEnabled();
+	}
+
+	private static int indexOf(String[] values, String wanted) {
+		for (int i = 0; i < values.length; i++) {
+			if (values[i].equals(wanted)) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private static String[] withPercentOption(String[] existing, String entry, int percent) {
+		String[] merged = new String[existing.length + 1];
+		int at = 0;
+		while (at < OFFER_PERCENT_VALUES.length && Integer.parseInt(OFFER_PERCENT_VALUES[at]) < percent) {
+			at++;
+		}
+		System.arraycopy(existing, 0, merged, 0, at);
+		merged[at] = entry;
+		System.arraycopy(existing, at, merged, at + 1, existing.length - at);
+		return merged;
 	}
 
 	private RoundedPanel flatButton(String glyph, Runnable onClick) {

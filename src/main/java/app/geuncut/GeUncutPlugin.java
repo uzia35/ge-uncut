@@ -2,6 +2,7 @@ package app.geuncut;
 
 import java.awt.image.BufferedImage;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -140,8 +141,14 @@ public class GeUncutPlugin extends Plugin {
 	private volatile List<Flip> latestFlips = List.of();
 	private volatile Instant flipsFetchedAt;
 	private volatile List<Position> latestPositions = List.of();
+	private static final int OFFER_LINE_COLOR = 0x1565C0;
+	private static final int OFFER_LINE_HOVER_COLOR = 0xFFFFFF;
+	private static final int OFFER_ROW_MARGIN = 30;
+	private static final int OFFER_LINE_GAP = 16;
+	private static final String OFFER_HEADER = "GE Uncut tips:";
+
 	private String lastAutofillPrompt;
-	private Widget offerLine;
+	private final List<Widget> offerLines = new ArrayList<>();
 
 	private static final int POSITIONS_POLL_SECONDS = 30;
 	private static final int POST_FILL_REFRESH_SECONDS = 8;
@@ -204,6 +211,8 @@ public class GeUncutPlugin extends Plugin {
 				this::restoreFlip, this::trackPair);
 		BufferedImage icon = ImageUtil.loadImageResource(getClass(), "/geuncut_icon.png");
 		panel.setOnTabOpen(this::onTabOpened);
+		panel.applyOfferSettings(config.autoFillOffers(), config.offerAdjustPercent());
+		panel.setOnOfferSettingsChange(this::saveOfferSettings);
 		navButton = NavigationButton.builder()
 				.tooltip("GE Uncut")
 				.icon(icon)
@@ -215,7 +224,16 @@ public class GeUncutPlugin extends Plugin {
 
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event) {
-		if (!GeUncutConfig.GROUP.equals(event.getGroup()) || !"lightMode".equals(event.getKey())) {
+		if (!GeUncutConfig.GROUP.equals(event.getGroup())) {
+			return;
+		}
+		if ("autoFillOffers".equals(event.getKey()) || "offerAdjustPercent".equals(event.getKey())) {
+			FlipsPanel target = panel;
+			SwingUtilities.invokeLater(
+					() -> target.applyOfferSettings(config.autoFillOffers(), config.offerAdjustPercent()));
+			return;
+		}
+		if (!"lightMode".equals(event.getKey())) {
 			return;
 		}
 		SwingUtilities.invokeLater(() -> {
@@ -332,9 +350,14 @@ public class GeUncutPlugin extends Plugin {
 		if (itemId <= 0) {
 			return;
 		}
+		Widget container = client.getWidget(ComponentID.CHATBOX_CONTAINER);
+		if (container == null) {
+			return;
+		}
 		boolean sell = client.getVarbitValue(Varbits.GE_OFFER_CREATION_TYPE) == 1;
 		String promptKey = itemId + ":" + sell + ":" + kind;
-		if (promptKey.equals(lastAutofillPrompt)) {
+		if (promptKey.equals(lastAutofillPrompt)
+				&& (offerLines.isEmpty() || offerLinesAttached(container))) {
 			return;
 		}
 		lastAutofillPrompt = promptKey;
@@ -348,21 +371,58 @@ public class GeUncutPlugin extends Plugin {
 		if (value == null) {
 			return;
 		}
-		Widget container = client.getWidget(ComponentID.CHATBOX_CONTAINER);
-		if (container == null) {
+		int containerWidth = container.getWidth() > 0 ? container.getWidth() : 519;
+		List<OfferAutofill.Choice> all = OfferAutofill.choices(value, kind, config.offerAdjustPercent());
+		if (all.isEmpty()) {
 			return;
 		}
-		long amount = value;
-		String label = "GE Uncut: set to " + String.format("%,d", amount);
-		int labelWidth = label.length() * 8 + 8;
-		int containerWidth = container.getWidth() > 0 ? container.getWidth() : 519;
-		int[] spot = lineSpot(container, labelWidth, containerWidth);
+		List<OfferAutofill.Choice> choices = fitChoices(all, containerWidth - OFFER_ROW_MARGIN);
+		int headerWidth = labelWidth(OFFER_HEADER);
+		int cell = choiceWidth(choices);
+		int[] spot = lineSpot(container, rowSpan(choices, headerWidth, cell), containerWidth);
 		int lineX = spot[0];
-		int lineY = spot[1];
+		offerLines.add(createHeaderLine(container, lineX, spot[1], headerWidth));
+		lineX += headerWidth;
+		for (OfferAutofill.Choice choice : choices) {
+			lineX += OFFER_LINE_GAP;
+			offerLines.add(createOfferLine(container, choice, lineX, spot[1], cell));
+			lineX += cell;
+		}
+	}
+
+	private static int choiceWidth(List<OfferAutofill.Choice> choices) {
+		int widest = 0;
+		for (OfferAutofill.Choice choice : choices) {
+			widest = Math.max(widest, labelWidth(choice.getLabel()));
+		}
+		return widest;
+	}
+
+	private static int rowSpan(List<OfferAutofill.Choice> choices, int headerWidth, int cell) {
+		return headerWidth + choices.size() * (OFFER_LINE_GAP + cell);
+	}
+
+	private Widget createHeaderLine(Widget container, int lineX, int lineY, int labelWidth) {
 		Widget line = container.createChild(-1, WidgetType.TEXT);
-		line.setText(label);
+		line.setText(OFFER_HEADER);
 		line.setFontId(FontID.VERDANA_11_BOLD);
-		line.setTextColor(0x000000);
+		line.setTextColor(OFFER_LINE_COLOR);
+		line.setOriginalX(lineX);
+		line.setOriginalY(lineY);
+		line.setOriginalWidth(labelWidth);
+		line.setOriginalHeight(20);
+		line.setXTextAlignment(1);
+		line.revalidate();
+		return line;
+	}
+
+	private Widget createOfferLine(Widget container, OfferAutofill.Choice choice,
+			int lineX, int lineY, int labelWidth) {
+		long amount = choice.getValue();
+		Widget line = container.createChild(-1, WidgetType.TEXT);
+		line.setText(choice.getLabel());
+		line.setFontId(FontID.VERDANA_11_BOLD);
+		line.setTextColor(OFFER_LINE_COLOR);
 		line.setOriginalX(lineX);
 		line.setOriginalY(lineY);
 		line.setOriginalWidth(labelWidth);
@@ -371,10 +431,41 @@ public class GeUncutPlugin extends Plugin {
 		line.setHasListener(true);
 		line.setAction(1, "Set GE Uncut value");
 		line.setOnOpListener((JavaScriptCallback) scriptEvent -> applyOfferValue(amount));
-		line.setOnMouseRepeatListener((JavaScriptCallback) scriptEvent -> line.setTextColor(0xFFFFFF));
-		line.setOnMouseLeaveListener((JavaScriptCallback) scriptEvent -> line.setTextColor(0x000000));
+		line.setOnMouseRepeatListener((JavaScriptCallback) scriptEvent -> line.setTextColor(OFFER_LINE_HOVER_COLOR));
+		line.setOnMouseLeaveListener((JavaScriptCallback) scriptEvent -> line.setTextColor(OFFER_LINE_COLOR));
 		line.revalidate();
-		offerLine = line;
+		return line;
+	}
+
+	private boolean offerLinesAttached(Widget container) {
+		Widget[] children = container.getDynamicChildren();
+		if (children == null) {
+			return false;
+		}
+		Widget first = offerLines.get(0);
+		for (Widget child : children) {
+			if (child == first) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static int labelWidth(String label) {
+		return label.length() * 8 + 8;
+	}
+
+	private static List<OfferAutofill.Choice> fitChoices(List<OfferAutofill.Choice> choices, int available) {
+		if (choices.size() < 2
+				|| rowSpan(choices, labelWidth(OFFER_HEADER), choiceWidth(choices)) <= available) {
+			return choices;
+		}
+		for (OfferAutofill.Choice base : choices) {
+			if (base.isBase()) {
+				return List.of(base);
+			}
+		}
+		return choices;
 	}
 
 	private int[] lineSpot(Widget container, int labelWidth, int containerWidth) {
@@ -420,10 +511,10 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void hideOfferLine() {
-		if (offerLine != null) {
-			offerLine.setHidden(true);
-			offerLine = null;
+		for (Widget line : offerLines) {
+			line.setHidden(true);
 		}
+		offerLines.clear();
 	}
 
 	@Subscribe
@@ -456,6 +547,11 @@ public class GeUncutPlugin extends Plugin {
 	@Provides
 	GeUncutConfig provideConfig(ConfigManager configManager) {
 		return configManager.getConfig(GeUncutConfig.class);
+	}
+
+	private void saveOfferSettings() {
+		configManager.setConfiguration(GeUncutConfig.GROUP, "autoFillOffers", panel.offerHelperEnabled());
+		configManager.setConfiguration(GeUncutConfig.GROUP, "offerAdjustPercent", panel.offerAdjustPercent());
 	}
 
 	private boolean linked() {

@@ -105,6 +105,40 @@ public class FlipsPanelRenderTest {
 	}
 
 	@Test
+	public void finderBarCarriesTheOfferTipControls() throws Exception {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsResponse response = new Gson().fromJson(FLIPS_JSON, FlipsResponse.class);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.showFlips(response.getFlips(), true);
+
+		assertNotNull(findLabel(panel, "Show GE price tips"));
+		assertNotNull(findLabel(panel, "Offer ± 2%"));
+		assertTrue(panel.offerHelperEnabled());
+		assertEquals(2, panel.offerAdjustPercent());
+		write(paint(panel), "panel-offer-tips.png");
+
+		int[] saves = { 0 };
+		panel.setOnOfferSettingsChange(() -> saves[0]++);
+		panel.applyOfferSettings(false, 5);
+		assertTrue(!panel.offerHelperEnabled());
+		assertEquals(5, panel.offerAdjustPercent());
+		assertEquals("applying settings must not echo back as a save", 0, saves[0]);
+		write(paint(panel), "panel-offer-tips-off.png");
+
+		panel.applyOfferSettings(true, 0);
+		assertEquals(0, panel.offerAdjustPercent());
+		assertNotNull(findLabel(panel, "No adjustment"));
+
+		panel.applyOfferSettings(true, 7);
+		assertEquals("a percentage typed in RuneLite settings must survive, not snap to a preset",
+				7, panel.offerAdjustPercent());
+		assertNotNull(findLabel(panel, "Offer ± 7%"));
+	}
+
+	@Test
 	public void linkPromptSurvivesAccountFilterChanges() throws Exception {
 		Runnable noop = () -> {
 		};
