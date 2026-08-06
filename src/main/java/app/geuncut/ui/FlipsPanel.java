@@ -6,6 +6,7 @@ import java.awt.Component;
 import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
+import java.awt.GridBagLayout;
 import java.awt.GridLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -990,6 +991,25 @@ public class FlipsPanel extends PluginPanel {
 		return tile;
 	}
 
+	private static JPanel withHelp(FlatSelect picker, String tip) {
+		Pill help = new Pill("?", Theme.MUTED, Theme.soft(Theme.MUTED), null);
+		help.setFont(Theme.SMALL_BOLD);
+		help.setToolTipText(tip);
+		Dimension chip = help.getPreferredSize();
+		help.setMinimumSize(chip);
+		help.setMaximumSize(chip);
+		JPanel row = new JPanel(new BorderLayout(6, 0));
+		row.setOpaque(false);
+		row.setAlignmentX(picker.getAlignmentX());
+		row.add(picker, BorderLayout.CENTER);
+		JPanel chipBox = new JPanel(new GridBagLayout());
+		chipBox.setOpaque(false);
+		chipBox.add(help);
+		row.add(chipBox, BorderLayout.EAST);
+		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, picker.getPreferredSize().height));
+		return row;
+	}
+
 	private JPanel buildFinderBar() {
 		JPanel pickers = new JPanel();
 		pickers.setLayout(new BoxLayout(pickers, BoxLayout.Y_AXIS));
@@ -1001,11 +1021,13 @@ public class FlipsPanel extends PluginPanel {
 		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(capitalPicker);
 		pickers.add(Box.createVerticalStrut(7));
-		minProfitPicker.setToolTipText("Hide flips whose total after-tax profit lands below this");
-		pickers.add(minProfitPicker);
+		pickers.add(withHelp(minProfitPicker,
+				"The smallest total profit a flip has to make, after tax, to be listed. "
+						+ "Default leaves each scan on the bar it was built around."));
 		pickers.add(Box.createVerticalStrut(7));
-		minRoiPicker.setToolTipText("Hide flips whose after-tax return on your buy price lands below this");
-		pickers.add(minRoiPicker);
+		pickers.add(withHelp(minRoiPicker,
+				"The same filter by percentage: the after-tax return on your buy price. "
+						+ "It catches thin margins at any size, where the profit bar only catches small ones."));
 		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(accountPicker);
 		pickers.add(Box.createVerticalStrut(7));

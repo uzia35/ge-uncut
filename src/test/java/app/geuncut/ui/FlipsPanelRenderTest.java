@@ -162,6 +162,16 @@ public class FlipsPanelRenderTest {
 		assertNotNull(findLabel(panel, "Default margin bar"));
 		assertNull(panel.selectedMinProfit());
 		assertNull(panel.selectedMinRoi());
+
+		// Both bars explain themselves through a "?" chip, the way the History actions do.
+		// The chip has to be visible and carry a tooltip: an earlier layout squeezed it to
+		// zero width, which left the two controls with no explanation at all.
+		for (String bar : new String[] { "profit", "margin" }) {
+			JLabel chip = helpChipFor(panel, bar);
+			assertNotNull("no ? chip beside the " + bar + " bar", chip);
+			assertNotNull("the " + bar + " chip has no tooltip", chip.getToolTipText());
+			assertTrue("the " + bar + " chip rendered at zero width", chip.getPreferredSize().width > 6);
+		}
 		write(paint(panel), "panel-scan-bars.png");
 
 		// Unlinked: presets only, and the Default entry picks up the real figure the
@@ -530,6 +540,25 @@ public class FlipsPanelRenderTest {
 		if (component instanceof Container) {
 			for (Component child : ((Container) component).getComponents()) {
 				JLabel found = findLabel(child, text);
+				if (found != null) {
+					return found;
+				}
+			}
+		}
+		return null;
+	}
+
+	private static JLabel helpChipFor(Component component, String word) {
+		if (component instanceof JLabel) {
+			JLabel label = (JLabel) component;
+			String tip = label.getToolTipText();
+			if ("?".equals(label.getText()) && tip != null && tip.contains(word)) {
+				return label;
+			}
+		}
+		if (component instanceof Container) {
+			for (Component child : ((Container) component).getComponents()) {
+				JLabel found = helpChipFor(child, word);
 				if (found != null) {
 					return found;
 				}
