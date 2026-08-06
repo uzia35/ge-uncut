@@ -23,6 +23,7 @@ import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
 import app.geuncut.dto.OfferPlacementsResponse;
 import app.geuncut.dto.PositionsResponse;
+import app.geuncut.dto.ScanRequest;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
@@ -87,21 +88,34 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void fetchFlips(String scanType, String risk, Long capital, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
+	public void fetchFlips(ScanRequest scan, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
 		HttpUrl base = resolve("/api/plugin/flips");
 		if (base == null) {
 			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
 			return;
 		}
-		HttpUrl.Builder url = base.newBuilder().addQueryParameter("scan_type", scanType);
-		if (risk != null && !risk.isEmpty()) {
-			url.addQueryParameter("risk", risk);
+		HttpUrl.Builder url = base.newBuilder().addQueryParameter("scan_type", scan.getScanType());
+		if (scan.getRisk() != null && !scan.getRisk().isEmpty()) {
+			url.addQueryParameter("risk", scan.getRisk());
 		}
-		if (capital != null && capital > 0) {
-			url.addQueryParameter("capital", Long.toString(capital));
+		if (scan.getCapital() != null && scan.getCapital() > 0) {
+			url.addQueryParameter("capital", Long.toString(scan.getCapital()));
+		}
+		if (scan.getMinProfit() != null && scan.getMinProfit() >= 0) {
+			url.addQueryParameter("min_profit", Long.toString(scan.getMinProfit()));
+		}
+		if (scan.getMinRoi() != null && scan.getMinRoi() >= 0) {
+			url.addQueryParameter("min_roi", trimDecimal(scan.getMinRoi()));
 		}
 		Request request = new Request.Builder().url(url.build()).get().build();
 		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, FlipsResponse.class)));
+	}
+
+	private static String trimDecimal(double value) {
+		if (value == Math.floor(value) && !Double.isInfinite(value)) {
+			return Long.toString((long) value);
+		}
+		return Double.toString(value);
 	}
 
 	@Override

@@ -8,6 +8,7 @@ import javax.inject.Singleton;
 import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.FlipsResponse;
+import app.geuncut.dto.ScanRequest;
 import app.geuncut.service.FlipsService;
 
 @Singleton
@@ -20,8 +21,8 @@ public class FlipsServiceImpl implements FlipsService {
 	}
 
 	@Override
-	public void fetch(String scanType, String risk, Long capital, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
-		api.fetchFlips(scanType, risk, capital,
+	public void fetch(ScanRequest request, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
+		api.fetchFlips(request,
 				response -> onSuccess.accept(normalize(response)),
 				onError);
 	}
@@ -34,6 +35,10 @@ public class FlipsServiceImpl implements FlipsService {
 			return FlipsResponse.builder()
 					.flips(Collections.emptyList())
 					.myCapital(response.getMyCapital())
+					.myMinProfit(response.getMyMinProfit())
+					.myMinRoi(response.getMyMinRoi())
+					.minProfitFloor(response.getMinProfitFloor())
+					.minRoiFloor(response.getMinRoiFloor())
 					.build();
 		}
 		return response;

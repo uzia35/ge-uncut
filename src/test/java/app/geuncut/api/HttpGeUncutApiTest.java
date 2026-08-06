@@ -19,6 +19,7 @@ import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.PositionsResponse;
+import app.geuncut.dto.ScanRequest;
 import com.google.gson.Gson;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
@@ -70,7 +71,7 @@ public class HttpGeUncutApiTest {
 
 		AtomicReference<FlipsResponse> received = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", null, null, response -> {
+		api.fetchFlips(ScanRequest.of("standard"),response -> {
 			received.set(response);
 			done.countDown();
 		}, error -> done.countDown());
@@ -93,7 +94,8 @@ public class HttpGeUncutApiTest {
 		server.enqueue(new MockResponse().setBody("{\"flips\":[]}"));
 
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("value", "conservative", null, response -> done.countDown(), failure -> done.countDown());
+		api.fetchFlips(ScanRequest.builder().scanType("value").risk("conservative").build(),
+				response -> done.countDown(), failure -> done.countDown());
 
 		assertTrue(done.await(2, TimeUnit.SECONDS));
 		RecordedRequest recorded = server.takeRequest();
@@ -105,11 +107,71 @@ public class HttpGeUncutApiTest {
 		server.enqueue(new MockResponse().setBody("{\"flips\":[]}"));
 
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", "balanced", 50_000_000L, response -> done.countDown(), failure -> done.countDown());
+		api.fetchFlips(ScanRequest.builder().scanType("standard").risk("balanced").capital(50_000_000L).build(),
+				response -> done.countDown(), failure -> done.countDown());
 
 		assertTrue(done.await(2, TimeUnit.SECONDS));
 		RecordedRequest recorded = server.takeRequest();
 		assertEquals("/api/plugin/flips?scan_type=standard&risk=balanced&capital=50000000", recorded.getPath());
+	}
+
+	@Test
+	public void fetchFlipsSendsTheProfitAndMarginBars() throws Exception {
+		server.enqueue(new MockResponse().setBody("{\"flips\":[]}"));
+
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchFlips(ScanRequest.builder().scanType("standard").minProfit(250_000L).minRoi(1.5).build(),
+				response -> done.countDown(), failure -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		assertEquals("/api/plugin/flips?scan_type=standard&min_profit=250000&min_roi=1.5",
+				server.takeRequest().getPath());
+	}
+
+	@Test
+	public void zeroBarsAreSentRatherThanTreatedAsUnset() throws Exception {
+		server.enqueue(new MockResponse().setBody("{\"flips\":[]}"));
+
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchFlips(ScanRequest.builder().scanType("fast").minProfit(0L).minRoi(0.0).build(),
+				response -> done.countDown(), failure -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		assertEquals("Any profit and Any margin are real choices, not an absent parameter",
+				"/api/plugin/flips?scan_type=fast&min_profit=0&min_roi=0",
+				server.takeRequest().getPath());
+	}
+
+	@Test
+	public void aWholeNumberMarginDoesNotAcquireADecimalTail() throws Exception {
+		server.enqueue(new MockResponse().setBody("{\"flips\":[]}"));
+
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchFlips(ScanRequest.builder().scanType("standard").minRoi(3.0).build(),
+				response -> done.countDown(), failure -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		assertEquals("/api/plugin/flips?scan_type=standard&min_roi=3", server.takeRequest().getPath());
+	}
+
+	@Test
+	public void fetchFlipsReadsBackTheSavedSettings() throws Exception {
+		server.enqueue(new MockResponse().setBody(
+				"{\"flips\":[],\"my_capital\":50000000,\"my_min_profit\":250000,\"my_min_roi\":1.5,"
+						+ "\"min_profit_floor\":1000000,\"min_roi_floor\":3.0}"));
+
+		AtomicReference<FlipsResponse> received = new AtomicReference<>();
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchFlips(ScanRequest.of("standard"), response -> {
+			received.set(response);
+			done.countDown();
+		}, error -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		assertEquals(Long.valueOf(250_000L), received.get().getMyMinProfit());
+		assertEquals(Double.valueOf(1.5), received.get().getMyMinRoi());
+		assertEquals(Long.valueOf(1_000_000L), received.get().getMinProfitFloor());
+		assertEquals(Double.valueOf(3.0), received.get().getMinRoiFloor());
 	}
 
 	@Test
@@ -118,7 +180,7 @@ public class HttpGeUncutApiTest {
 
 		AtomicReference<ApiFailure> error = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", null, null, response -> done.countDown(), failure -> {
+		api.fetchFlips(ScanRequest.of("standard"),response -> done.countDown(), failure -> {
 			error.set(failure);
 			done.countDown();
 		});
@@ -136,7 +198,7 @@ public class HttpGeUncutApiTest {
 
 		AtomicReference<ApiFailure> error = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", null, null, response -> done.countDown(), failure -> {
+		api.fetchFlips(ScanRequest.of("standard"),response -> done.countDown(), failure -> {
 			error.set(failure);
 			done.countDown();
 		});
@@ -154,7 +216,7 @@ public class HttpGeUncutApiTest {
 
 		AtomicReference<FlipsResponse> received = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", null, null, response -> {
+		api.fetchFlips(ScanRequest.of("standard"),response -> {
 			received.set(response);
 			done.countDown();
 		}, failure -> done.countDown());
@@ -169,7 +231,7 @@ public class HttpGeUncutApiTest {
 		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_UNAUTHORIZED).setBody("{}"));
 
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", null, null, response -> done.countDown(), failure -> done.countDown());
+		api.fetchFlips(ScanRequest.of("standard"),response -> done.countDown(), failure -> done.countDown());
 
 		assertTrue(done.await(5, TimeUnit.SECONDS));
 		assertEquals(1, server.getRequestCount());
@@ -181,7 +243,7 @@ public class HttpGeUncutApiTest {
 
 		AtomicReference<ApiFailure> error = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", null, null, response -> done.countDown(), failure -> {
+		api.fetchFlips(ScanRequest.of("standard"),response -> done.countDown(), failure -> {
 			error.set(failure);
 			done.countDown();
 		});
@@ -197,7 +259,7 @@ public class HttpGeUncutApiTest {
 
 		AtomicReference<ApiFailure> error = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.fetchFlips("standard", null, null, response -> done.countDown(), failure -> {
+		api.fetchFlips(ScanRequest.of("standard"),response -> done.countDown(), failure -> {
 			error.set(failure);
 			done.countDown();
 		});

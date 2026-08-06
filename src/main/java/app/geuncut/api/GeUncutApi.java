@@ -11,9 +11,10 @@ import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
 import app.geuncut.dto.PositionsResponse;
+import app.geuncut.dto.ScanRequest;
 
 public interface GeUncutApi {
-	void fetchFlips(String scanType, String risk, Long capital, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
+	void fetchFlips(ScanRequest request, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
 
 	void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError);
 
