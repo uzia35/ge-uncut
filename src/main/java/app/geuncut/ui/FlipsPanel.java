@@ -123,12 +123,28 @@ public class FlipsPanel extends PluginPanel {
 	private final FlatSelect accountPicker = new FlatSelect(
 			new String[] { "All items", "Members", "Free-to-play" },
 			new String[] { "all", "members", "f2p" }, 0);
-	private static final String[] OFFER_PERCENT_LABELS = {
-			"No adjustment", "Offer ± 1%", "Offer ± 2%", "Offer ± 3%", "Offer ± 5%", "Offer ± 10%" };
-	private static final String[] OFFER_PERCENT_VALUES = { "0", "1", "2", "3", "5", "10" };
+	private static final int[] OFFER_PERCENTS = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30, 40, 50 };
+	private static final String[] OFFER_PERCENT_LABELS = offerPercentLabels();
+	private static final String[] OFFER_PERCENT_VALUES = offerPercentValues();
 	private final FlatToggle offerHelperToggle = new FlatToggle("Show GE price tips", true);
 	private final FlatSelect offerPercentPicker = new FlatSelect(
 			OFFER_PERCENT_LABELS, OFFER_PERCENT_VALUES, 2);
+
+	private static String[] offerPercentLabels() {
+		String[] labels = new String[OFFER_PERCENTS.length];
+		for (int i = 0; i < OFFER_PERCENTS.length; i++) {
+			labels[i] = OFFER_PERCENTS[i] == 0 ? "No adjustment" : "Offer ± " + OFFER_PERCENTS[i] + "%";
+		}
+		return labels;
+	}
+
+	private static String[] offerPercentValues() {
+		String[] values = new String[OFFER_PERCENTS.length];
+		for (int i = 0; i < OFFER_PERCENTS.length; i++) {
+			values[i] = Integer.toString(OFFER_PERCENTS[i]);
+		}
+		return values;
+	}
 	private Runnable onOfferSettingsChange = () -> {
 	};
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
@@ -906,12 +922,14 @@ public class FlipsPanel extends PluginPanel {
 
 	public void applyOfferSettings(boolean enabled, int percent) {
 		offerHelperToggle.set(enabled);
+		int clamped = Math.max(OFFER_PERCENTS[0],
+				Math.min(OFFER_PERCENTS[OFFER_PERCENTS.length - 1], percent));
 		String[] labels = OFFER_PERCENT_LABELS;
 		String[] values = OFFER_PERCENT_VALUES;
-		String desired = Integer.toString(percent);
+		String desired = Integer.toString(clamped);
 		if (indexOf(values, desired) < 0) {
-			labels = withPercentOption(OFFER_PERCENT_LABELS, "Offer ± " + percent + "%", percent);
-			values = withPercentOption(OFFER_PERCENT_VALUES, desired, percent);
+			labels = withPercentOption(OFFER_PERCENT_LABELS, "Offer ± " + clamped + "%", clamped);
+			values = withPercentOption(OFFER_PERCENT_VALUES, desired, clamped);
 		}
 		offerPercentPicker.setOptions(labels, values, desired);
 		syncOfferPercentEnabled();
@@ -929,7 +947,7 @@ public class FlipsPanel extends PluginPanel {
 	private static String[] withPercentOption(String[] existing, String entry, int percent) {
 		String[] merged = new String[existing.length + 1];
 		int at = 0;
-		while (at < OFFER_PERCENT_VALUES.length && Integer.parseInt(OFFER_PERCENT_VALUES[at]) < percent) {
+		while (at < OFFER_PERCENTS.length && OFFER_PERCENTS[at] < percent) {
 			at++;
 		}
 		System.arraycopy(existing, 0, merged, 0, at);

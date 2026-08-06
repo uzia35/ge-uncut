@@ -91,6 +91,39 @@ public class OfferAutofillTest {
 	}
 
 	@Test
+	public void compactLabelsStayShortAtEveryPrice() {
+		long[] prices = { 2_512L, 250_000L, 3_210_118L, 116_198_605L, 2_147_483_647L };
+		for (long price : prices) {
+			for (OfferAutofill.Choice choice : OfferAutofill.choices(price, OfferAutofill.Prompt.PRICE, 2, true)) {
+				assertTrue(choice.getLabel() + " is too wide to render at price " + price,
+						choice.getLabel().length() <= 12);
+			}
+		}
+	}
+
+	@Test
+	public void compactFormattingKeepsSmallNumbersExact() {
+		assertEquals("2,512", OfferAutofill.choices(2_512L, OfferAutofill.Prompt.PRICE, 0, true).get(0).getLabel());
+		assertEquals("99,999", OfferAutofill.choices(99_999L, OfferAutofill.Prompt.PRICE, 0, true).get(0).getLabel());
+	}
+
+	@Test
+	public void compactFormattingAbbreviatesTheBigOnes() {
+		assertEquals("3.21M", OfferAutofill.choices(3_210_118L, OfferAutofill.Prompt.PRICE, 0, true).get(0).getLabel());
+		assertEquals("2.15B", OfferAutofill.choices(2_147_483_647L, OfferAutofill.Prompt.PRICE, 0, true).get(0).getLabel());
+		assertEquals("250K", OfferAutofill.choices(250_000L, OfferAutofill.Prompt.PRICE, 0, true).get(0).getLabel());
+	}
+
+	@Test
+	public void compactChoicesStillCarryTheExactGp() {
+		List<OfferAutofill.Choice> choices =
+				OfferAutofill.choices(3_210_118L, OfferAutofill.Prompt.PRICE, 1, true);
+		assertEquals(3_178_017L, choices.get(0).getValue());
+		assertEquals(3_210_118L, choices.get(1).getValue());
+		assertEquals(3_242_219L, choices.get(2).getValue());
+	}
+
+	@Test
 	public void missingValuesProduceNoChoices() {
 		assertTrue(OfferAutofill.choices(null, OfferAutofill.Prompt.PRICE, 2).isEmpty());
 		assertTrue(OfferAutofill.choices(0L, OfferAutofill.Prompt.PRICE, 2).isEmpty());

@@ -46,19 +46,23 @@ public final class OfferAutofill {
 	}
 
 	public static List<Choice> choices(Long resolved, Prompt prompt, int percent) {
+		return choices(resolved, prompt, percent, false);
+	}
+
+	public static List<Choice> choices(Long resolved, Prompt prompt, int percent, boolean compact) {
 		if (resolved == null || resolved <= 0) {
 			return List.of();
 		}
 		long base = resolved;
 		if (prompt != Prompt.PRICE || percent <= 0) {
-			return List.of(new Choice(format(base), base, true));
+			return List.of(new Choice(format(base, compact), base, true));
 		}
 		List<Choice> choices = new ArrayList<>(3);
-		choices.add(new Choice("-" + percent + "% " + format(scale(base, 100 - percent)),
-				scale(base, 100 - percent), false));
-		choices.add(new Choice(format(base), base, true));
-		choices.add(new Choice("+" + percent + "% " + format(scale(base, 100 + percent)),
-				scale(base, 100 + percent), false));
+		long low = scale(base, 100 - percent);
+		long high = scale(base, 100 + percent);
+		choices.add(new Choice("-" + percent + "% " + format(low, compact), low, false));
+		choices.add(new Choice(format(base, compact), base, true));
+		choices.add(new Choice("+" + percent + "% " + format(high, compact), high, false));
 		return choices;
 	}
 
@@ -66,8 +70,28 @@ public final class OfferAutofill {
 		return Math.max(1, Math.round(base * percentOfBase / 100.0));
 	}
 
-	private static String format(long value) {
-		return String.format("%,d", value);
+	private static String format(long value, boolean compact) {
+		if (!compact || value < 100_000L) {
+			return String.format("%,d", value);
+		}
+		if (value >= 1_000_000_000L) {
+			return trim(value / 1_000_000_000.0) + "B";
+		}
+		if (value >= 1_000_000L) {
+			return trim(value / 1_000_000.0) + "M";
+		}
+		return trim(value / 1_000.0) + "K";
+	}
+
+	private static String trim(double scaled) {
+		String text = String.format("%.2f", scaled);
+		if (text.endsWith("0")) {
+			text = text.substring(0, text.length() - 1);
+		}
+		if (text.endsWith(".0")) {
+			text = text.substring(0, text.length() - 2);
+		}
+		return text.endsWith("0") && text.contains(".") ? text.substring(0, text.length() - 1) : text;
 	}
 
 	private static Long forBuy(int itemId, Prompt prompt, List<Flip> flips) {

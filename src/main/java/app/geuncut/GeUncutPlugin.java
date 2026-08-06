@@ -139,13 +139,15 @@ public class GeUncutPlugin extends Plugin {
 	private java.util.concurrent.ScheduledFuture<?> positionsPoll;
 	private boolean offerReplayPending;
 	private volatile List<Flip> latestFlips = List.of();
-	private volatile Instant flipsFetchedAt;
 	private volatile List<Position> latestPositions = List.of();
 	private static final int OFFER_LINE_COLOR = 0x1565C0;
 	private static final int OFFER_LINE_HOVER_COLOR = 0xFFFFFF;
 	private static final int OFFER_ROW_MARGIN = 30;
 	private static final int OFFER_LINE_GAP = 16;
-	private static final String OFFER_HEADER = "GE Uncut tips:";
+	private static final int OFFER_TEXT_HEIGHT = 14;
+	private static final int OFFER_CLEARANCE = 4;
+	private static final int OFFER_EDGE_MARGIN = 8;
+	private static final int OFFER_ROW_Y = 90;
 
 	private String lastAutofillPrompt;
 	private final List<Widget> offerLines = new ArrayList<>();
@@ -357,37 +359,37 @@ public class GeUncutPlugin extends Plugin {
 		boolean sell = client.getVarbitValue(Varbits.GE_OFFER_CREATION_TYPE) == 1;
 		String promptKey = itemId + ":" + sell + ":" + kind;
 		if (promptKey.equals(lastAutofillPrompt)
-				&& (offerLines.isEmpty() || offerLinesAttached(container))) {
+				&& !offerLines.isEmpty() && offerLinesAttached(container)) {
 			return;
 		}
-		lastAutofillPrompt = promptKey;
+		lastAutofillPrompt = null;
 		hideOfferLine();
-		Instant fetched = flipsFetchedAt;
-		boolean scanFresh = fetched != null
-				&& java.time.Duration.between(fetched, Instant.now()).toMinutes() < 10;
-		Long value = OfferAutofill.resolve(itemId, sell, kind,
-				scanFresh ? latestFlips : List.of(), latestPositions,
+		Long value = OfferAutofill.resolve(itemId, sell, kind, latestFlips, latestPositions,
 				Long.toString(client.getAccountHash()));
 		if (value == null) {
 			return;
 		}
 		int containerWidth = container.getWidth() > 0 ? container.getWidth() : 519;
-		List<OfferAutofill.Choice> all = OfferAutofill.choices(value, kind, config.offerAdjustPercent());
-		if (all.isEmpty()) {
+		int available = containerWidth - OFFER_ROW_MARGIN;
+		int percent = config.offerAdjustPercent();
+		List<OfferAutofill.Choice> choices = OfferAutofill.choices(value, kind, percent);
+		if (choices.isEmpty()) {
 			return;
 		}
-		List<OfferAutofill.Choice> choices = fitChoices(all, containerWidth - OFFER_ROW_MARGIN);
-		int headerWidth = labelWidth(OFFER_HEADER);
-		int cell = choiceWidth(choices);
-		int[] spot = lineSpot(container, rowSpan(choices, headerWidth, cell), containerWidth);
-		int lineX = spot[0];
-		offerLines.add(createHeaderLine(container, lineX, spot[1], headerWidth));
-		lineX += headerWidth;
-		for (OfferAutofill.Choice choice : choices) {
-			lineX += OFFER_LINE_GAP;
-			offerLines.add(createOfferLine(container, choice, lineX, spot[1], cell));
-			lineX += cell;
+		if (!fits(choices, available)) {
+			List<OfferAutofill.Choice> shortened = OfferAutofill.choices(value, kind, percent, true);
+			if (fits(shortened, available)) {
+				choices = shortened;
+			}
 		}
+		int cell = choiceWidth(choices);
+		int[] spot = rowSpot(container, rowSpan(choices, cell), containerWidth);
+		int lineX = spot[0];
+		for (OfferAutofill.Choice choice : choices) {
+			offerLines.add(createOfferLine(container, choice, lineX, spot[1], cell));
+			lineX += cell + OFFER_LINE_GAP;
+		}
+		lastAutofillPrompt = promptKey;
 	}
 
 	private static int choiceWidth(List<OfferAutofill.Choice> choices) {
@@ -396,24 +398,6 @@ public class GeUncutPlugin extends Plugin {
 			widest = Math.max(widest, labelWidth(choice.getLabel()));
 		}
 		return widest;
-	}
-
-	private static int rowSpan(List<OfferAutofill.Choice> choices, int headerWidth, int cell) {
-		return headerWidth + choices.size() * (OFFER_LINE_GAP + cell);
-	}
-
-	private Widget createHeaderLine(Widget container, int lineX, int lineY, int labelWidth) {
-		Widget line = container.createChild(-1, WidgetType.TEXT);
-		line.setText(OFFER_HEADER);
-		line.setFontId(FontID.VERDANA_11_BOLD);
-		line.setTextColor(OFFER_LINE_COLOR);
-		line.setOriginalX(lineX);
-		line.setOriginalY(lineY);
-		line.setOriginalWidth(labelWidth);
-		line.setOriginalHeight(20);
-		line.setXTextAlignment(1);
-		line.revalidate();
-		return line;
 	}
 
 	private Widget createOfferLine(Widget container, OfferAutofill.Choice choice,
@@ -426,7 +410,7 @@ public class GeUncutPlugin extends Plugin {
 		line.setOriginalX(lineX);
 		line.setOriginalY(lineY);
 		line.setOriginalWidth(labelWidth);
-		line.setOriginalHeight(20);
+		line.setOriginalHeight(OFFER_TEXT_HEIGHT);
 		line.setXTextAlignment(1);
 		line.setHasListener(true);
 		line.setAction(1, "Set GE Uncut value");
@@ -455,35 +439,54 @@ public class GeUncutPlugin extends Plugin {
 		return label.length() * 8 + 8;
 	}
 
-	private static List<OfferAutofill.Choice> fitChoices(List<OfferAutofill.Choice> choices, int available) {
-		if (choices.size() < 2
-				|| rowSpan(choices, labelWidth(OFFER_HEADER), choiceWidth(choices)) <= available) {
-			return choices;
-		}
-		for (OfferAutofill.Choice base : choices) {
-			if (base.isBase()) {
-				return List.of(base);
-			}
-		}
-		return choices;
+	private static int rowSpan(List<OfferAutofill.Choice> choices, int cell) {
+		return choices.size() * cell + (choices.size() - 1) * OFFER_LINE_GAP;
 	}
 
-	private int[] lineSpot(Widget container, int labelWidth, int containerWidth) {
-		Widget[] children = container.getDynamicChildren();
-		int centerX = Math.max(0, (containerWidth - labelWidth) / 2);
-		if (!overlapsAny(children, centerX, 90, labelWidth)) {
-			return new int[] { centerX, 90 };
+	static boolean fits(List<OfferAutofill.Choice> choices, int available) {
+		return rowSpan(choices, choiceWidth(choices)) <= available;
+	}
+
+	static List<OfferAutofill.Choice> fitChoices(List<OfferAutofill.Choice> choices, int available) {
+		if (choices.size() < 2 || fits(choices, available)) {
+			return choices;
 		}
-		int rightX = Math.max(0, containerWidth - labelWidth - 8);
-		for (int y = 8; y <= 48; y += 20) {
-			if (!overlapsAny(children, rightX, y, labelWidth)) {
+		OfferAutofill.Choice base = null;
+		for (OfferAutofill.Choice choice : choices) {
+			if (choice.isBase()) {
+				base = choice;
+			}
+		}
+		if (base == null) {
+			return choices;
+		}
+		for (OfferAutofill.Choice choice : choices) {
+			if (choice != base) {
+				List<OfferAutofill.Choice> pair = List.of(base, choice);
+				if (fits(pair, available)) {
+					return pair;
+				}
+			}
+		}
+		return List.of(base);
+	}
+
+	private int[] rowSpot(Widget container, int span, int containerWidth) {
+		Widget[] children = container.getDynamicChildren();
+		int centerX = Math.max(0, (containerWidth - span) / 2);
+		if (!overlapsAny(children, centerX, OFFER_ROW_Y, span, OFFER_TEXT_HEIGHT)) {
+			return new int[] { centerX, OFFER_ROW_Y };
+		}
+		int rightX = Math.max(0, containerWidth - span - OFFER_EDGE_MARGIN);
+		for (int y = OFFER_ROW_Y; y >= OFFER_EDGE_MARGIN; y -= OFFER_TEXT_HEIGHT + OFFER_CLEARANCE) {
+			if (!overlapsAny(children, rightX, y, span, OFFER_TEXT_HEIGHT)) {
 				return new int[] { rightX, y };
 			}
 		}
-		return new int[] { rightX, 68 };
+		return new int[] { centerX, OFFER_ROW_Y };
 	}
 
-	private static boolean overlapsAny(Widget[] children, int x, int y, int width) {
+	private static boolean overlapsAny(Widget[] children, int x, int y, int width, int height) {
 		if (children == null) {
 			return false;
 		}
@@ -491,10 +494,10 @@ public class GeUncutPlugin extends Plugin {
 			if (child == null || child.isHidden()) {
 				continue;
 			}
-			boolean apart = x + width <= child.getOriginalX()
-					|| child.getOriginalX() + child.getOriginalWidth() <= x
-					|| y + 20 <= child.getOriginalY()
-					|| child.getOriginalY() + child.getOriginalHeight() <= y;
+			boolean apart = x + width + OFFER_CLEARANCE <= child.getOriginalX()
+					|| child.getOriginalX() + child.getOriginalWidth() + OFFER_CLEARANCE <= x
+					|| y + height + OFFER_CLEARANCE <= child.getOriginalY()
+					|| child.getOriginalY() + child.getOriginalHeight() + OFFER_CLEARANCE <= y;
 			if (!apart) {
 				return true;
 			}
@@ -579,7 +582,6 @@ public class GeUncutPlugin extends Plugin {
 		flips.fetch(target.selectedScan(), target.selectedRisk(), target.selectedCapital(),
 				response -> {
 					latestFlips = response.getFlips() != null ? response.getFlips() : List.of();
-					flipsFetchedAt = Instant.now();
 					SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
 						return;
