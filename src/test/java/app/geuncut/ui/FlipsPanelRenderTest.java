@@ -12,6 +12,7 @@ import java.io.File;
 import java.util.function.IntConsumer;
 import java.util.function.LongConsumer;
 import javax.imageio.ImageIO;
+import javax.swing.AbstractButton;
 import javax.swing.JLabel;
 
 import app.geuncut.dto.FlipsResponse;
@@ -115,7 +116,7 @@ public class FlipsPanelRenderTest {
 		panel.showFlips(response.getFlips(), true);
 
 		assertNotNull(findLabel(panel, "Show GE price tips"));
-		assertNotNull(findLabel(panel, "Offer ± 2%"));
+		assertNotNull(findLabel(panel,"Offer ± 2%"));
 		assertTrue(panel.offerHelperEnabled());
 		assertEquals(2, panel.offerAdjustPercent());
 		write(paint(panel), "panel-offer-tips.png");
@@ -130,12 +131,17 @@ public class FlipsPanelRenderTest {
 
 		panel.applyOfferSettings(true, 0);
 		assertEquals(0, panel.offerAdjustPercent());
-		assertNotNull(findLabel(panel, "No adjustment"));
+		assertNotNull(findLabel(panel,"No adjustment"));
 
-		panel.applyOfferSettings(true, 7);
+		panel.applyOfferSettings(true, 13);
 		assertEquals("a percentage typed in RuneLite settings must survive, not snap to a preset",
-				7, panel.offerAdjustPercent());
-		assertNotNull(findLabel(panel, "Offer ± 7%"));
+				13, panel.offerAdjustPercent());
+		assertNotNull(findLabel(panel,"Offer ± 13%"));
+
+		panel.applyOfferSettings(true, 999);
+		assertEquals("out-of-range percentages clamp rather than reaching the offer prompt",
+				50, panel.offerAdjustPercent());
+		assertNotNull(findLabel(panel,"Offer ± 50%"));
 	}
 
 	@Test
@@ -421,6 +427,21 @@ public class FlipsPanelRenderTest {
 				collectAllLabelTexts(child, out);
 			}
 		}
+	}
+
+	private static AbstractButton findButton(Component component, String text) {
+		if (component instanceof AbstractButton && text.equals(((AbstractButton) component).getText())) {
+			return (AbstractButton) component;
+		}
+		if (component instanceof Container) {
+			for (Component child : ((Container) component).getComponents()) {
+				AbstractButton found = findButton(child, text);
+				if (found != null) {
+					return found;
+				}
+			}
+		}
+		return null;
 	}
 
 	private static JLabel findLabel(Component component, String text) {
