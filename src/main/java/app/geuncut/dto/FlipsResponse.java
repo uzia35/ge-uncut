@@ -13,4 +13,16 @@ public class FlipsResponse {
 
 	@SerializedName("my_capital")
 	private final Long myCapital;
+
+	@SerializedName("my_min_profit")
+	private final Long myMinProfit;
+
+	@SerializedName("my_min_roi")
+	private final Double myMinRoi;
+
+	@SerializedName("min_profit_floor")
+	private final Long minProfitFloor;
+
+	@SerializedName("min_roi_floor")
+	private final Double minRoiFloor;
 }

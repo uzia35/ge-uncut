@@ -31,4 +31,14 @@ public interface GeUncutConfig extends Config {
 	default int offerAdjustPercent() {
 		return 2;
 	}
+
+	@ConfigItem(keyName = "minProfit", name = "Minimum profit", description = "Set from the Finder panel", hidden = true, position = 5)
+	default long minProfit() {
+		return -1;
+	}
+
+	@ConfigItem(keyName = "minRoi", name = "Minimum margin", description = "Set from the Finder panel", hidden = true, position = 6)
+	default double minRoi() {
+		return -1;
+	}
 }

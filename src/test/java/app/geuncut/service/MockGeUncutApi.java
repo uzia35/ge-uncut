@@ -14,6 +14,7 @@ import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
 import app.geuncut.dto.PositionsResponse;
+import app.geuncut.dto.ScanRequest;
 
 class MockGeUncutApi implements GeUncutApi {
 	boolean failNextPost;
@@ -26,6 +27,7 @@ class MockGeUncutApi implements GeUncutApi {
 	ApiFailure failure = ApiFailure.network("boom");
 	LinkSession session;
 	FlipsResponse flipsResponse;
+	ScanRequest lastScanRequest;
 	PositionsResponse positionsResponse;
 	Movers moversResponse;
 	List<OfferPlacement> placementsResponse;
@@ -47,7 +49,8 @@ class MockGeUncutApi implements GeUncutApi {
 	private Runnable pendingPoll;
 
 	@Override
-	public void fetchFlips(String scanType, String risk, Long capital, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
+	public void fetchFlips(ScanRequest request, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError) {
+		lastScanRequest = request;
 		if (flipsResponse != null) {
 			onSuccess.accept(flipsResponse);
 		} else {

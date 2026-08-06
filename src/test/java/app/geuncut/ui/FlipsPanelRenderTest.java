@@ -17,11 +17,13 @@ import javax.swing.JLabel;
 
 import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.PositionsResponse;
+import app.geuncut.dto.ScanRequest;
 import com.google.gson.Gson;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class FlipsPanelRenderTest {
@@ -142,6 +144,83 @@ public class FlipsPanelRenderTest {
 		assertEquals("out-of-range percentages clamp rather than reaching the offer prompt",
 				50, panel.offerAdjustPercent());
 		assertNotNull(findLabel(panel,"Offer ± 50%"));
+	}
+
+	@Test
+	public void finderBarCarriesTheProfitAndMarginBars() throws Exception {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsResponse response = new Gson().fromJson(FLIPS_JSON, FlipsResponse.class);
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.showFlips(response.getFlips(), true);
+
+		// Unset by default: the scan's own bar applies, so nothing is sent and the label
+		// says so rather than showing a number the panel invented.
+		assertNotNull(findLabel(panel, "Default profit bar"));
+		assertNotNull(findLabel(panel, "Default margin bar"));
+		assertNull(panel.selectedMinProfit());
+		assertNull(panel.selectedMinRoi());
+		write(paint(panel), "panel-scan-bars.png");
+
+		// Unlinked: presets only, and the Default entry picks up the real figure the
+		// server reports for whichever scan is running.
+		panel.applyScanBars(false, null, null, 1_000_000L, 3.0);
+		assertNotNull(findLabel(panel, "Default (1.0M gp)"));
+		assertNotNull(findLabel(panel, "Default (3%)"));
+		assertNull("an unlinked panel has no saved value to fall back on", panel.selectedMinProfit());
+
+		// Linked: the website's saved bars lead the list and are selected, the same way
+		// capital already works. This is the logged-in half of matching the website.
+		int[] saves = { 0 };
+		panel.setOnScanBarsChange(() -> saves[0]++);
+		panel.applyScanBars(true, 750_000L, 1.5, 1_000_000L, 3.0);
+		assertNotNull(findLabel(panel, "My profit bar (750k gp)"));
+		assertNotNull(findLabel(panel, "My margin bar (1.5%)"));
+		assertEquals(Long.valueOf(750_000L), panel.selectedMinProfit());
+		assertEquals(Double.valueOf(1.5), panel.selectedMinRoi());
+		assertEquals("hydrating from the server must not echo back as a save", 0, saves[0]);
+		write(paint(panel), "panel-scan-bars-linked.png");
+	}
+
+	@Test
+	public void aBarChosenInThePanelSurvivesTheNextScan() throws Exception {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+
+		// Restored from RuneLite config on startup, exactly as the plugin does it.
+		panel.applySavedScanBars(250_000L, 5.0);
+		assertEquals(Long.valueOf(250_000L), panel.selectedMinProfit());
+		assertEquals(Double.valueOf(5.0), panel.selectedMinRoi());
+
+		// The regression this guards: every scan response calls applyScanBars, and if a
+		// linked user's saved value overwrote the choice they just made in the panel, the
+		// picker would snap back a second after they touched it.
+		panel.applyScanBars(true, 5_000_000L, 0.5, 1_000_000L, 3.0);
+		assertEquals(Long.valueOf(250_000L), panel.selectedMinProfit());
+		assertEquals(Double.valueOf(5.0), panel.selectedMinRoi());
+	}
+
+	@Test
+	public void theScanRequestCarriesEveryControlOnTheBar() throws Exception {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.applySavedScanBars(0L, 0.0);
+
+		ScanRequest request = panel.scanRequest();
+		assertEquals(panel.selectedScan(), request.getScanType());
+		assertEquals(panel.selectedRisk(), request.getRisk());
+		assertEquals(panel.selectedCapital(), request.getCapital());
+		// Any profit / Any margin, which must reach the API as 0 rather than as unset.
+		assertEquals(Long.valueOf(0L), request.getMinProfit());
+		assertEquals(Double.valueOf(0.0), request.getMinRoi());
 	}
 
 	@Test

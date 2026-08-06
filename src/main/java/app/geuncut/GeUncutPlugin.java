@@ -215,6 +215,8 @@ public class GeUncutPlugin extends Plugin {
 		panel.setOnTabOpen(this::onTabOpened);
 		panel.applyOfferSettings(config.autoFillOffers(), config.offerAdjustPercent());
 		panel.setOnOfferSettingsChange(this::saveOfferSettings);
+		panel.applySavedScanBars(config.minProfit(), config.minRoi());
+		panel.setOnScanBarsChange(this::saveScanBars);
 		navButton = NavigationButton.builder()
 				.tooltip("GE Uncut")
 				.icon(icon)
@@ -557,6 +559,13 @@ public class GeUncutPlugin extends Plugin {
 		configManager.setConfiguration(GeUncutConfig.GROUP, "offerAdjustPercent", panel.offerAdjustPercent());
 	}
 
+	private void saveScanBars() {
+		Long profit = panel.selectedMinProfit();
+		Double roi = panel.selectedMinRoi();
+		configManager.setConfiguration(GeUncutConfig.GROUP, "minProfit", profit == null ? -1L : profit);
+		configManager.setConfiguration(GeUncutConfig.GROUP, "minRoi", roi == null ? -1.0 : roi);
+	}
+
 	private boolean linked() {
 		return !config.apiToken().trim().isEmpty();
 	}
@@ -579,7 +588,7 @@ public class GeUncutPlugin extends Plugin {
 		SwingUtilities.invokeLater(() -> target.showStatus("Scanning..."));
 		refreshPositions();
 		refreshMovers();
-		flips.fetch(target.selectedScan(), target.selectedRisk(), target.selectedCapital(),
+		flips.fetch(target.scanRequest(),
 				response -> {
 					latestFlips = response.getFlips() != null ? response.getFlips() : List.of();
 					SwingUtilities.invokeLater(() -> {
@@ -587,6 +596,8 @@ public class GeUncutPlugin extends Plugin {
 						return;
 					}
 					target.applyCapital(linked, response.getMyCapital());
+					target.applyScanBars(linked, response.getMyMinProfit(), response.getMyMinRoi(),
+							response.getMinProfitFloor(), response.getMinRoiFloor());
 					target.showFlips(response.getFlips(), linked);
 					});
 				},

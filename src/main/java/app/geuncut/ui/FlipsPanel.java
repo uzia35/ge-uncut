@@ -42,6 +42,7 @@ import app.geuncut.dto.Movers;
 import app.geuncut.dto.Position;
 import app.geuncut.dto.PositionsResponse;
 import app.geuncut.dto.PositionsSummary;
+import app.geuncut.dto.ScanRequest;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.ImageUtil;
 
@@ -120,6 +121,18 @@ public class FlipsPanel extends PluginPanel {
 
 	private final FlatSelect capitalPicker = new FlatSelect(CAPITAL_PRESET_LABELS, CAPITAL_PRESET_VALUES, 0);
 	private boolean capitalTouched;
+	private static final String[] MIN_PROFIT_PRESET_LABELS = { "Any profit", "250k+", "1M+", "5M+" };
+	private static final String[] MIN_PROFIT_PRESET_VALUES = { "0", "250000", "1000000", "5000000" };
+	private static final String[] MIN_ROI_PRESET_LABELS = { "Any margin", "1%+", "3%+", "5%+" };
+	private static final String[] MIN_ROI_PRESET_VALUES = { "0", "1", "3", "5" };
+	private final FlatSelect minProfitPicker = new FlatSelect(
+			prepend("Default profit bar", MIN_PROFIT_PRESET_LABELS),
+			prepend("", MIN_PROFIT_PRESET_VALUES), 0);
+	private final FlatSelect minRoiPicker = new FlatSelect(
+			prepend("Default margin bar", MIN_ROI_PRESET_LABELS),
+			prepend("", MIN_ROI_PRESET_VALUES), 0);
+	private boolean minProfitTouched;
+	private boolean minRoiTouched;
 	private final FlatSelect accountPicker = new FlatSelect(
 			new String[] { "All items", "Members", "Free-to-play" },
 			new String[] { "all", "members", "f2p" }, 0);
@@ -146,6 +159,8 @@ public class FlipsPanel extends PluginPanel {
 		return values;
 	}
 	private Runnable onOfferSettingsChange = () -> {
+	};
+	private Runnable onScanBarsChange = () -> {
 	};
 	private final JLabel finderStatus = new JLabel("", SwingConstants.CENTER);
 	private final JPanel finderList = listPanel();
@@ -221,6 +236,16 @@ public class FlipsPanel extends PluginPanel {
 		riskPicker.setOnChange(onRefresh);
 		capitalPicker.setOnChange(() -> {
 			capitalTouched = true;
+			onRefresh.run();
+		});
+		minProfitPicker.setOnChange(() -> {
+			minProfitTouched = true;
+			onScanBarsChange.run();
+			onRefresh.run();
+		});
+		minRoiPicker.setOnChange(() -> {
+			minRoiTouched = true;
+			onScanBarsChange.run();
 			onRefresh.run();
 		});
 		accountPicker.setOnChange(this::renderFlips);
@@ -483,6 +508,92 @@ public class FlipsPanel extends PluginPanel {
 		if (!capitalPicker.selectedValue().equals(previous)) {
 			onRefresh.run();
 		}
+	}
+
+	public Long selectedMinProfit() {
+		String value = minProfitPicker.selectedValue();
+		return value.isEmpty() ? null : Long.valueOf(value);
+	}
+
+	public Double selectedMinRoi() {
+		String value = minRoiPicker.selectedValue();
+		return value.isEmpty() ? null : Double.valueOf(value);
+	}
+
+	public ScanRequest scanRequest() {
+		return ScanRequest.builder()
+				.scanType(selectedScan())
+				.risk(selectedRisk())
+				.capital(selectedCapital())
+				.minProfit(selectedMinProfit())
+				.minRoi(selectedMinRoi())
+				.build();
+	}
+
+	public void applySavedScanBars(long minProfit, double minRoi) {
+		minProfitTouched = minProfit >= 0;
+		minRoiTouched = minRoi >= 0;
+		if (minProfitTouched) {
+			selectBar(minProfitPicker, Long.toString(minProfit),
+					barGp(minProfit) + " only", MIN_PROFIT_PRESET_LABELS, MIN_PROFIT_PRESET_VALUES,
+					"Default profit bar");
+		}
+		if (minRoiTouched) {
+			selectBar(minRoiPicker, trimNum(minRoi), trimNum(minRoi) + "%+",
+					MIN_ROI_PRESET_LABELS, MIN_ROI_PRESET_VALUES, "Default margin bar");
+		}
+	}
+
+	private static void selectBar(FlatSelect picker, String value, String customLabel,
+			String[] presetLabels, String[] presetValues, String defaultLabel) {
+		String[] labels = prepend(defaultLabel, presetLabels);
+		String[] values = prepend("", presetValues);
+		if (indexOf(values, value) < 0) {
+			labels = prepend(customLabel, labels);
+			values = prepend(value, values);
+		}
+		picker.setOptions(labels, values, value);
+	}
+
+	public void applyScanBars(boolean linked, Long myMinProfit, Double myMinRoi,
+			Long profitFloor, Double roiFloor) {
+		boolean refresh = applyBar(minProfitPicker, minProfitTouched,
+				linked && myMinProfit != null && myMinProfit >= 0,
+				myMinProfit == null ? "" : "My profit bar (" + barGp(myMinProfit) + ")",
+				myMinProfit == null ? "" : Long.toString(myMinProfit),
+				profitFloor == null ? "Default profit bar" : "Default (" + barGp(profitFloor) + ")",
+				MIN_PROFIT_PRESET_LABELS, MIN_PROFIT_PRESET_VALUES);
+		refresh |= applyBar(minRoiPicker, minRoiTouched,
+				linked && myMinRoi != null && myMinRoi >= 0,
+				myMinRoi == null ? "" : "My margin bar (" + trimNum(myMinRoi) + "%)",
+				myMinRoi == null ? "" : trimNum(myMinRoi),
+				roiFloor == null ? "Default margin bar" : "Default (" + trimNum(roiFloor) + "%)",
+				MIN_ROI_PRESET_LABELS, MIN_ROI_PRESET_VALUES);
+		if (refresh) {
+			onRefresh.run();
+		}
+	}
+
+	private static boolean applyBar(FlatSelect picker, boolean touched, boolean mine,
+			String mineLabel, String mineValue, String defaultLabel,
+			String[] presetLabels, String[] presetValues) {
+		String[] labels = prepend(defaultLabel, presetLabels);
+		String[] values = prepend("", presetValues);
+		if (mine && indexOf(values, mineValue) < 0) {
+			labels = prepend(mineLabel, labels);
+			values = prepend(mineValue, values);
+		}
+		String previous = picker.selectedValue();
+		String desired = touched ? previous : (mine ? mineValue : "");
+		picker.setOptions(labels, values, desired);
+		picker.setToolTipText(mine
+				? "My bar is the value saved in your website settings - edit it on the Flip Finder page"
+				: null);
+		return !picker.selectedValue().equals(previous);
+	}
+
+	private static String barGp(long value) {
+		return value == 0 ? "any" : shortGp(value) + " gp";
 	}
 
 	private static String[] prepend(String head, String[] rest) {
@@ -890,6 +1001,12 @@ public class FlipsPanel extends PluginPanel {
 		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(capitalPicker);
 		pickers.add(Box.createVerticalStrut(7));
+		minProfitPicker.setToolTipText("Hide flips whose total after-tax profit lands below this");
+		pickers.add(minProfitPicker);
+		pickers.add(Box.createVerticalStrut(7));
+		minRoiPicker.setToolTipText("Hide flips whose after-tax return on your buy price lands below this");
+		pickers.add(minRoiPicker);
+		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(accountPicker);
 		pickers.add(Box.createVerticalStrut(7));
 		offerHelperToggle.setToolTipText("Puts GE Uncut prices in the buy and sell offer prompts - click one to enter it");
@@ -918,6 +1035,10 @@ public class FlipsPanel extends PluginPanel {
 
 	public void setOnOfferSettingsChange(Runnable listener) {
 		this.onOfferSettingsChange = listener;
+	}
+
+	public void setOnScanBarsChange(Runnable listener) {
+		this.onScanBarsChange = listener;
 	}
 
 	public void applyOfferSettings(boolean enabled, int percent) {
