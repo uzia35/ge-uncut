@@ -329,6 +329,176 @@ public class FlipsPanelRenderTest {
 	}
 
 	@Test
+	public void historySplitsByAccountWhenTwoAreLinked() throws Exception {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.showHistory(PositionsResponse.builder()
+				.archivedSells(java.util.Arrays.asList(
+						app.geuncut.dto.ArchivedSell.builder().accountHash("bbb").itemId(1601)
+								.itemName("Bones").quantity(1).priceEach(100L)
+								.occurredAt("2026-07-19T09:03:00+00:00").build(),
+						app.geuncut.dto.ArchivedSell.builder().accountHash("aaa").itemId(1602)
+								.itemName("Feather").quantity(1).priceEach(100L)
+								.occurredAt("2026-07-19T09:02:00+00:00").build(),
+						// No account tag: must still show, under its own heading.
+						app.geuncut.dto.ArchivedSell.builder().itemId(1603)
+								.itemName("Rope").quantity(1).priceEach(100L)
+								.occurredAt("2026-07-19T09:01:00+00:00").build()))
+				.build());
+
+		java.util.List<String> texts = new java.util.ArrayList<>();
+		collectAllLabelTexts(panel, texts);
+		assertTrue("no per-account headings", texts.contains("ACCOUNT 1"));
+		assertTrue(texts.contains("ACCOUNT 2"));
+		assertTrue("an untagged trade was dropped from the record",
+				texts.contains("NO ACCOUNT RECORDED"));
+
+		// Sorted hashes decide the numbering, so 'aaa' leads regardless of the order
+		// the rows arrived in, and every row sits under its own heading.
+		assertTrue(texts.indexOf("ACCOUNT 1") < texts.indexOf("Feather"));
+		assertTrue(texts.indexOf("Feather") < texts.indexOf("ACCOUNT 2"));
+		assertTrue(texts.indexOf("ACCOUNT 2") < texts.indexOf("Bones"));
+		assertTrue(texts.indexOf("Bones") < texts.indexOf("NO ACCOUNT RECORDED"));
+		assertTrue(texts.indexOf("NO ACCOUNT RECORDED") < texts.indexOf("Rope"));
+
+		panel.selectTab("history");
+		write(paint(panel), "panel-history-accounts.png");
+	}
+
+	@Test
+	public void loggingInNarrowsPastTheFoldCorrectly() {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		java.util.List<app.geuncut.dto.ArchivedSell> sells = new java.util.ArrayList<>();
+		// Account 'aaa' alone overruns the ten-card page, so a naive filter that caps
+		// before narrowing would show an empty view for the alt.
+		for (int i = 0; i < 12; i++) {
+			sells.add(app.geuncut.dto.ArchivedSell.builder().accountHash("aaa").itemId(1700 + i)
+					.itemName("Main " + i).quantity(1).priceEach(100L)
+					.occurredAt("2026-07-19T10:" + String.format("%02d", 30 + i) + ":00+00:00").build());
+		}
+		sells.add(app.geuncut.dto.ArchivedSell.builder().accountHash("bbb").itemId(1800)
+				.itemName("Alt trade").quantity(1).priceEach(100L)
+				.occurredAt("2026-07-19T09:00:00+00:00").build());
+		panel.showHistory(PositionsResponse.builder().archivedSells(sells).build());
+
+		java.util.List<String> before = new java.util.ArrayList<>();
+		collectAllLabelTexts(panel, before);
+		assertTrue("the alt's row should be past the fold to begin with",
+				!before.contains("Alt trade"));
+
+		panel.setLoggedInAccount("bbb");
+		java.util.List<String> after = new java.util.ArrayList<>();
+		collectAllLabelTexts(panel, after);
+		assertTrue("logging into the alt did not surface its trade", after.contains("Alt trade"));
+		assertTrue("logging into the alt still showed the main's trades", !after.contains("Main 0"));
+	}
+
+	private static PositionsResponse twoAccountHistory() {
+		return PositionsResponse.builder()
+				.archivedSells(java.util.Arrays.asList(
+						app.geuncut.dto.ArchivedSell.builder().accountHash("aaa").itemId(1601)
+								.itemName("Bones").quantity(1).priceEach(100L)
+								.occurredAt("2026-07-19T09:03:00+00:00").build(),
+						app.geuncut.dto.ArchivedSell.builder().accountHash("bbb").itemId(1602)
+								.itemName("Feather").quantity(1).priceEach(100L)
+								.occurredAt("2026-07-19T09:02:00+00:00").build()))
+				.build();
+	}
+
+	@Test
+	public void theViewFollowsTheAccountYouLogInto() throws Exception {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.showHistory(twoAccountHistory());
+		panel.selectTab("history");
+
+		panel.setLoggedInAccount("bbb");
+		java.util.List<String> texts = new java.util.ArrayList<>();
+		collectAllLabelTexts(panel, texts);
+		assertTrue("the logged-in account's trade is missing", texts.contains("Feather"));
+		assertTrue("the other account's trade should not show", !texts.contains("Bones"));
+		// The badge is the only thing saying whose data this is.
+		assertTrue("nothing says which account is shown", texts.contains("ACCOUNT 2"));
+		assertTrue(!texts.contains("ACCOUNT 1"));
+		write(paint(panel), "panel-follows-login.png");
+
+		// Switching characters swings the whole view with it, badge included.
+		panel.setLoggedInAccount("aaa");
+		texts.clear();
+		collectAllLabelTexts(panel, texts);
+		assertTrue(texts.contains("Bones"));
+		assertTrue(!texts.contains("Feather"));
+		assertTrue(texts.contains("ACCOUNT 1"));
+		assertTrue(!texts.contains("ACCOUNT 2"));
+
+		// The badge stays put across every tab, so you always know whose data
+		// the panel is on.
+		for (String tab : new String[] { "finder", "flips", "movers", "history" }) {
+			panel.selectTab(tab);
+			texts.clear();
+			collectAllLabelTexts(panel, texts);
+			assertTrue("the badge disappeared on the " + tab + " tab", texts.contains("ACCOUNT 1"));
+		}
+	}
+
+	@Test
+	public void anUntaggedTradeShowsWhicheverAccountIsLoggedIn() {
+		// Rows from before fill tagging belong to somebody; hiding them from every
+		// account's view would drop them from the record entirely.
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.showHistory(PositionsResponse.builder()
+				.archivedSells(java.util.Arrays.asList(
+						app.geuncut.dto.ArchivedSell.builder().accountHash("bbb").itemId(1601)
+								.itemName("Bones").quantity(1).priceEach(100L)
+								.occurredAt("2026-07-19T09:03:00+00:00").build(),
+						app.geuncut.dto.ArchivedSell.builder().itemId(1603)
+								.itemName("Rope").quantity(1).priceEach(100L)
+								.occurredAt("2026-07-19T09:01:00+00:00").build()))
+				.build());
+		panel.setLoggedInAccount("bbb");
+		java.util.List<String> texts = new java.util.ArrayList<>();
+		collectAllLabelTexts(panel, texts);
+		assertTrue(texts.contains("Bones"));
+		assertTrue("the untagged trade was dropped from the record", texts.contains("Rope"));
+	}
+
+	@Test
+	public void historyStaysFlatForASingleAccount() {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.showHistory(PositionsResponse.builder()
+				.archivedSells(java.util.Arrays.asList(
+						app.geuncut.dto.ArchivedSell.builder().accountHash("aaa").itemId(1601)
+								.itemName("Bones").quantity(1).priceEach(100L)
+								.occurredAt("2026-07-19T09:03:00+00:00").build(),
+						app.geuncut.dto.ArchivedSell.builder().accountHash("aaa").itemId(1602)
+								.itemName("Feather").quantity(1).priceEach(100L)
+								.occurredAt("2026-07-19T09:02:00+00:00").build()))
+				.build());
+		java.util.List<String> texts = new java.util.ArrayList<>();
+		collectAllLabelTexts(panel, texts);
+		assertTrue("one account should not get a heading", !texts.contains("ACCOUNT 1"));
+		assertTrue(texts.contains("Bones") && texts.contains("Feather"));
+	}
+
+	@Test
 	public void historyFoldsPastTenCards() {
 		Runnable noop = () -> {
 		};

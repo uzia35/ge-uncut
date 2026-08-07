@@ -13,10 +13,16 @@ import javax.swing.JLabel;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
 import javax.swing.SwingUtilities;
+import javax.swing.event.PopupMenuEvent;
+import javax.swing.event.PopupMenuListener;
 
 class FlatSelect extends RoundedPanel {
+	private static final long SAME_CLICK_MS = 60;
+
 	private String[] labels;
 	private String[] values;
+	private long hiddenAt = -1;
+	private JPopupMenu menu;
 	private final JLabel valueLabel;
 	private int selectedIndex;
 	private Runnable onChange = () -> {
@@ -42,7 +48,7 @@ class FlatSelect extends RoundedPanel {
 		MouseAdapter adapter = new MouseAdapter() {
 			@Override
 			public void mousePressed(MouseEvent event) {
-				showMenu();
+				toggleMenu();
 			}
 
 			@Override
@@ -101,10 +107,43 @@ class FlatSelect extends RoundedPanel {
 		valueLabel.setText(labels[selectedIndex]);
 	}
 
+	private void toggleMenu() {
+		if (shouldOpen(System.currentTimeMillis())) {
+			showMenu();
+		}
+	}
+
+	boolean shouldOpen(long now) {
+		if (hiddenAt >= 0 && now - hiddenAt <= SAME_CLICK_MS) {
+			hiddenAt = -1;
+			return false;
+		}
+		return true;
+	}
+
+	void markHidden(long at) {
+		hiddenAt = at;
+	}
+
 	private void showMenu() {
 		JPopupMenu menu = new JPopupMenu();
+		this.menu = menu;
 		menu.setBackground(Theme.RAISED);
 		menu.setBorder(BorderFactory.createLineBorder(Theme.LINE_STRONG));
+		menu.addPopupMenuListener(new PopupMenuListener() {
+			@Override
+			public void popupMenuWillBecomeVisible(PopupMenuEvent event) {
+			}
+
+			@Override
+			public void popupMenuWillBecomeInvisible(PopupMenuEvent event) {
+				markHidden(System.currentTimeMillis());
+			}
+
+			@Override
+			public void popupMenuCanceled(PopupMenuEvent event) {
+			}
+		});
 		for (int i = 0; i < labels.length; i++) {
 			JMenuItem item = new JMenuItem(labels[i]);
 			item.setBackground(Theme.RAISED);
@@ -116,6 +155,25 @@ class FlatSelect extends RoundedPanel {
 			menu.add(item);
 		}
 		menu.show(this, 0, getHeight() + 2);
+	}
+
+	boolean menuShowing() {
+		return menu != null && menu.isVisible();
+	}
+
+	JPopupMenu getMenuForTest() {
+		return menu;
+	}
+
+	void selectLabelForTest(String label) {
+		for (int i = 0; i < labels.length; i++) {
+			if (labels[i].equals(label)) {
+				selectedIndex = i;
+				valueLabel.setText(labels[i]);
+				return;
+			}
+		}
+		throw new IllegalArgumentException("no such option: " + label);
 	}
 
 	private void select(int index) {

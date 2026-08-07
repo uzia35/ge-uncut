@@ -7,6 +7,9 @@ import lombok.Value;
 @Value
 @Builder
 public class ArchivedSell {
+	@SerializedName("account_hash")
+	private final String accountHash;
+
 	@SerializedName("item_id")
 	private final int itemId;
 

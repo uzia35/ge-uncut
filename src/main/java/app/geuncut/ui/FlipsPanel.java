@@ -97,6 +97,8 @@ public class FlipsPanel extends PluginPanel {
 
 	private final JPanel historySection = new JPanel();
 	private final JPanel historyList = listPanel();
+	private String loggedInAccount;
+	private final JLabel accountBadge = text("", Theme.MUTED, Theme.SECTION);
 	private static final int HISTORY_PAGE = 10;
 	private PositionsResponse historyResponse;
 	private int historyVisible = HISTORY_PAGE;
@@ -107,7 +109,7 @@ public class FlipsPanel extends PluginPanel {
 
 	private final JPanel content = new JPanel(new CardLayout());
 	private final Map<String, JLabel> tabButtons = new LinkedHashMap<>();
-	private String activeTab = "finder";
+	private volatile String activeTab = "finder";
 	private boolean linked = true;
 
 	private final java.util.Set<Long> expandedFlips = new java.util.HashSet<>();
@@ -207,6 +209,10 @@ public class FlipsPanel extends PluginPanel {
 		column.add(strut(10));
 		column.add(buildTabBar());
 		column.add(strut(10));
+		accountBadge.setAlignmentX(Component.LEFT_ALIGNMENT);
+		accountBadge.setBorder(BorderFactory.createEmptyBorder(0, 1, 8, 0));
+		accountBadge.setVisible(false);
+		column.add(accountBadge);
 
 		content.setBackground(Theme.SURFACE);
 		content.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -310,6 +316,7 @@ public class FlipsPanel extends PluginPanel {
 	void selectTab(String key) {
 		activeTab = key;
 		((CardLayout) content.getLayout()).show(content, key);
+		syncAccountBadge();
 		for (Map.Entry<String, JLabel> entry : tabButtons.entrySet()) {
 			boolean active = entry.getKey().equals(key);
 			JLabel tab = entry.getValue();
@@ -327,6 +334,10 @@ public class FlipsPanel extends PluginPanel {
 
 	public void setOnTabOpen(java.util.function.Consumer<String> onTabOpen) {
 		this.onTabOpen = onTabOpen;
+	}
+
+	public String activeTab() {
+		return activeTab;
 	}
 
 	private JPanel refreshRow(String tab, JLabel status) {
@@ -682,26 +693,29 @@ public class FlipsPanel extends PluginPanel {
 	}
 
 	private void renderActiveFlips() {
-		activeCount.setText(Integer.toString(lastPositions.size()));
 		activeList.removeAll();
-		java.util.TreeSet<String> accounts = new java.util.TreeSet<>();
+		List<String> order = accountOrder();
+
+		List<Position> visible = new ArrayList<>();
 		for (Position position : lastPositions) {
-			if (position.getAccountHash() != null) {
-				accounts.add(position.getAccountHash());
+			if (inScope(position.getAccountHash())) {
+				visible.add(position);
 			}
 		}
-		if (accounts.size() > 1) {
-			int index = 1;
-			for (String hash : accounts) {
-				addAccountSection("Account " + index++, hash);
+		activeCount.setText(Integer.toString(visible.size()));
+
+		if (loggedInAccount == null && order.size() > 1) {
+			for (String hash : order) {
+				addAccountSection("Account " + (order.indexOf(hash) + 1), hash);
 			}
 			addAccountSection(null, null);
 		} else {
-			for (Position position : lastPositions) {
+			for (Position position : visible) {
 				addCard(activeList, activeFlipCard(position));
 			}
 		}
-		activeSection.setVisible(!lastPositions.isEmpty());
+		activeSection.setVisible(!visible.isEmpty());
+		syncAccountBadge();
 		revalidate();
 		repaint();
 	}
@@ -756,30 +770,49 @@ public class FlipsPanel extends PluginPanel {
 				? response.getMarginChecks() : Collections.emptyList();
 		List<ArchivedSell> sells = response.getArchivedSells() != null
 				? response.getArchivedSells() : Collections.emptyList();
-		List<Map.Entry<Instant, RoundedPanel>> entries = new ArrayList<>();
+		List<HistoryRow> entries = new ArrayList<>();
 		for (Position position : completed) {
-			entries.add(historyEntry(
+			entries.add(new HistoryRow(
 					position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt(),
-					historyCard(position, false)));
+					position.getAccountHash(), historyCard(position, false)));
 		}
 		for (Position position : positions) {
-			entries.add(historyEntry(
+			entries.add(new HistoryRow(
 					position.getClosedAt() != null ? position.getClosedAt() : position.getOpenedAt(),
-					historyCard(position, true)));
+					position.getAccountHash(), historyCard(position, true)));
 		}
 		for (MarginCheck check : checks) {
-			entries.add(historyEntry(check.getOccurredAt(), marginCheckCard(check)));
+			entries.add(new HistoryRow(check.getOccurredAt(), check.getAccountHash(), marginCheckCard(check)));
 		}
 		for (ArchivedSell sale : sells) {
-			entries.add(historyEntry(sale.getOccurredAt(), archivedSellCard(sale)));
+			entries.add(new HistoryRow(sale.getOccurredAt(), sale.getAccountHash(), archivedSellCard(sale)));
 		}
-		entries.sort((a, b) -> b.getKey().compareTo(a.getKey()));
+		entries.sort((a, b) -> b.when.compareTo(a.when));
 		historyList.removeAll();
-		int shown = Math.min(historyVisible, entries.size());
-		for (int i = 0; i < shown; i++) {
-			addCard(historyList, entries.get(i).getValue());
+
+		List<String> order = accountOrder();
+		List<HistoryRow> visible = new ArrayList<>();
+		for (HistoryRow row : entries) {
+			if (inScope(row.account)) {
+				visible.add(row);
+			}
 		}
-		int hidden = entries.size() - shown;
+		int shown = Math.min(historyVisible, visible.size());
+
+		if (loggedInAccount == null && order.size() > 1) {
+			int drawn = 0;
+			for (String hash : order) {
+				drawn = addHistorySection("Account " + (order.indexOf(hash) + 1), hash, entries, drawn, shown);
+			}
+			addHistorySection("No account recorded", null, entries, drawn, shown);
+		} else {
+			for (int i = 0; i < shown; i++) {
+				addCard(historyList, visible.get(i).card);
+			}
+		}
+
+		syncAccountBadge();
+		int hidden = visible.size() - shown;
 		if (hidden > 0) {
 			addCard(historyList, actionButton("Show " + hidden + " more", () -> {
 				historyVisible += HISTORY_PAGE;
@@ -790,9 +823,139 @@ public class FlipsPanel extends PluginPanel {
 		repaint();
 	}
 
-	private static Map.Entry<Instant, RoundedPanel> historyEntry(String when, RoundedPanel card) {
-		Instant at = parseWhen(when);
-		return new java.util.AbstractMap.SimpleImmutableEntry<>(at != null ? at : Instant.EPOCH, card);
+	public void setLoggedInAccount(String hash) {
+		if (java.util.Objects.equals(hash, loggedInAccount)) {
+			return;
+		}
+		loggedInAccount = hash;
+		renderActiveFlips();
+		renderHistory();
+	}
+
+	private boolean inScope(String account) {
+		return loggedInAccount == null || account == null || account.equals(loggedInAccount);
+	}
+
+	private void syncAccountBadge() {
+		String text = null;
+		if (loggedInAccount != null) {
+			List<String> order = accountOrder();
+			int index = order.indexOf(loggedInAccount);
+			if (order.size() > 1 && index >= 0) {
+				text = "ACCOUNT " + (index + 1);
+			}
+		}
+		accountBadge.setText(text != null ? text : "");
+		accountBadge.setVisible(text != null);
+	}
+
+	private boolean hasUntaggedRows() {
+		for (Position position : lastPositions) {
+			if (position.getAccountHash() == null) {
+				return true;
+			}
+		}
+		PositionsResponse response = historyResponse;
+		if (response == null) {
+			return false;
+		}
+		if (response.getArchivedSells() != null) {
+			for (ArchivedSell sale : response.getArchivedSells()) {
+				if (sale.getAccountHash() == null) {
+					return true;
+				}
+			}
+		}
+		if (response.getMarginChecks() != null) {
+			for (MarginCheck check : response.getMarginChecks()) {
+				if (check.getAccountHash() == null) {
+					return true;
+				}
+			}
+		}
+		for (List<Position> group : java.util.Arrays.asList(
+				response.getCompleted() != null ? response.getCompleted() : Collections.<Position>emptyList(),
+				response.getPositions() != null ? response.getPositions() : Collections.<Position>emptyList())) {
+			for (Position position : group) {
+				if (position.getAccountHash() == null) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	private List<String> accountOrder() {
+		java.util.TreeSet<String> seen = new java.util.TreeSet<>();
+		for (Position position : lastPositions) {
+			if (position.getAccountHash() != null) {
+				seen.add(position.getAccountHash());
+			}
+		}
+		PositionsResponse response = historyResponse;
+		if (response != null) {
+			for (List<Position> group : java.util.Arrays.asList(
+					response.getCompleted() != null ? response.getCompleted() : Collections.<Position>emptyList(),
+					response.getPositions() != null ? response.getPositions() : Collections.<Position>emptyList())) {
+				for (Position position : group) {
+					if (position.getAccountHash() != null) {
+						seen.add(position.getAccountHash());
+					}
+				}
+			}
+			if (response.getMarginChecks() != null) {
+				for (MarginCheck check : response.getMarginChecks()) {
+					if (check.getAccountHash() != null) {
+						seen.add(check.getAccountHash());
+					}
+				}
+			}
+			if (response.getArchivedSells() != null) {
+				for (ArchivedSell sale : response.getArchivedSells()) {
+					if (sale.getAccountHash() != null) {
+						seen.add(sale.getAccountHash());
+					}
+				}
+			}
+		}
+		return new ArrayList<>(seen);
+	}
+
+	private int addHistorySection(String label, String hash, List<HistoryRow> entries, int drawn, int cap) {
+		boolean any = false;
+		for (int i = 0; i < cap && i < entries.size(); i++) {
+			HistoryRow row = entries.get(i);
+			boolean match = hash == null ? row.account == null : hash.equals(row.account);
+			if (!match) {
+				continue;
+			}
+			if (!any) {
+				if (historyList.getComponentCount() > 0) {
+					historyList.add(Box.createVerticalStrut(10));
+				}
+				JLabel heading = text(label.toUpperCase(), Theme.MUTED, Theme.SECTION);
+				heading.setAlignmentX(Component.LEFT_ALIGNMENT);
+				heading.setBorder(BorderFactory.createEmptyBorder(0, 1, 4, 0));
+				historyList.add(heading);
+				any = true;
+			}
+			addCard(historyList, row.card);
+			drawn++;
+		}
+		return drawn;
+	}
+
+	private static final class HistoryRow {
+		private final Instant when;
+		private final String account;
+		private final RoundedPanel card;
+
+		private HistoryRow(String when, String account, RoundedPanel card) {
+			Instant at = parseWhen(when);
+			this.when = at != null ? at : Instant.EPOCH;
+			this.account = account;
+			this.card = card;
+		}
 	}
 
 	public void clearAccountData() {
@@ -991,7 +1154,7 @@ public class FlipsPanel extends PluginPanel {
 		return tile;
 	}
 
-	private static JPanel withHelp(FlatSelect picker, String tip) {
+	private static JPanel withHelp(JComponent picker, String tip) {
 		Pill help = new Pill("?", Theme.MUTED, Theme.soft(Theme.MUTED), null);
 		help.setFont(Theme.SMALL_BOLD);
 		help.setToolTipText(tip);
@@ -1015,11 +1178,17 @@ public class FlipsPanel extends PluginPanel {
 		pickers.setLayout(new BoxLayout(pickers, BoxLayout.Y_AXIS));
 		pickers.setBackground(Theme.SURFACE);
 		pickers.setAlignmentX(Component.LEFT_ALIGNMENT);
-		pickers.add(scanPicker);
+		pickers.add(withHelp(scanPicker,
+				"Which scan to run. Standard holds out for more profit per flip, Fast Fill keeps "
+						+ "your gold moving, High Volume stacks small margins on items that trade nonstop."));
 		pickers.add(Box.createVerticalStrut(7));
-		pickers.add(riskPicker);
+		pickers.add(withHelp(riskPicker,
+				"Conviction against coverage. Conservative shows fewer, stronger setups; "
+						+ "Aggressive puts more on the board, weaker ones included."));
 		pickers.add(Box.createVerticalStrut(7));
-		pickers.add(capitalPicker);
+		pickers.add(withHelp(capitalPicker,
+				"The gold each suggestion is sized to. Quantity, capital in and profit all scale "
+						+ "with it, capped by the item's buy limit."));
 		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(withHelp(minProfitPicker,
 				"The smallest total profit a flip has to make, after tax, to be listed. "
@@ -1029,13 +1198,15 @@ public class FlipsPanel extends PluginPanel {
 				"The same filter by percentage: the after-tax return on your buy price. "
 						+ "It catches thin margins at any size, where the profit bar only catches small ones."));
 		pickers.add(Box.createVerticalStrut(7));
-		pickers.add(accountPicker);
+		pickers.add(withHelp(accountPicker,
+				"Limit the scan to items your account can trade. Free-to-play hides members items."));
 		pickers.add(Box.createVerticalStrut(7));
-		offerHelperToggle.setToolTipText("Puts GE Uncut prices in the buy and sell offer prompts - click one to enter it");
-		offerPercentPicker.setToolTipText("Also offer this far above and below our price");
-		pickers.add(offerHelperToggle);
+		pickers.add(withHelp(offerHelperToggle,
+				"Puts GE Uncut prices in the buy and sell offer prompts - click one to enter it."));
 		pickers.add(Box.createVerticalStrut(7));
-		pickers.add(offerPercentPicker);
+		pickers.add(withHelp(offerPercentPicker,
+				"Also offer this far above and below our price, so you can take a faster fill "
+						+ "or hold out for a better one."));
 		return pickers;
 	}
 
