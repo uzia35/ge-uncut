@@ -273,7 +273,12 @@ public class GeUncutPlugin extends Plugin {
 			offerTracker.reset();
 		}
 		if (current == GameState.LOGGED_IN) {
-			SwingUtilities.invokeLater(() -> panel.setGameActive(true));
+			long hash = client.getAccountHash();
+			String account = hash != -1 ? Long.toString(hash) : null;
+			SwingUtilities.invokeLater(() -> {
+				panel.setGameActive(true);
+				panel.setLoggedInAccount(account);
+			});
 			if (offerReplayPending) {
 				offerReplayPending = false;
 				seedOfferPlacements();
