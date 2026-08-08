@@ -86,10 +86,11 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 
 	private GeTradeEvent toPayload(OfferDelta delta) {
 		String accountHash = accountHash();
+		String clientEventId = UUID.randomUUID().toString();
 		return GeTradeEvent.builder()
 				.accountHash(accountHash)
-				.idempotencyKey(idempotencyKey(accountHash, delta))
-				.clientEventId(UUID.randomUUID().toString())
+				.idempotencyKey(idempotencyKey(accountHash, delta) + ":" + clientEventId)
+				.clientEventId(clientEventId)
 				.itemId(delta.getItemId())
 				.side(delta.getSide() == OfferDelta.Side.BUY ? "buy" : "sell")
 				.quantity(delta.getQuantity())

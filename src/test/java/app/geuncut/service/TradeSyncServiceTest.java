@@ -129,6 +129,47 @@ public class TradeSyncServiceTest {
 	}
 
 	@Test
+	public void identicalSameTickFillsGetDistinctIdempotencyKeys() {
+		service.accept(buy(3));
+		service.accept(buy(3));
+		flushTick.run();
+
+		String first = api.postedBatches.get(0).get(0).getIdempotencyKey();
+		String second = api.postedBatches.get(0).get(1).getIdempotencyKey();
+		assertFalse(first.equals(second));
+		assertEquals(api.postedBatches.get(0).get(0).getClientEventId(),
+				first.substring(first.length() - 36));
+	}
+
+	@Test
+	public void idempotencyKeyIsUnchangedAcrossARetry() {
+		service.accept(buy(3));
+		api.failNextPost = true;
+		flushTick.run();
+		flushTick.run();
+
+		assertEquals(1, api.postedBatches.size());
+		GeTradeEvent event = api.postedBatches.get(0).get(0);
+		assertEquals(event.getClientEventId(),
+				event.getIdempotencyKey().substring(event.getIdempotencyKey().length() - 36));
+	}
+
+	@Test
+	public void idempotencyKeyStaysWithinTheServerLimit() {
+		MockGeUncutApi worstApi = new MockGeUncutApi();
+		ScheduledExecutorService worstExecutor = mock(ScheduledExecutorService.class);
+		TradeSyncService worstService = new TradeSyncServiceImpl(worstApi, worstExecutor);
+		worstService.start(() -> "-9223372036854775808");
+		ArgumentCaptor<Runnable> tick = ArgumentCaptor.forClass(Runnable.class);
+		verify(worstExecutor).scheduleWithFixedDelay(tick.capture(), anyLong(), anyLong(), any(TimeUnit.class));
+
+		worstService.accept(new OfferDelta(20997, OfferDelta.Side.BUY, 100_000_000, 2_000_000_000, 7, T0));
+		tick.getValue().run();
+
+		assertTrue(worstApi.postedBatches.get(0).get(0).getIdempotencyKey().length() <= 128);
+	}
+
+	@Test
 	public void everyEventCarriesItsOwnClientEventId() {
 		service.accept(buy(3));
 		service.accept(buy(5));
