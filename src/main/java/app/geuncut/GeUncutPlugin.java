@@ -1,11 +1,14 @@
 package app.geuncut;
 
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
@@ -14,12 +17,12 @@ import javax.swing.SwingUtilities;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.api.impl.HttpGeUncutApi;
 import app.geuncut.config.GeUncutConfig;
-import app.geuncut.dto.Flip;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
-import app.geuncut.dto.Position;
+import app.geuncut.dto.ItemPrice;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.tracker.OfferAutofill;
+import app.geuncut.tracker.PriceHint;
 import app.geuncut.service.FlipsService;
 import app.geuncut.service.impl.FlipsServiceImpl;
 import app.geuncut.service.impl.LinkServiceImpl;
@@ -37,6 +40,7 @@ import app.geuncut.tracker.impl.OfferTrackerImpl;
 import app.geuncut.tracker.OfferTracker;
 import app.geuncut.ui.FlipsPanel;
 import app.geuncut.ui.ItemIconLoader;
+import app.geuncut.ui.OfferPriceOverlay;
 import com.google.inject.Binder;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -60,12 +64,16 @@ import net.runelite.api.widgets.WidgetType;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.input.MouseAdapter;
+import net.runelite.client.input.MouseListener;
+import net.runelite.client.input.MouseManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.LinkBrowser;
 import okhttp3.OkHttpClient;
@@ -111,6 +119,12 @@ public class GeUncutPlugin extends Plugin {
 	private ClientToolbar clientToolbar;
 
 	@Inject
+	private OverlayManager overlayManager;
+
+	@Inject
+	private MouseManager mouseManager;
+
+	@Inject
 	private FlipsService flips;
 
 	@Inject
@@ -136,10 +150,33 @@ public class GeUncutPlugin extends Plugin {
 
 	private FlipsPanel panel;
 	private NavigationButton navButton;
+	private final OfferPriceOverlay offerOverlay = new OfferPriceOverlay();
+	private int overlayIconItemId = -1;
+	private BufferedImage overlayIcon;
+	private final MouseListener offerMouseListener = new MouseAdapter() {
+		@Override
+		public MouseEvent mousePressed(MouseEvent event) {
+			if (overlayIconItemId > 0 && offerOverlay.isDetailsClick(event.getPoint())) {
+				openItem(overlayIconItemId);
+				event.consume();
+			}
+			return event;
+		}
+
+		@Override
+		public MouseEvent mouseMoved(MouseEvent event) {
+			offerOverlay.setDetailsHover(offerOverlay.isDetailsClick(event.getPoint()));
+			return event;
+		}
+
+		@Override
+		public MouseEvent mouseDragged(MouseEvent event) {
+			offerOverlay.setDetailsHover(offerOverlay.isDetailsClick(event.getPoint()));
+			return event;
+		}
+	};
 	private java.util.concurrent.ScheduledFuture<?> positionsPoll;
 	private boolean offerReplayPending;
-	private volatile List<Flip> latestFlips = List.of();
-	private volatile List<Position> latestPositions = List.of();
 	private static final int OFFER_LINE_COLOR = 0x1565C0;
 	private static final int OFFER_LINE_HOVER_COLOR = 0xFFFFFF;
 	private static final int OFFER_ROW_MARGIN = 30;
@@ -148,9 +185,13 @@ public class GeUncutPlugin extends Plugin {
 	private static final int OFFER_CLEARANCE = 4;
 	private static final int OFFER_EDGE_MARGIN = 8;
 	private static final int OFFER_ROW_Y = 90;
+	private static final long PRICE_TTL_MS = 60_000;
 
-	private String lastAutofillPrompt;
+	private volatile String lastAutofillPrompt;
 	private final List<Widget> offerLines = new ArrayList<>();
+	private final Map<Integer, ItemPrice> priceCache = new ConcurrentHashMap<>();
+	private final Map<Integer, Long> priceFetchedAt = new ConcurrentHashMap<>();
+	private final Set<Integer> priceInFlight = ConcurrentHashMap.newKeySet();
 
 	private static final int POSITIONS_POLL_SECONDS = 30;
 	private static final int POST_FILL_REFRESH_SECONDS = 8;
@@ -158,6 +199,8 @@ public class GeUncutPlugin extends Plugin {
 	@Override
 	protected void startUp() {
 		installPanel();
+		overlayManager.add(offerOverlay);
+		mouseManager.registerMouseListener(offerMouseListener);
 
 		tradeSync.start(() -> Long.toString(client.getAccountHash()));
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
@@ -255,6 +298,9 @@ public class GeUncutPlugin extends Plugin {
 		stopPositionsPoll();
 		tradeSync.stop();
 		offerSync.stop();
+		overlayManager.remove(offerOverlay);
+		mouseManager.unregisterMouseListener(offerMouseListener);
+		offerOverlay.clear();
 		clientToolbar.removeNavigation(navButton);
 		clientThread.invoke(() -> {
 			offerTracker.reset();
@@ -339,31 +385,40 @@ public class GeUncutPlugin extends Plugin {
 	@Subscribe
 	public void onGameTick(GameTick event) {
 		if (!config.autoFillOffers()) {
-			hideOfferLine();
-			lastAutofillPrompt = null;
+			clearOffer();
 			return;
 		}
 		Widget title = client.getWidget(ComponentID.CHATBOX_TITLE);
 		if (title == null || title.isHidden()) {
-			hideOfferLine();
-			lastAutofillPrompt = null;
+			clearOffer();
 			return;
 		}
 		OfferAutofill.Prompt kind = OfferAutofill.promptKind(title.getText());
-		if (kind == null) {
-			hideOfferLine();
-			lastAutofillPrompt = null;
+		if (kind != OfferAutofill.Prompt.PRICE) {
+			clearOffer();
 			return;
 		}
 		int itemId = client.getVarpValue(VarPlayer.CURRENT_GE_ITEM);
 		if (itemId <= 0) {
+			clearOffer();
 			return;
 		}
 		Widget container = client.getWidget(ComponentID.CHATBOX_CONTAINER);
 		if (container == null) {
+			clearOffer();
 			return;
 		}
 		boolean sell = client.getVarbitValue(Varbits.GE_OFFER_CREATION_TYPE) == 1;
+		ItemPrice market = marketPrice(itemId);
+		if (market != null && PriceHint.hasPrices(market)) {
+			if (overlayIconItemId != itemId) {
+				overlayIconItemId = itemId;
+				overlayIcon = itemManager.getImage(itemId);
+			}
+			offerOverlay.show(market, itemName(itemId), overlayIcon);
+		} else {
+			offerOverlay.clear();
+		}
 		String promptKey = itemId + ":" + sell + ":" + kind;
 		if (promptKey.equals(lastAutofillPrompt)
 				&& !offerLines.isEmpty() && offerLinesAttached(container)) {
@@ -371,11 +426,14 @@ public class GeUncutPlugin extends Plugin {
 		}
 		lastAutofillPrompt = null;
 		hideOfferLine();
-		Long value = OfferAutofill.resolve(itemId, sell, kind, latestFlips, latestPositions,
-				Long.toString(client.getAccountHash()));
-		if (value == null) {
+		if (market == null) {
 			return;
 		}
+		long side = PriceHint.sidePrice(market, sell);
+		if (side <= 0) {
+			return;
+		}
+		Long value = side;
 		int containerWidth = container.getWidth() > 0 ? container.getWidth() : 519;
 		int available = containerWidth - OFFER_ROW_MARGIN;
 		int percent = config.offerAdjustPercent();
@@ -397,6 +455,37 @@ public class GeUncutPlugin extends Plugin {
 			lineX += cell + OFFER_LINE_GAP;
 		}
 		lastAutofillPrompt = promptKey;
+	}
+
+	private void clearOffer() {
+		hideOfferLine();
+		lastAutofillPrompt = null;
+		overlayIconItemId = -1;
+		offerOverlay.clear();
+	}
+
+	private ItemPrice marketPrice(int itemId) {
+		long now = System.currentTimeMillis();
+		Long fetchedAt = priceFetchedAt.get(itemId);
+		boolean stale = fetchedAt == null || now - fetchedAt >= PRICE_TTL_MS;
+		if (stale && priceInFlight.add(itemId)) {
+			api.fetchItemPrice(itemId,
+					price -> {
+						priceInFlight.remove(itemId);
+						priceFetchedAt.put(itemId, System.currentTimeMillis());
+						if (price != null) {
+							priceCache.put(itemId, price);
+							lastAutofillPrompt = null;
+						}
+					},
+					failure -> {
+						priceInFlight.remove(itemId);
+						priceFetchedAt.put(itemId, System.currentTimeMillis());
+						log.debug("event=item_price_fetch_failed item={} kind={} status={}",
+								itemId, failure.getKind(), failure.getStatusCode());
+					});
+		}
+		return priceCache.get(itemId);
 	}
 
 	private static int choiceWidth(List<OfferAutofill.Choice> choices) {
@@ -595,7 +684,6 @@ public class GeUncutPlugin extends Plugin {
 		refreshMovers();
 		flips.fetch(target.scanRequest(),
 				response -> {
-					latestFlips = response.getFlips() != null ? response.getFlips() : List.of();
 					SwingUtilities.invokeLater(() -> {
 					if (target != panel) {
 						return;
@@ -638,7 +726,6 @@ public class GeUncutPlugin extends Plugin {
 		}
 		positions.fetch(
 				response -> {
-					latestPositions = response.getPositions() != null ? response.getPositions() : List.of();
 					SwingUtilities.invokeLater(() -> {
 						if (target == panel) {
 							target.showActiveFlips(response);

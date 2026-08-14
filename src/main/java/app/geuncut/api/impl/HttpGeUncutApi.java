@@ -18,6 +18,7 @@ import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
+import app.geuncut.dto.ItemPrice;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
@@ -25,6 +26,7 @@ import app.geuncut.dto.OfferPlacementsResponse;
 import app.geuncut.dto.PositionsResponse;
 import app.geuncut.dto.ScanRequest;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import lombok.extern.slf4j.Slf4j;
@@ -109,6 +111,26 @@ public class HttpGeUncutApi implements GeUncutApi {
 		}
 		Request request = new Request.Builder().url(url.build()).get().build();
 		enqueue(request, onError, body -> onSuccess.accept(gson.fromJson(body, FlipsResponse.class)));
+	}
+
+	@Override
+	public void fetchItemPrice(int itemId, Consumer<ItemPrice> onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl base = resolve("/api/market/items-by-ids");
+		if (base == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		HttpUrl url = base.newBuilder().addQueryParameter("ids", Integer.toString(itemId)).build();
+		Request request = new Request.Builder().url(url).get().build();
+		enqueue(request, onError, body -> {
+			JsonObject parsed = gson.fromJson(body, JsonObject.class);
+			JsonArray items = parsed != null ? parsed.getAsJsonArray("items") : null;
+			if (items == null || items.size() == 0) {
+				onSuccess.accept(null);
+				return;
+			}
+			onSuccess.accept(gson.fromJson(items.get(0), ItemPrice.class));
+		});
 	}
 
 	private static String trimDecimal(double value) {

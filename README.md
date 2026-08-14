@@ -1,6 +1,6 @@
 # GE Uncut
 
-**Find profitable OSRS flips in seconds, track your profit automatically. Right inside RuneLite.**
+**Find profitable OSRS flips in seconds, price them on the offer screen, and track your profit automatically. Right inside RuneLite.**
 
 Free. Backed by the full [geuncut.app](https://geuncut.app) toolkit.
 
@@ -15,62 +15,13 @@ The panel is four tabs, all at RuneLite's native look:
 
 ---
 
-## Flips that actually fill, ranked for your gold
+The full toolkit (flip finder, movers, market news, item pages, and the AI assistant) lives at [geuncut.app](https://geuncut.app). The plugin brings the essentials in-client.
 
-A live, ranked list of what is worth flipping right now: buy price, quantity, after-tax margin, ROI per day, demand trend, and realistic fill times. Free-to-play flips need no account. Link one to unlock members items.
+## Prices where you set the offer
 
-![Flip Finder](docs/screenshots/flip-finder.png)
+Open a buy or sell offer and the plugin brings the live market to the offer screen. A one-tap option drops the current price into the box, with quick step-up and step-down amounts around it, so you can take a faster fill or hold out for a wider margin without doing the math. A small on-screen panel shows the item's live buy and sell price and how recently each side last traded, so you always price against the real market. It works for any item, with or without an account.
 
-## The GE Uncut Assistant does the digging
-
-Ask "what should I flip right now?" and the GE Uncut Assistant tailors picks to your bankroll and membership, in plain English. It reads live prices, item history, the public track record, and OSRS wiki facts, then hands you the answer.
-
-Try asking:
-
-- *"Find me a fast flip, I have 5M and I'm free-to-play"*
-- *"How is the strategy doing this week?"*
-- *"Show my open positions"*
-- *"What's the price history for a Twisted bow?"*
-- *"How does the GE tax and buy limit work?"*
-
-![GE Uncut Assistant](docs/screenshots/assistant.png)
-
-## Know the market before it moves
-
-|  |  |
-|:--:|:--:|
-| ![GE Movers](docs/screenshots/movers.png) | ![Market news](docs/screenshots/news.png) |
-| **GE Movers:** the day's biggest risers, fallers, and volume spikes | **Market news:** game updates scored for the items likely to move |
-
-Every update is mapped to the specific items it moves, scored by direction and confidence, right on the item's page.
-
-![News impact on an item](docs/screenshots/item-news.png)
-
-## Proof, not promises
-
-Every signal we publish is scored against real prices later, wins and losses alike. The whole record is public, so you can see exactly how the strategy performs.
-
-![Public track record](docs/screenshots/track-record.png)
-
-And it goes item by item. Every flip carries its own forward-tested record, so you can see how the item you are about to buy has actually performed.
-
-![Per-item forward-test results](docs/screenshots/item-forward-test.png)
-
-## Deep data on every item
-
-Live spread, daily volume, buy and sell flow, and full price history for any tradeable item.
-
-![Item price history](docs/screenshots/item-chart.png)
-
-## Built for your phone too
-
-The entire toolkit is fully responsive, so you can scan flips, check movers, and ask the assistant from anywhere.
-
-|  |  |  |
-|:--:|:--:|:--:|
-| ![Mobile flip finder](docs/screenshots/m-flip-finder.png) | ![Mobile price chart](docs/screenshots/m-item-chart.png) | ![Mobile assistant](docs/screenshots/m-assistant.png) |
-
----
+![Live prices on the GE offer screen](docs/screenshots/offer-helper.png)
 
 ## Automatic profit tracking
 

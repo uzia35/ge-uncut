@@ -1202,7 +1202,7 @@ public class FlipsPanel extends PluginPanel {
 				"Limit the scan to items your account can trade. Free-to-play hides members items."));
 		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(withHelp(offerHelperToggle,
-				"Puts GE Uncut prices in the buy and sell offer prompts - click one to enter it."));
+				"Shows the item's live buy and sell price in the offer prompt, with how recently each last traded - click a price to enter it."));
 		pickers.add(Box.createVerticalStrut(7));
 		pickers.add(withHelp(offerPercentPicker,
 				"Also offer this far above and below our price, so you can take a faster fill "

@@ -10,6 +10,7 @@ import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
+import app.geuncut.dto.ItemPrice;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
@@ -53,6 +54,17 @@ class MockGeUncutApi implements GeUncutApi {
 		lastScanRequest = request;
 		if (flipsResponse != null) {
 			onSuccess.accept(flipsResponse);
+		} else {
+			onError.accept(failure);
+		}
+	}
+
+	ItemPrice itemPriceResponse;
+
+	@Override
+	public void fetchItemPrice(int itemId, Consumer<ItemPrice> onSuccess, Consumer<ApiFailure> onError) {
+		if (itemPriceResponse != null) {
+			onSuccess.accept(itemPriceResponse);
 		} else {
 			onError.accept(failure);
 		}
