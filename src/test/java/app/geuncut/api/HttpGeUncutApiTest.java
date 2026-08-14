@@ -16,6 +16,7 @@ import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.GeTradeEvent;
+import app.geuncut.dto.ItemPrice;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.PositionsResponse;
@@ -87,6 +88,48 @@ public class HttpGeUncutApiTest {
 		assertEquals("/api/plugin/flips?scan_type=standard", recorded.getPath());
 		assertEquals("Bearer " + TOKEN, recorded.getHeader("Authorization"));
 		assertEquals("no-cache, no-store", recorded.getHeader("Cache-Control"));
+	}
+
+	@Test
+	public void fetchItemPriceParsesTheFirstRow() throws Exception {
+		server.enqueue(new MockResponse().setBody(
+				"{\"items\":[{\"item_id\":536,\"name\":\"Dragon bones\",\"buy_price\":3131,"
+						+ "\"sell_price\":3168,\"low_time\":\"2026-08-14T15:54:35\","
+						+ "\"high_time\":\"2026-08-14T15:54:40\"}]}"));
+
+		AtomicReference<ItemPrice> received = new AtomicReference<>();
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchItemPrice(536, price -> {
+			received.set(price);
+			done.countDown();
+		}, error -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		ItemPrice price = received.get();
+		assertEquals(536, price.getItemId());
+		assertEquals(Long.valueOf(3131), price.getBuyPrice());
+		assertEquals(Long.valueOf(3168), price.getSellPrice());
+		assertEquals("2026-08-14T15:54:35", price.getLowTime());
+		assertEquals("2026-08-14T15:54:40", price.getHighTime());
+
+		RecordedRequest recorded = server.takeRequest();
+		assertEquals("GET", recorded.getMethod());
+		assertEquals("/api/market/items-by-ids?ids=536", recorded.getPath());
+	}
+
+	@Test
+	public void fetchItemPriceReturnsNullWhenNoRows() throws Exception {
+		server.enqueue(new MockResponse().setBody("{\"items\":[]}"));
+
+		AtomicReference<ItemPrice> received = new AtomicReference<>();
+		CountDownLatch done = new CountDownLatch(1);
+		api.fetchItemPrice(999, price -> {
+			received.set(price);
+			done.countDown();
+		}, error -> done.countDown());
+
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		assertNull(received.get());
 	}
 
 	@Test

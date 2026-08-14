@@ -21,7 +21,7 @@ public interface GeUncutConfig extends Config {
 		return false;
 	}
 
-	@ConfigItem(keyName = "autoFillOffers", name = "Show GE price tips", description = "Puts clickable GE Uncut prices in the buy and sell offer prompts for suggested and tracked flips - click one to enter it", position = 3)
+	@ConfigItem(keyName = "autoFillOffers", name = "Show GE price tips", description = "Shows the item's live buy and sell price in the GE offer prompt, with how recently each last traded - click a price to enter it", position = 3)
 	default boolean autoFillOffers() {
 		return true;
 	}
