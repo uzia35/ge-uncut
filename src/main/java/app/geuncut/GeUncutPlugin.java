@@ -36,8 +36,10 @@ import app.geuncut.service.TradeSyncService;
 import app.geuncut.tracker.BuyLimitTracker;
 import app.geuncut.tracker.GeHistoryParser;
 import app.geuncut.tracker.impl.BuyLimitTrackerImpl;
+import app.geuncut.tracker.impl.ConfigSnapshotStore;
 import app.geuncut.tracker.impl.OfferTrackerImpl;
 import app.geuncut.tracker.OfferTracker;
+import app.geuncut.tracker.SnapshotStore;
 import app.geuncut.ui.FlipsPanel;
 import app.geuncut.ui.ItemIconLoader;
 import app.geuncut.ui.OfferPriceOverlay;
@@ -91,6 +93,7 @@ public class GeUncutPlugin extends Plugin {
 		binder.bind(TradeSyncService.class).to(TradeSyncServiceImpl.class);
 		binder.bind(OfferSyncService.class).to(OfferSyncServiceImpl.class);
 		binder.bind(OfferTracker.class).to(OfferTrackerImpl.class);
+		binder.bind(SnapshotStore.class).to(ConfigSnapshotStore.class);
 		binder.bind(BuyLimitTracker.class).to(BuyLimitTrackerImpl.class);
 	}
 
@@ -207,6 +210,10 @@ public class GeUncutPlugin extends Plugin {
 		if (linked()) {
 			startPositionsPoll();
 		}
+		if (client.getGameState() == GameState.LOGGED_IN) {
+			long hash = client.getAccountHash();
+			offerTracker.loadFor(hash != -1 ? Long.toString(hash) : null);
+		}
 		refreshFlips();
 		seedOfferPlacements();
 	}
@@ -321,6 +328,7 @@ public class GeUncutPlugin extends Plugin {
 		if (current == GameState.LOGGED_IN) {
 			long hash = client.getAccountHash();
 			String account = hash != -1 ? Long.toString(hash) : null;
+			offerTracker.loadFor(account);
 			SwingUtilities.invokeLater(() -> {
 				panel.setGameActive(true);
 				panel.setLoggedInAccount(account);

@@ -17,5 +17,7 @@ public interface OfferTracker {
 			int price,
 			Instant now);
 
+	void loadFor(String accountHash);
+
 	void reset();
 }
