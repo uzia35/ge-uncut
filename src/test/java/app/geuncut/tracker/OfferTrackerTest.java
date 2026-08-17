@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Optional;
 
 import app.geuncut.model.OfferDelta;
+import app.geuncut.tracker.impl.InMemorySnapshotStore;
 import app.geuncut.tracker.impl.OfferTrackerImpl;
 import net.runelite.api.GrandExchangeOfferState;
 import org.junit.Before;
@@ -181,5 +182,57 @@ public class OfferTrackerTest {
 	@Test
 	public void slotCollectedWhileAwayHasNoSnapshotAndNoResidual() {
 		assertFalse(change(3, TBOW, EMPTY, 0, 0, 0, 0).isPresent());
+	}
+
+	@Test
+	public void reloadedBaselineAcrossRelogEmitsTheAwayFills() {
+		InMemorySnapshotStore store = new InMemorySnapshotStore();
+		OfferTracker durable = new OfferTrackerImpl(store);
+		durable.loadFor("acct-1");
+
+		assertFalse(durable.onOfferChanged(3, TBOW, SELLING, 0, 0, 6_250, 20_400, T0).isPresent());
+		Optional<OfferDelta> live = durable.onOfferChanged(3, TBOW, SELLING, 2_175, 44_370_000, 6_250, 20_400, T0);
+		assertTrue(live.isPresent());
+		assertEquals(2_175, live.get().getQuantity());
+
+		durable.reset();
+		durable.loadFor("acct-1");
+
+		Optional<OfferDelta> awayFill = durable.onOfferChanged(3, TBOW, SOLD, 6_250, 127_500_000, 6_250, 20_400, T0);
+		assertTrue(awayFill.isPresent());
+		assertEquals(OfferDelta.Side.SELL, awayFill.get().getSide());
+		assertEquals(4_075, awayFill.get().getQuantity());
+	}
+
+	@Test
+	public void reloadedBaselineDoesNotDoubleCountAnUnchangedOffer() {
+		InMemorySnapshotStore store = new InMemorySnapshotStore();
+		OfferTracker durable = new OfferTrackerImpl(store);
+		durable.loadFor("acct-1");
+
+		durable.onOfferChanged(3, TBOW, SELLING, 0, 0, 6_250, 20_400, T0);
+		durable.onOfferChanged(3, TBOW, SELLING, 2_175, 44_370_000, 6_250, 20_400, T0);
+
+		durable.reset();
+		durable.loadFor("acct-1");
+
+		assertFalse(durable.onOfferChanged(3, TBOW, SELLING, 2_175, 44_370_000, 6_250, 20_400, T0).isPresent());
+	}
+
+	@Test
+	public void reloadIsScopedToTheLoggedInAccount() {
+		InMemorySnapshotStore store = new InMemorySnapshotStore();
+		OfferTracker durable = new OfferTrackerImpl(store);
+		durable.loadFor("main");
+		durable.onOfferChanged(3, TBOW, SELLING, 0, 0, 6_250, 20_400, T0);
+		durable.onOfferChanged(3, TBOW, SELLING, 2_175, 44_370_000, 6_250, 20_400, T0);
+
+		durable.reset();
+		durable.loadFor("alt");
+
+		assertFalse(durable.onOfferChanged(3, 4151, SELLING, 900, 900_000, 1_000, 1_000, T0).isPresent());
+		Optional<OfferDelta> altFill = durable.onOfferChanged(3, 4151, SELLING, 950, 950_000, 1_000, 1_000, T0);
+		assertTrue(altFill.isPresent());
+		assertEquals(50, altFill.get().getQuantity());
 	}
 }
