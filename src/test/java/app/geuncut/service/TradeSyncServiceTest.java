@@ -9,6 +9,8 @@ import app.geuncut.api.ApiFailure;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.impl.TradeSyncServiceImpl;
+import app.geuncut.tracker.FillLog;
+import app.geuncut.tracker.impl.InMemoryFillLog;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -25,20 +27,24 @@ public class TradeSyncServiceTest {
 	private static final Instant T0 = Instant.parse("2026-07-05T12:00:00Z");
 
 	private MockGeUncutApi api;
-	private ScheduledExecutorService executor;
+	private FillLog log;
 	private TradeSyncService service;
 	private Runnable flushTick;
 
 	@Before
 	public void setUp() {
 		api = new MockGeUncutApi();
-		executor = mock(ScheduledExecutorService.class);
-		service = new TradeSyncServiceImpl(api, executor);
-		service.start(() -> "acct-1");
+		log = new InMemoryFillLog();
+		ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
+		service = new TradeSyncServiceImpl(api, log, executor);
+		flushTick = startAndCaptureTick(service, executor);
+	}
 
+	private static Runnable startAndCaptureTick(TradeSyncService svc, ScheduledExecutorService executor) {
+		svc.start(() -> "acct-1");
 		ArgumentCaptor<Runnable> tick = ArgumentCaptor.forClass(Runnable.class);
 		verify(executor).scheduleWithFixedDelay(tick.capture(), anyLong(), anyLong(), any(TimeUnit.class));
-		flushTick = tick.getValue();
+		return tick.getValue();
 	}
 
 	private static OfferDelta buy(int quantity) {
@@ -58,12 +64,29 @@ public class TradeSyncServiceTest {
 	}
 
 	@Test
-	public void failedBatchIsRequeuedInOrderAndRetried() {
+	public void emptyLogDoesNotPost() {
+		flushTick.run();
+		assertTrue(api.postedBatches.isEmpty());
+	}
+
+	@Test
+	public void aSuccessfulFlushAcksSoTheNextFlushIsANoOp() {
+		service.accept(buy(3));
+		flushTick.run();
+		flushTick.run();
+
+		assertEquals(1, api.postedBatches.size());
+		assertTrue(log.pending("acct-1").isEmpty());
+	}
+
+	@Test
+	public void aTransientFailureLeavesFillsInTheLogAndRetriesInOrder() {
 		service.accept(buy(1));
 		service.accept(buy(2));
 		api.failNextPost = true;
 		flushTick.run();
 		assertTrue(api.postedBatches.isEmpty());
+		assertEquals(2, log.pending("acct-1").size());
 
 		flushTick.run();
 		assertEquals(1, api.postedBatches.size());
@@ -72,50 +95,49 @@ public class TradeSyncServiceTest {
 	}
 
 	@Test
-	public void emptyQueueDoesNotPost() {
-		flushTick.run();
-		assertTrue(api.postedBatches.isEmpty());
-	}
-
-	@Test
-	public void unauthorizedFlushDropsTheBatchInsteadOfRetrying() {
+	public void unauthorizedFlushDropsInsteadOfGrowingTheLogForever() {
 		service.accept(buy(3));
 		api.failNextPost = true;
 		api.failure = ApiFailure.http(HttpURLConnection.HTTP_UNAUTHORIZED, "not linked");
 		flushTick.run();
 
+		assertTrue(api.postedBatches.isEmpty());
+		assertTrue(log.pending("acct-1").isEmpty());
 		flushTick.run();
 		assertTrue(api.postedBatches.isEmpty());
 	}
 
 	@Test
-	public void queueIsBoundedDroppingOldestFirst() {
-		for (int quantity = 1; quantity <= 250; quantity++) {
-			service.accept(buy(quantity));
-		}
-		flushTick.run();
+	public void unsentFillsSurviveARestartAndAreReplayed() {
+		service.accept(buy(3));
+		service.accept(buy(4));
 
-		assertEquals(1, api.postedBatches.size());
-		assertEquals(200, api.postedBatches.get(0).size());
-		assertEquals(51, api.postedBatches.get(0).get(0).getQuantity());
-		assertEquals(250, api.postedBatches.get(0).get(199).getQuantity());
+		MockGeUncutApi apiAfter = new MockGeUncutApi();
+		ScheduledExecutorService executorAfter = mock(ScheduledExecutorService.class);
+		TradeSyncService restarted = new TradeSyncServiceImpl(apiAfter, log, executorAfter);
+		Runnable tickAfter = startAndCaptureTick(restarted, executorAfter);
+		tickAfter.run();
+
+		assertEquals(1, apiAfter.postedBatches.size());
+		assertEquals(2, apiAfter.postedBatches.get(0).size());
+		assertEquals(3, apiAfter.postedBatches.get(0).get(0).getQuantity());
+		assertEquals(4, apiAfter.postedBatches.get(0).get(1).getQuantity());
 	}
 
 	@Test
-	public void requeueDoesNotGrowTheQueueBeyondCap() {
-		for (int quantity = 1; quantity <= 200; quantity++) {
-			service.accept(buy(quantity));
-		}
-		api.deferNextPost = true;
+	public void aReplayedFillCarriesTheSameStableKeyAsItsFirstSend() {
+		service.accept(buy(3));
+		api.failNextPost = true;
 		flushTick.run();
-		for (int quantity = 201; quantity <= 400; quantity++) {
-			service.accept(buy(quantity));
-		}
-		api.firePendingPostFailure();
 
-		flushTick.run();
-		assertEquals(1, api.postedBatches.size());
-		assertEquals(200, api.postedBatches.get(0).size());
+		MockGeUncutApi apiAfter = new MockGeUncutApi();
+		ScheduledExecutorService executorAfter = mock(ScheduledExecutorService.class);
+		TradeSyncService restarted = new TradeSyncServiceImpl(apiAfter, log, executorAfter);
+		startAndCaptureTick(restarted, executorAfter).run();
+
+		GeTradeEvent event = apiAfter.postedBatches.get(0).get(0);
+		assertEquals(event.getClientEventId(),
+				event.getIdempotencyKey().substring(event.getIdempotencyKey().length() - 36));
 	}
 
 	@Test
@@ -129,36 +151,22 @@ public class TradeSyncServiceTest {
 	}
 
 	@Test
-	public void identicalSameTickFillsGetDistinctIdempotencyKeys() {
+	public void identicalSameTickFillsBothPersistWithDistinctKeys() {
 		service.accept(buy(3));
 		service.accept(buy(3));
+		assertEquals(2, log.pending("acct-1").size());
 		flushTick.run();
 
 		String first = api.postedBatches.get(0).get(0).getIdempotencyKey();
 		String second = api.postedBatches.get(0).get(1).getIdempotencyKey();
 		assertFalse(first.equals(second));
-		assertEquals(api.postedBatches.get(0).get(0).getClientEventId(),
-				first.substring(first.length() - 36));
-	}
-
-	@Test
-	public void idempotencyKeyIsUnchangedAcrossARetry() {
-		service.accept(buy(3));
-		api.failNextPost = true;
-		flushTick.run();
-		flushTick.run();
-
-		assertEquals(1, api.postedBatches.size());
-		GeTradeEvent event = api.postedBatches.get(0).get(0);
-		assertEquals(event.getClientEventId(),
-				event.getIdempotencyKey().substring(event.getIdempotencyKey().length() - 36));
 	}
 
 	@Test
 	public void idempotencyKeyStaysWithinTheServerLimit() {
 		MockGeUncutApi worstApi = new MockGeUncutApi();
 		ScheduledExecutorService worstExecutor = mock(ScheduledExecutorService.class);
-		TradeSyncService worstService = new TradeSyncServiceImpl(worstApi, worstExecutor);
+		TradeSyncService worstService = new TradeSyncServiceImpl(worstApi, new InMemoryFillLog(), worstExecutor);
 		worstService.start(() -> "-9223372036854775808");
 		ArgumentCaptor<Runnable> tick = ArgumentCaptor.forClass(Runnable.class);
 		verify(worstExecutor).scheduleWithFixedDelay(tick.capture(), anyLong(), anyLong(), any(TimeUnit.class));
@@ -182,7 +190,7 @@ public class TradeSyncServiceTest {
 	}
 
 	@Test
-	public void clientEventIdSurvivesARetryWhilePublishedAtIsRestamped() {
+	public void publishedAtIsRestampedOnRetryWhileClientEventIdSurvives() {
 		service.accept(buy(3));
 		api.failNextPost = true;
 		flushTick.run();

@@ -2,6 +2,7 @@ package app.geuncut;
 
 import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import javax.inject.Inject;
+import javax.inject.Singleton;
 import javax.swing.SwingUtilities;
 
 import app.geuncut.api.GeUncutApi;
@@ -34,7 +36,9 @@ import app.geuncut.service.OfferSyncService;
 import app.geuncut.service.PositionsService;
 import app.geuncut.service.TradeSyncService;
 import app.geuncut.tracker.BuyLimitTracker;
+import app.geuncut.tracker.FillLog;
 import app.geuncut.tracker.GeHistoryParser;
+import app.geuncut.tracker.impl.FileFillLog;
 import app.geuncut.tracker.impl.BuyLimitTrackerImpl;
 import app.geuncut.tracker.impl.ConfigSnapshotStore;
 import app.geuncut.tracker.impl.OfferTrackerImpl;
@@ -43,6 +47,7 @@ import app.geuncut.tracker.SnapshotStore;
 import app.geuncut.ui.FlipsPanel;
 import app.geuncut.ui.ItemIconLoader;
 import app.geuncut.ui.OfferPriceOverlay;
+import com.google.gson.Gson;
 import com.google.inject.Binder;
 import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
@@ -63,6 +68,7 @@ import net.runelite.api.widgets.ComponentID;
 import net.runelite.api.widgets.JavaScriptCallback;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetType;
+import net.runelite.client.RuneLite;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
@@ -95,6 +101,12 @@ public class GeUncutPlugin extends Plugin {
 		binder.bind(OfferTracker.class).to(OfferTrackerImpl.class);
 		binder.bind(SnapshotStore.class).to(ConfigSnapshotStore.class);
 		binder.bind(BuyLimitTracker.class).to(BuyLimitTrackerImpl.class);
+	}
+
+	@Provides
+	@Singleton
+	FillLog provideFillLog(Gson gson) {
+		return new FileFillLog(gson, new File(RuneLite.RUNELITE_DIR, "geuncut"));
 	}
 
 	@Inject

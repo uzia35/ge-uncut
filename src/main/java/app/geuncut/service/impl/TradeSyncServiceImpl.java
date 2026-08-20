@@ -1,12 +1,10 @@
 package app.geuncut.service.impl;
 
 import java.time.Instant;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.Deque;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ScheduledExecutorService;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
@@ -14,78 +12,72 @@ import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.TradeSyncService;
+import app.geuncut.tracker.FillLog;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Singleton
 public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSyncService {
 	private static final int FLUSH_SECONDS = 5;
-	private static final int MAX_QUEUED = 200;
 
 	private final GeUncutApi api;
-	private final Deque<GeTradeEvent> queue = new ArrayDeque<>();
+	private final FillLog fillLog;
 
 	@Inject
-	public TradeSyncServiceImpl(GeUncutApi api, ScheduledExecutorService executor) {
+	public TradeSyncServiceImpl(GeUncutApi api, FillLog fillLog, ScheduledExecutorService executor) {
 		super(executor, FLUSH_SECONDS);
 		this.api = api;
+		this.fillLog = fillLog;
 	}
 
 	@Override
 	protected void onStop() {
 		flush();
-		synchronized (queue) {
-			queue.clear();
-		}
 	}
 
 	@Override
 	public void accept(OfferDelta delta) {
-		GeTradeEvent payload = toPayload(delta);
-		synchronized (queue) {
-			if (queue.size() >= MAX_QUEUED) {
-				queue.removeFirst();
-			}
-			queue.addLast(payload);
+		String accountHash = accountHash();
+		if (accountHash == null) {
+			return;
 		}
+		fillLog.append(accountHash, toPayload(accountHash, delta));
 	}
 
 	@Override
 	protected void flush() {
-		List<GeTradeEvent> drained;
-		synchronized (queue) {
-			if (queue.isEmpty()) {
-				return;
-			}
-			drained = new ArrayList<>(queue);
-			queue.clear();
+		String accountHash = accountHash();
+		if (accountHash == null) {
+			return;
+		}
+		List<GeTradeEvent> pending = fillLog.pending(accountHash);
+		if (pending.isEmpty()) {
+			return;
 		}
 		String publishedAt = Instant.now().toString();
-		List<GeTradeEvent> batch = new ArrayList<>(drained.size());
-		for (GeTradeEvent event : drained) {
+		List<GeTradeEvent> batch = new ArrayList<>(pending.size());
+		List<String> keys = new ArrayList<>(pending.size());
+		for (GeTradeEvent event : pending) {
 			batch.add(event.toBuilder().publishedAt(publishedAt).build());
+			keys.add(event.getIdempotencyKey());
 		}
 		api.postGeEvents(batch,
-				() -> log.debug("event=trade_sync_flushed count={}", batch.size()),
+				() -> {
+					fillLog.ack(accountHash, keys);
+					log.debug("event=trade_sync_flushed count={}", batch.size());
+				},
 				failure -> {
 					if (failure.isUnauthorized()) {
+						fillLog.ack(accountHash, keys);
 						log.warn("event=trade_sync_unauthorized dropped={}", batch.size());
 						return;
 					}
-					log.debug("event=trade_sync_requeued count={} kind={} status={} reason=\"{}\"", batch.size(), failure.getKind(), failure.getStatusCode(), failure.getMessage());
-					synchronized (queue) {
-						for (int index = batch.size() - 1; index >= 0; index--) {
-							queue.addFirst(batch.get(index));
-						}
-						while (queue.size() > MAX_QUEUED) {
-							queue.removeFirst();
-						}
-					}
+					log.debug("event=trade_sync_retry count={} kind={} status={}",
+							batch.size(), failure.getKind(), failure.getStatusCode());
 				});
 	}
 
-	private GeTradeEvent toPayload(OfferDelta delta) {
-		String accountHash = accountHash();
+	private GeTradeEvent toPayload(String accountHash, OfferDelta delta) {
 		String clientEventId = UUID.randomUUID().toString();
 		return GeTradeEvent.builder()
 				.accountHash(accountHash)
