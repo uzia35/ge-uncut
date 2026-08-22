@@ -52,8 +52,6 @@ public class FlipsPanel extends PluginPanel {
 
 	private static final int CONTENT_WIDTH = PANEL_WIDTH - 42;
 
-	private static final String HISTORY_NUDGE = "<html>Open History to sync trades<br>made on mobile</html>";
-
 	private final ItemIconLoader iconLoader;
 	private final Runnable onRefresh;
 	private final IntConsumer onOpenItem;
@@ -105,7 +103,6 @@ public class FlipsPanel extends PluginPanel {
 	private PositionsResponse historyResponse;
 	private int historyVisible = HISTORY_PAGE;
 	private java.util.function.Consumer<String> onTabOpen;
-	private final JLabel historySync = text("", Theme.INK, Theme.SMALL);
 	private final JLabel flipsUpdated = text("", Theme.MUTED, Theme.SMALL);
 	private final JLabel historyUpdated = text("", Theme.MUTED, Theme.SMALL);
 	private JPanel flipsRefreshRow;
@@ -216,10 +213,6 @@ public class FlipsPanel extends PluginPanel {
 		accountBadge.setBorder(BorderFactory.createEmptyBorder(0, 1, 8, 0));
 		accountBadge.setVisible(false);
 		column.add(accountBadge);
-		historySync.setAlignmentX(Component.LEFT_ALIGNMENT);
-		historySync.setBorder(BorderFactory.createEmptyBorder(0, 1, 8, 0));
-		historySync.setVisible(false);
-		column.add(historySync);
 
 		content.setBackground(Theme.SURFACE);
 		content.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -637,18 +630,6 @@ public class FlipsPanel extends PluginPanel {
 		if (!linked && "history".equals(activeTab)) {
 			selectTab("finder");
 		}
-	}
-
-	public void showHistorySync(boolean grandExchangeOpen, long syncedAtMillis) {
-		if (!grandExchangeOpen) {
-			historySync.setVisible(false);
-		} else {
-			String age = syncedAtMillis > 0 ? agoText(Instant.ofEpochMilli(syncedAtMillis).toString()) : null;
-			historySync.setText(age != null ? "Synced from History " + age : HISTORY_NUDGE);
-			historySync.setVisible(true);
-		}
-		revalidate();
-		repaint();
 	}
 
 	public void showOffers(List<GeOffer> offers, Map<Integer, String> itemNames) {

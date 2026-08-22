@@ -46,9 +46,4 @@ public interface GeUncutConfig extends Config {
 	default String installId() {
 		return "";
 	}
-
-	@ConfigItem(keyName = "historySyncedAt", name = "History synced at", description = "Set automatically when the GE History tab is read", hidden = true, position = 8)
-	default long historySyncedAt() {
-		return 0;
-	}
 }

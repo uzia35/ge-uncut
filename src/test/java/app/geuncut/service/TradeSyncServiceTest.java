@@ -2,18 +2,15 @@ package app.geuncut.service;
 
 import java.net.HttpURLConnection;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import app.geuncut.api.ApiFailure;
-import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.impl.TradeSyncServiceImpl;
 import app.geuncut.tracker.FillLog;
-import app.geuncut.tracker.GeTax;
 import app.geuncut.tracker.impl.InMemoryFillLog;
 import org.junit.Before;
 import org.junit.Test;
@@ -21,7 +18,6 @@ import org.mockito.ArgumentCaptor;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -332,51 +328,4 @@ public class TradeSyncServiceTest {
 		assertTrue(Instant.parse(event.getPublishedAt()).isAfter(T0));
 	}
 
-	private static GeHistoryRow row(int itemId, String side, int quantity, int priceEach) {
-		return GeHistoryRow.builder().itemId(itemId).side(side).quantity(quantity).priceEach(priceEach).build();
-	}
-
-	@Test
-	public void anUnseenHistoryRowIsImportedOnceAndNeverAgain() {
-		List<GeHistoryRow> rows = Arrays.asList(row(TBOW, "buy", 4, 1_000_000));
-
-		assertEquals(1, service.importHistory(rows));
-		assertEquals(1, logged());
-		assertEquals(0, service.importHistory(rows));
-		assertEquals(1, logged());
-	}
-
-	@Test
-	public void aHistoryRowAlreadyInTheLogIsNotImported() {
-		service.accept(buy("offer-a", 4, 4));
-		assertEquals(0, service.importHistory(Arrays.asList(row(TBOW, "buy", 4, 1_000_000))));
-		assertEquals(1, logged());
-	}
-
-	@Test
-	public void anImportedSellIsStoredAtItsPreTaxPriceAndFlaggedAsHistory() {
-		int shown = GeTax.afterTax(21_000);
-		service.importHistory(Arrays.asList(row(TBOW, "sell", 100, shown)));
-		flushTick.run();
-
-		GeTradeEvent event = api.postedBatches.get(0).get(0);
-		assertEquals("sell", event.getSide());
-		assertEquals("history", event.getSource());
-		assertEquals(0, event.getSlot());
-		assertEquals(100, event.getQuantity());
-		assertTrue(Math.abs(event.getPriceEach() - 21_000) <= 1);
-		assertNotNull(event.getOfferInstanceId());
-		assertEquals("install-0f2c1a9b", event.getInstallId());
-	}
-
-	@Test
-	public void anImportedOfferIsSeenByTheNextHistoryRead() {
-		List<GeHistoryRow> rows = Arrays.asList(
-				row(TBOW, "sell", 100, GeTax.afterTax(21_000)),
-				row(TBOW, "buy", 4, 1_000_000));
-
-		assertEquals(2, service.importHistory(rows));
-		assertEquals(0, service.importHistory(rows));
-		assertEquals(2, logged());
-	}
 }

@@ -27,8 +27,6 @@ Open a buy or sell offer and the plugin brings the live market to the offer scre
 
 Link your account and the plugin reports your own GE offer fills, so every flip tracks itself in "My Flips" on geuncut.app. No spreadsheets, no manual entry. It also mirrors your live GE slots (working offers) with the game's own offer timers.
 
-Trades made on mobile happen with RuneLite closed, so the plugin never sees them live. With the Grand Exchange open the panel shows a short line pointing you at the in-game History tab. Open that tab once and the plugin reads the rows, works out which offers it has no record of, and adds just those. Opening it again changes nothing.
-
 ![My Flips: profit tracked automatically from your own offers](docs/screenshots/my-flips.png)
 
 ## Linking (optional)

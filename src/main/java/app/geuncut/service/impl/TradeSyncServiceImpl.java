@@ -10,14 +10,11 @@ import javax.inject.Inject;
 import javax.inject.Singleton;
 
 import app.geuncut.api.GeUncutApi;
-import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.model.OfferDelta;
 import app.geuncut.service.TradeSyncService;
 import app.geuncut.tracker.FillBatch;
 import app.geuncut.tracker.FillLog;
-import app.geuncut.tracker.GeHistoryDiff;
-import app.geuncut.tracker.GeTax;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -26,9 +23,7 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 	private static final int FLUSH_SECONDS = 5;
 	private static final int MAX_BATCH_EVENTS = 50;
 	private static final int UNAUTHORIZED_QUIET_TICKS = 60;
-	private static final int IMPORTED_SLOT = 0;
 	private static final String SOURCE_LIVE = "live";
-	private static final String SOURCE_HISTORY = "history";
 
 	private final GeUncutApi api;
 	private final FillLog fillLog;
@@ -71,25 +66,6 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 			return;
 		}
 		fillLog.append(accountHash, toPayload(accountHash, delta, SOURCE_LIVE));
-	}
-
-	@Override
-	public int importHistory(List<GeHistoryRow> rows) {
-		String accountHash = accountHash();
-		if (accountHash == null || rows == null || rows.isEmpty()) {
-			return 0;
-		}
-		List<GeTradeEvent> logged = fillLog.read(accountHash, 0, Integer.MAX_VALUE).getEntries();
-		List<GeHistoryRow> unseen = GeHistoryDiff.unseen(rows, logged);
-		Instant now = Instant.now();
-		for (GeHistoryRow row : unseen) {
-			OfferDelta delta = importedFill(row, now);
-			if (delta != null) {
-				fillLog.append(accountHash, toPayload(accountHash, delta, SOURCE_HISTORY));
-			}
-		}
-		log.debug("event=history_diffed rows={} imported={}", rows.size(), unseen.size());
-		return unseen.size();
 	}
 
 	@Override
@@ -148,17 +124,6 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 					log.debug("event=trade_sync_retry count={} kind={} status={}",
 							batch.size(), failure.getKind(), failure.getStatusCode());
 				});
-	}
-
-	private static OfferDelta importedFill(GeHistoryRow row, Instant now) {
-		if (row.getQuantity() <= 0 || row.getPriceEach() <= 0) {
-			return null;
-		}
-		boolean selling = "sell".equals(row.getSide());
-		int priceEach = selling ? GeTax.beforeTax(row.getPriceEach()) : row.getPriceEach();
-		return new OfferDelta(row.getItemId(), selling ? OfferDelta.Side.SELL : OfferDelta.Side.BUY,
-				row.getQuantity(), priceEach, IMPORTED_SLOT, now,
-				UUID.randomUUID().toString(), row.getQuantity());
 	}
 
 	private GeTradeEvent toPayload(String accountHash, OfferDelta delta, String source) {

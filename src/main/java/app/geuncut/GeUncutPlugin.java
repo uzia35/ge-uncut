@@ -19,7 +19,6 @@ import javax.swing.SwingUtilities;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.api.impl.HttpGeUncutApi;
 import app.geuncut.config.GeUncutConfig;
-import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.ItemPrice;
 import app.geuncut.model.OfferDelta;
@@ -37,7 +36,6 @@ import app.geuncut.service.PositionsService;
 import app.geuncut.service.TradeSyncService;
 import app.geuncut.tracker.BuyLimitTracker;
 import app.geuncut.tracker.FillLog;
-import app.geuncut.tracker.GeHistoryParser;
 import app.geuncut.tracker.impl.FileFillLog;
 import app.geuncut.tracker.impl.BuyLimitTrackerImpl;
 import app.geuncut.tracker.impl.ConfigSnapshotStore;
@@ -192,9 +190,6 @@ public class GeUncutPlugin extends Plugin {
 	};
 	private java.util.concurrent.ScheduledFuture<?> positionsPoll;
 	private boolean offerReplayPending;
-	private boolean grandExchangeOpen;
-	private boolean historyReadThisSession;
-	private long historySyncedAt;
 	private static final int OFFER_LINE_COLOR = 0x1565C0;
 	private static final int OFFER_LINE_HOVER_COLOR = 0xFFFFFF;
 	private static final int OFFER_ROW_MARGIN = 30;
@@ -222,7 +217,6 @@ public class GeUncutPlugin extends Plugin {
 
 		tradeSync.setSendGate(this::linked);
 		tradeSync.setInstallId(installId());
-		historySyncedAt = config.historySyncedAt();
 		tradeSync.start(this::trackedAccount);
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
 		if (linked()) {
@@ -357,7 +351,6 @@ public class GeUncutPlugin extends Plugin {
 		}
 		if (current == GameState.LOGIN_SCREEN || current == GameState.HOPPING) {
 			offerTracker.reset();
-			historyReadThisSession = false;
 		}
 		if (current == GameState.LOGGED_IN) {
 			long hash = client.getAccountHash();
@@ -427,7 +420,6 @@ public class GeUncutPlugin extends Plugin {
 
 	@Subscribe
 	public void onGameTick(GameTick event) {
-		trackGrandExchangeWindow();
 		if (!config.autoFillOffers()) {
 			clearOffer();
 			return;
@@ -499,22 +491,6 @@ public class GeUncutPlugin extends Plugin {
 			lineX += cell + OFFER_LINE_GAP;
 		}
 		lastAutofillPrompt = promptKey;
-	}
-
-	private void trackGrandExchangeWindow() {
-		Widget window = client.getWidget(InterfaceID.GE_OFFERS, 0);
-		boolean open = window != null && !window.isHidden();
-		if (open == grandExchangeOpen) {
-			return;
-		}
-		grandExchangeOpen = open;
-		pushHistorySync(open);
-	}
-
-	private void pushHistorySync(boolean open) {
-		FlipsPanel target = panel;
-		long syncedAt = historyReadThisSession ? historySyncedAt : 0;
-		SwingUtilities.invokeLater(() -> target.showHistorySync(open, syncedAt));
 	}
 
 	private void clearOffer() {
@@ -681,23 +657,6 @@ public class GeUncutPlugin extends Plugin {
 		if (event.getGroupId() == InterfaceID.GE_OFFERS) {
 			refreshFlips();
 		}
-		if (event.getGroupId() != InterfaceID.GE_HISTORY) {
-			return;
-		}
-		clientThread.invokeLater(this::syncTradeHistory);
-	}
-
-	private void syncTradeHistory() {
-		List<GeHistoryRow> rows = GeHistoryParser.parse(client.getWidget(InterfaceID.GeHistory.LIST));
-		if (rows.isEmpty()) {
-			return;
-		}
-		int imported = tradeSync.importHistory(rows);
-		log.debug("event=history_read rows={} imported={}", rows.size(), imported);
-		historySyncedAt = System.currentTimeMillis();
-		historyReadThisSession = true;
-		configManager.setConfiguration(GeUncutConfig.GROUP, "historySyncedAt", historySyncedAt);
-		pushHistorySync(true);
 	}
 
 	private String itemName(int itemId) {
