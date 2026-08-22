@@ -1,13 +1,13 @@
 package app.geuncut.tracker;
 
 import java.time.Instant;
-import java.util.Optional;
+import java.util.function.Consumer;
 
 import app.geuncut.model.OfferDelta;
 import net.runelite.api.GrandExchangeOfferState;
 
 public interface OfferTracker {
-	Optional<OfferDelta> onOfferChanged(
+	void onOfferChanged(
 			int slot,
 			int itemId,
 			GrandExchangeOfferState state,
@@ -15,7 +15,8 @@ public interface OfferTracker {
 			int spent,
 			int totalQuantity,
 			int price,
-			Instant now);
+			Instant now,
+			Consumer<OfferDelta> onFill);
 
 	void loadFor(String accountHash);
 

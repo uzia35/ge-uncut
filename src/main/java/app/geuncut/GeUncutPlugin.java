@@ -192,6 +192,9 @@ public class GeUncutPlugin extends Plugin {
 	};
 	private java.util.concurrent.ScheduledFuture<?> positionsPoll;
 	private boolean offerReplayPending;
+	private boolean grandExchangeOpen;
+	private boolean historyReadThisSession;
+	private long historySyncedAt;
 	private static final int OFFER_LINE_COLOR = 0x1565C0;
 	private static final int OFFER_LINE_HOVER_COLOR = 0xFFFFFF;
 	private static final int OFFER_ROW_MARGIN = 30;
@@ -217,7 +220,10 @@ public class GeUncutPlugin extends Plugin {
 		overlayManager.add(offerOverlay);
 		mouseManager.registerMouseListener(offerMouseListener);
 
-		tradeSync.start(() -> Long.toString(client.getAccountHash()));
+		tradeSync.setSendGate(this::linked);
+		tradeSync.setInstallId(installId());
+		historySyncedAt = config.historySyncedAt();
+		tradeSync.start(this::trackedAccount);
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
 		if (linked()) {
 			startPositionsPoll();
@@ -228,6 +234,21 @@ public class GeUncutPlugin extends Plugin {
 		}
 		refreshFlips();
 		seedOfferPlacements();
+	}
+
+	private String trackedAccount() {
+		long hash = client.getAccountHash();
+		return hash != -1 ? Long.toString(hash) : null;
+	}
+
+	private String installId() {
+		String stored = config.installId().trim();
+		if (!stored.isEmpty()) {
+			return stored;
+		}
+		String minted = java.util.UUID.randomUUID().toString();
+		configManager.setConfiguration(GeUncutConfig.GROUP, "installId", minted);
+		return minted;
 	}
 
 	private void startPositionsPoll() {
@@ -336,6 +357,7 @@ public class GeUncutPlugin extends Plugin {
 		}
 		if (current == GameState.LOGIN_SCREEN || current == GameState.HOPPING) {
 			offerTracker.reset();
+			historyReadThisSession = false;
 		}
 		if (current == GameState.LOGGED_IN) {
 			long hash = client.getAccountHash();
@@ -381,7 +403,8 @@ public class GeUncutPlugin extends Plugin {
 				offer.getSpent(),
 				offer.getTotalQuantity(),
 				offer.getPrice(),
-				now).ifPresent(this::onFill);
+				now,
+				this::onFill);
 		offerSync.record(
 				event.getSlot(),
 				offer.getItemId(),
@@ -404,6 +427,7 @@ public class GeUncutPlugin extends Plugin {
 
 	@Subscribe
 	public void onGameTick(GameTick event) {
+		trackGrandExchangeWindow();
 		if (!config.autoFillOffers()) {
 			clearOffer();
 			return;
@@ -475,6 +499,22 @@ public class GeUncutPlugin extends Plugin {
 			lineX += cell + OFFER_LINE_GAP;
 		}
 		lastAutofillPrompt = promptKey;
+	}
+
+	private void trackGrandExchangeWindow() {
+		Widget window = client.getWidget(InterfaceID.GE_OFFERS, 0);
+		boolean open = window != null && !window.isHidden();
+		if (open == grandExchangeOpen) {
+			return;
+		}
+		grandExchangeOpen = open;
+		pushHistorySync(open);
+	}
+
+	private void pushHistorySync(boolean open) {
+		FlipsPanel target = panel;
+		long syncedAt = historyReadThisSession ? historySyncedAt : 0;
+		SwingUtilities.invokeLater(() -> target.showHistorySync(open, syncedAt));
 	}
 
 	private void clearOffer() {
@@ -641,7 +681,7 @@ public class GeUncutPlugin extends Plugin {
 		if (event.getGroupId() == InterfaceID.GE_OFFERS) {
 			refreshFlips();
 		}
-		if (event.getGroupId() != InterfaceID.GE_HISTORY || !linked()) {
+		if (event.getGroupId() != InterfaceID.GE_HISTORY) {
 			return;
 		}
 		clientThread.invokeLater(this::syncTradeHistory);
@@ -652,10 +692,12 @@ public class GeUncutPlugin extends Plugin {
 		if (rows.isEmpty()) {
 			return;
 		}
-		api.postGeHistory(Long.toString(client.getAccountHash()), rows,
-				() -> log.debug("event=history_synced rows={}", rows.size()),
-				failure -> log.debug("event=history_sync_failed status={} message=\"{}\"",
-						failure.getStatusCode(), failure.getMessage()));
+		int imported = tradeSync.importHistory(rows);
+		log.debug("event=history_read rows={} imported={}", rows.size(), imported);
+		historySyncedAt = System.currentTimeMillis();
+		historyReadThisSession = true;
+		configManager.setConfiguration(GeUncutConfig.GROUP, "historySyncedAt", historySyncedAt);
+		pushHistorySync(true);
 	}
 
 	private String itemName(int itemId) {
@@ -690,8 +732,8 @@ public class GeUncutPlugin extends Plugin {
 		if (delta.getSide() == OfferDelta.Side.BUY) {
 			buyLimits.recordBuy(delta.getItemId(), delta.getQuantity(), delta.getOccurredAt());
 		}
+		tradeSync.accept(delta);
 		if (linked()) {
-			tradeSync.accept(delta);
 			executor.schedule(this::refreshPositions, POST_FILL_REFRESH_SECONDS, TimeUnit.SECONDS);
 		}
 	}

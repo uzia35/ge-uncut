@@ -311,6 +311,32 @@ public class FlipsPanelRenderTest {
 	}
 
 	@Test
+	public void theHistoryNudgeOnlyShowsWithTheGrandExchangeOpen() throws Exception {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		String nudge = "Open History to sync trades";
+		assertNull(findLabelContaining(panel, nudge));
+
+		panel.showHistorySync(true, 0);
+		assertNotNull(findLabelContaining(panel, nudge));
+		assertNotNull(findLabelContaining(panel, "made on mobile"));
+		assertTrue(findLabelContaining(panel, nudge).isVisible());
+		write(paint(panel), "panel-history-nudge.png");
+
+		panel.showHistorySync(false, 0);
+		assertTrue(!findLabelContaining(panel, nudge).isVisible());
+
+		panel.showHistorySync(true, System.currentTimeMillis());
+		assertNotNull(findLabelContaining(panel, "Synced from History just now"));
+
+		panel.showHistorySync(true, System.currentTimeMillis() - 7_200_000L);
+		assertNotNull(findLabelContaining(panel, "Synced from History 2h ago"));
+	}
+
+	@Test
 	public void historySortsNewestFirstAcrossCardTypes() {
 		Runnable noop = () -> {
 		};
@@ -710,6 +736,24 @@ public class FlipsPanelRenderTest {
 		if (component instanceof Container) {
 			for (Component child : ((Container) component).getComponents()) {
 				JLabel found = findLabel(child, text);
+				if (found != null) {
+					return found;
+				}
+			}
+		}
+		return null;
+	}
+
+	private static JLabel findLabelContaining(Component component, String text) {
+		if (component instanceof JLabel) {
+			String value = ((JLabel) component).getText();
+			if (value != null && value.contains(text)) {
+				return (JLabel) component;
+			}
+		}
+		if (component instanceof Container) {
+			for (Component child : ((Container) component).getComponents()) {
+				JLabel found = findLabelContaining(child, text);
 				if (found != null) {
 					return found;
 				}

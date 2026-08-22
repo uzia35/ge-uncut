@@ -4,8 +4,9 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import java.util.function.Consumer;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
@@ -34,7 +35,24 @@ public class OfferTrackerImpl implements OfferTracker {
 	}
 
 	@Override
-	public Optional<OfferDelta> onOfferChanged(
+	public void onOfferChanged(
+			int slot,
+			int itemId,
+			GrandExchangeOfferState state,
+			int quantitySold,
+			int spent,
+			int totalQuantity,
+			int price,
+			Instant now,
+			Consumer<OfferDelta> onFill) {
+		OfferDelta delta = advance(slot, itemId, state, quantitySold, spent, totalQuantity, price, now);
+		if (delta != null && onFill != null) {
+			onFill.accept(delta);
+		}
+		persist();
+	}
+
+	private OfferDelta advance(
 			int slot,
 			int itemId,
 			GrandExchangeOfferState state,
@@ -44,22 +62,25 @@ public class OfferTrackerImpl implements OfferTracker {
 			int price,
 			Instant now) {
 		if (state == GrandExchangeOfferState.EMPTY) {
-			OfferSnapshot removed = slots.remove(slot);
-			persist();
-			return residualFill(removed, slot, now);
+			return residualFill(slots.remove(slot), slot, now);
 		}
 
 		boolean selling = isSellState(state);
 		boolean firstSinceReset = replayedSlots.add(slot);
 		OfferSnapshot last = slots.get(slot);
-		slots.put(slot, new OfferSnapshot(itemId, quantitySold, spent, state, totalQuantity, price));
-		persist();
+		boolean newOffer = last == null
+				|| last.getItemId() != itemId
+				|| isSellState(last.getState()) != selling
+				|| quantitySold < last.getQuantitySold()
+				|| last.getOfferId() == null;
+		String offerId = newOffer ? UUID.randomUUID().toString() : last.getOfferId();
+		slots.put(slot, new OfferSnapshot(itemId, quantitySold, spent, state, totalQuantity, price, offerId));
 
 		if (last == null || last.getItemId() != itemId || isSellState(last.getState()) != selling) {
 			if (quantitySold > 0 && firstSinceReset) {
-				return Optional.empty();
+				return null;
 			}
-			last = new OfferSnapshot(itemId, 0, 0, state, totalQuantity, price);
+			last = new OfferSnapshot(itemId, 0, 0, state, totalQuantity, price, offerId);
 		}
 
 		int quantityDelta = quantitySold - last.getQuantitySold();
@@ -69,26 +90,28 @@ public class OfferTrackerImpl implements OfferTracker {
 				log.warn("event=fill_discarded_negative_spend item={} slot={} quantity_delta={} spent_delta={}",
 						itemId, slot, quantityDelta, spentDelta);
 			}
-			return Optional.empty();
+			return null;
 		}
 
 		int priceEach = (int) Math.round((double) spentDelta / quantityDelta);
 		OfferDelta.Side side = selling ? OfferDelta.Side.SELL : OfferDelta.Side.BUY;
-		return Optional.of(new OfferDelta(itemId, side, quantityDelta, priceEach, slot, now));
+		return new OfferDelta(itemId, side, quantityDelta, priceEach, slot, now, offerId, quantitySold);
 	}
 
-	private Optional<OfferDelta> residualFill(OfferSnapshot last, int slot, Instant now) {
+	private OfferDelta residualFill(OfferSnapshot last, int slot, Instant now) {
 		if (last == null || !isActiveState(last.getState())) {
-			return Optional.empty();
+			return null;
 		}
 		int missing = last.getQuantityTotal() - last.getQuantitySold();
 		if (missing <= 0 || last.getPrice() <= 0) {
-			return Optional.empty();
+			return null;
 		}
 		OfferDelta.Side side = isSellState(last.getState()) ? OfferDelta.Side.SELL : OfferDelta.Side.BUY;
+		String offerId = last.getOfferId() != null ? last.getOfferId() : UUID.randomUUID().toString();
 		log.debug("event=residual_fill_on_empty item={} slot={} missing={} price={}",
 				last.getItemId(), slot, missing, last.getPrice());
-		return Optional.of(new OfferDelta(last.getItemId(), side, missing, last.getPrice(), slot, now));
+		return new OfferDelta(last.getItemId(), side, missing, last.getPrice(), slot, now,
+				offerId, last.getQuantityTotal());
 	}
 
 	@Override

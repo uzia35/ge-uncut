@@ -17,4 +17,6 @@ public class OfferDelta {
 	private final int priceEach;
 	private final int slot;
 	private final Instant occurredAt;
+	private final String offerId;
+	private final int cumulativeQuantitySold;
 }
