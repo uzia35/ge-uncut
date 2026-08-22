@@ -95,6 +95,43 @@ public class TradeSyncServiceTest {
 	}
 
 	@Test
+	public void aBacklogBeyondTheServerCapDrainsInChunksInsteadOfWedging() {
+		for (int i = 1; i <= 120; i++) {
+			service.accept(buy(i));
+		}
+		flushTick.run();
+		assertEquals(1, api.postedBatches.size());
+		assertEquals(50, api.postedBatches.get(0).size());
+		assertEquals(70, log.pending("acct-1").size());
+
+		flushTick.run();
+		flushTick.run();
+		assertEquals(3, api.postedBatches.size());
+		assertEquals(50, api.postedBatches.get(1).size());
+		assertEquals(20, api.postedBatches.get(2).size());
+		assertTrue(log.pending("acct-1").isEmpty());
+		assertEquals(1, api.postedBatches.get(0).get(0).getQuantity());
+		assertEquals(51, api.postedBatches.get(1).get(0).getQuantity());
+		assertEquals(101, api.postedBatches.get(2).get(0).getQuantity());
+	}
+
+	@Test
+	public void aFailedChunkStaysPendingAndRetriesTheSameOldestFills() {
+		for (int i = 1; i <= 60; i++) {
+			service.accept(buy(i));
+		}
+		api.failNextPost = true;
+		flushTick.run();
+		assertTrue(api.postedBatches.isEmpty());
+		assertEquals(60, log.pending("acct-1").size());
+
+		flushTick.run();
+		assertEquals(1, api.postedBatches.size());
+		assertEquals(50, api.postedBatches.get(0).size());
+		assertEquals(1, api.postedBatches.get(0).get(0).getQuantity());
+	}
+
+	@Test
 	public void unauthorizedFlushDropsInsteadOfGrowingTheLogForever() {
 		service.accept(buy(3));
 		api.failNextPost = true;

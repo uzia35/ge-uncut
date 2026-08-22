@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 @Singleton
 public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSyncService {
 	private static final int FLUSH_SECONDS = 5;
+	private static final int MAX_BATCH_EVENTS = 50;
 
 	private final GeUncutApi api;
 	private final FillLog fillLog;
@@ -53,6 +54,9 @@ public class TradeSyncServiceImpl extends AbstractSyncService implements TradeSy
 		List<GeTradeEvent> pending = fillLog.pending(accountHash);
 		if (pending.isEmpty()) {
 			return;
+		}
+		if (pending.size() > MAX_BATCH_EVENTS) {
+			pending = pending.subList(0, MAX_BATCH_EVENTS);
 		}
 		String publishedAt = Instant.now().toString();
 		List<GeTradeEvent> batch = new ArrayList<>(pending.size());
