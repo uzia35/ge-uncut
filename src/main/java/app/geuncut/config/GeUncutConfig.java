@@ -41,4 +41,9 @@ public interface GeUncutConfig extends Config {
 	default double minRoi() {
 		return -1;
 	}
+
+	@ConfigItem(keyName = "installId", name = "Install id", description = "Set automatically on first run", hidden = true, position = 7)
+	default String installId() {
+		return "";
+	}
 }

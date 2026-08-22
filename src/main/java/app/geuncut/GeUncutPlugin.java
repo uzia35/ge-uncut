@@ -19,7 +19,6 @@ import javax.swing.SwingUtilities;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.api.impl.HttpGeUncutApi;
 import app.geuncut.config.GeUncutConfig;
-import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.ItemPrice;
 import app.geuncut.model.OfferDelta;
@@ -37,7 +36,6 @@ import app.geuncut.service.PositionsService;
 import app.geuncut.service.TradeSyncService;
 import app.geuncut.tracker.BuyLimitTracker;
 import app.geuncut.tracker.FillLog;
-import app.geuncut.tracker.GeHistoryParser;
 import app.geuncut.tracker.impl.FileFillLog;
 import app.geuncut.tracker.impl.BuyLimitTrackerImpl;
 import app.geuncut.tracker.impl.ConfigSnapshotStore;
@@ -217,7 +215,9 @@ public class GeUncutPlugin extends Plugin {
 		overlayManager.add(offerOverlay);
 		mouseManager.registerMouseListener(offerMouseListener);
 
-		tradeSync.start(() -> Long.toString(client.getAccountHash()));
+		tradeSync.setSendGate(this::linked);
+		tradeSync.setInstallId(installId());
+		tradeSync.start(this::trackedAccount);
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
 		if (linked()) {
 			startPositionsPoll();
@@ -228,6 +228,21 @@ public class GeUncutPlugin extends Plugin {
 		}
 		refreshFlips();
 		seedOfferPlacements();
+	}
+
+	private String trackedAccount() {
+		long hash = client.getAccountHash();
+		return hash != -1 ? Long.toString(hash) : null;
+	}
+
+	private String installId() {
+		String stored = config.installId().trim();
+		if (!stored.isEmpty()) {
+			return stored;
+		}
+		String minted = java.util.UUID.randomUUID().toString();
+		configManager.setConfiguration(GeUncutConfig.GROUP, "installId", minted);
+		return minted;
 	}
 
 	private void startPositionsPoll() {
@@ -381,7 +396,8 @@ public class GeUncutPlugin extends Plugin {
 				offer.getSpent(),
 				offer.getTotalQuantity(),
 				offer.getPrice(),
-				now).ifPresent(this::onFill);
+				now,
+				this::onFill);
 		offerSync.record(
 				event.getSlot(),
 				offer.getItemId(),
@@ -641,21 +657,6 @@ public class GeUncutPlugin extends Plugin {
 		if (event.getGroupId() == InterfaceID.GE_OFFERS) {
 			refreshFlips();
 		}
-		if (event.getGroupId() != InterfaceID.GE_HISTORY || !linked()) {
-			return;
-		}
-		clientThread.invokeLater(this::syncTradeHistory);
-	}
-
-	private void syncTradeHistory() {
-		List<GeHistoryRow> rows = GeHistoryParser.parse(client.getWidget(InterfaceID.GeHistory.LIST));
-		if (rows.isEmpty()) {
-			return;
-		}
-		api.postGeHistory(Long.toString(client.getAccountHash()), rows,
-				() -> log.debug("event=history_synced rows={}", rows.size()),
-				failure -> log.debug("event=history_sync_failed status={} message=\"{}\"",
-						failure.getStatusCode(), failure.getMessage()));
 	}
 
 	private String itemName(int itemId) {
@@ -690,8 +691,8 @@ public class GeUncutPlugin extends Plugin {
 		if (delta.getSide() == OfferDelta.Side.BUY) {
 			buyLimits.recordBuy(delta.getItemId(), delta.getQuantity(), delta.getOccurredAt());
 		}
+		tradeSync.accept(delta);
 		if (linked()) {
-			tradeSync.accept(delta);
 			executor.schedule(this::refreshPositions, POST_FILL_REFRESH_SECONDS, TimeUnit.SECONDS);
 		}
 	}

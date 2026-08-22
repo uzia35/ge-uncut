@@ -11,4 +11,5 @@ public class OfferSnapshot {
 	private final GrandExchangeOfferState state;
 	private final int quantityTotal;
 	private final int price;
+	private final String offerId;
 }

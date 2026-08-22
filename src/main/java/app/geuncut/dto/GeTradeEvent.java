@@ -33,4 +33,14 @@ public class GeTradeEvent {
 
 	@SerializedName("published_at")
 	private final String publishedAt;
+
+	private final Long seq;
+
+	@SerializedName("install_id")
+	private final String installId;
+
+	private final String source;
+
+	@SerializedName("offer_instance_id")
+	private final String offerInstanceId;
 }
