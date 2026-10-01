@@ -12,9 +12,9 @@ public interface OfferTracker {
 			int itemId,
 			GrandExchangeOfferState state,
 			int quantitySold,
-			int spent,
+			long spent,
 			int totalQuantity,
-			int price,
+			long price,
 			Instant now,
 			Consumer<OfferDelta> onFill);
 

@@ -41,6 +41,8 @@ Once linked, the plugin talks to `geuncut.app` only, over HTTPS, using your pers
 
 ## Building
 
+Version 1.5.12 supports RuneLite 1.13 and Grand Exchange prices and cumulative spend above 2,147,483,647 coins. Existing saved offer baselines and fill logs retain their numeric JSON format and replay identities.
+
 Standard RuneLite external plugin. `./gradlew build` compiles and tests; `./gradlew run` launches a developer-mode client with the plugin loaded.
 
 ## License

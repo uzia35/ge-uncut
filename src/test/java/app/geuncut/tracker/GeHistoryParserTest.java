@@ -192,4 +192,13 @@ public class GeHistoryParserTest {
 			assertEquals(1_000, rows.get(entry).getPriceEach());
 		}
 	}
-}
+    @Test
+    public void parsesLargeEachAndTotalPricesAndSkipsOverflow() {
+        List<GeHistoryRow> rows = GeHistoryParser.parse(container(
+            text("Bought:"), item(20997, 2), text("6,000,000,002 coins = 3,000,000,001 each"),
+            text("Sold:"), item(20997, 1), text("3,000,000,002 coins"),
+            text("Bought:"), item(20997, 1), text("99,999,999,999,999,999,999 coins")));
+        assertEquals(2, rows.size());
+        assertEquals(3_000_000_001L, rows.get(0).getPriceEach());
+        assertEquals(3_000_000_002L, rows.get(1).getPriceEach());
+    }}

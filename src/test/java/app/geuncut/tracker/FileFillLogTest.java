@@ -240,4 +240,16 @@ public class FileFillLogTest {
 		assertTrue(log.read("acct-1", 0, 50).getEntries().isEmpty());
 		assertFalse(logFile("acct-1").isFile());
 	}
-}
+    @Test
+    public void largePriceAndLegacyKeysSurviveWalReplay() {
+        FileFillLog log = new FileFillLog(gson, dir);
+        GeTradeEvent large = event("acct-1:0:legacy-offer:2", 2).toBuilder().priceEach(3_000_000_001L).build();
+        log.append("acct-1", event("old-key", 1));
+        log.append("acct-1", large);
+        List<GeTradeEvent> replay = new FileFillLog(gson, dir).read("acct-1", 0, 50).getEntries();
+        assertEquals(1000L, replay.get(0).getPriceEach());
+        assertEquals("old-key", replay.get(0).getIdempotencyKey());
+        assertEquals(3_000_000_001L, replay.get(1).getPriceEach());
+        assertEquals(large.getIdempotencyKey(), replay.get(1).getIdempotencyKey());
+        assertTrue(gson.toJson(replay.get(1)).contains("\"price_each\":3000000001"));
+    }}

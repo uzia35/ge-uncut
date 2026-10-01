@@ -40,9 +40,9 @@ public class OfferTrackerImpl implements OfferTracker {
 			int itemId,
 			GrandExchangeOfferState state,
 			int quantitySold,
-			int spent,
+			long spent,
 			int totalQuantity,
-			int price,
+			long price,
 			Instant now,
 			Consumer<OfferDelta> onFill) {
 		OfferDelta delta = advance(slot, itemId, state, quantitySold, spent, totalQuantity, price, now);
@@ -57,9 +57,9 @@ public class OfferTrackerImpl implements OfferTracker {
 			int itemId,
 			GrandExchangeOfferState state,
 			int quantitySold,
-			int spent,
+			long spent,
 			int totalQuantity,
-			int price,
+			long price,
 			Instant now) {
 		if (state == GrandExchangeOfferState.EMPTY) {
 			return residualFill(slots.remove(slot), slot, now);
@@ -84,7 +84,7 @@ public class OfferTrackerImpl implements OfferTracker {
 		}
 
 		int quantityDelta = quantitySold - last.getQuantitySold();
-		int spentDelta = spent - last.getSpent();
+		long spentDelta = spent - last.getSpent();
 		if (quantityDelta <= 0 || spentDelta <= 0) {
 			if (quantityDelta > 0 && spentDelta < 0) {
 				log.warn("event=fill_discarded_negative_spend item={} slot={} quantity_delta={} spent_delta={}",
@@ -93,7 +93,9 @@ public class OfferTrackerImpl implements OfferTracker {
 			return null;
 		}
 
-		int priceEach = (int) Math.round((double) spentDelta / quantityDelta);
+		// Round the positive ratio without converting a 64-bit coin amount to double.
+		long priceEach = spentDelta / quantityDelta
+				+ (spentDelta % quantityDelta >= (quantityDelta + 1L) / 2 ? 1 : 0);
 		OfferDelta.Side side = selling ? OfferDelta.Side.SELL : OfferDelta.Side.BUY;
 		return new OfferDelta(itemId, side, quantityDelta, priceEach, slot, now, offerId, quantitySold);
 	}

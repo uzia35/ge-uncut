@@ -24,7 +24,7 @@ public class GeTradeEvent {
 	private final int quantity;
 
 	@SerializedName("price_each")
-	private final int priceEach;
+	private final long priceEach;
 
 	private final int slot;
 

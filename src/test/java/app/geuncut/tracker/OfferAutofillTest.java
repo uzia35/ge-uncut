@@ -99,4 +99,12 @@ public class OfferAutofillTest {
 		assertTrue(OfferAutofill.choices(null, OfferAutofill.Prompt.PRICE, 2).isEmpty());
 		assertTrue(OfferAutofill.choices(0L, OfferAutofill.Prompt.PRICE, 2).isEmpty());
 	}
-}
+    @Test
+    public void largePricesArePreservedAndGameLimitsAreRespected() {
+        assertEquals(3_000_000_001L, OfferAutofill.choices(3_000_000_001L,
+            OfferAutofill.Prompt.PRICE, 0).get(0).getValue());
+        assertEquals(OfferAutofill.MAX_GE_COINS, OfferAutofill.choices(OfferAutofill.MAX_GE_COINS,
+            OfferAutofill.Prompt.PRICE, 5).get(2).getValue());
+        assertEquals(Integer.MAX_VALUE, OfferAutofill.choices(3_000_000_001L,
+            OfferAutofill.Prompt.QUANTITY, 0).get(0).getValue());
+    }}

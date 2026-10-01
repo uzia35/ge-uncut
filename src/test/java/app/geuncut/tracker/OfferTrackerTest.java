@@ -40,14 +40,14 @@ public class OfferTrackerTest {
 	}
 
 	private static Optional<OfferDelta> change(OfferTracker target, int slot, int itemId,
-			GrandExchangeOfferState state, int quantitySold, int spent, int totalQuantity, int price) {
+			GrandExchangeOfferState state, int quantitySold, long spent, int totalQuantity, long price) {
 		List<OfferDelta> fills = new ArrayList<>();
 		target.onOfferChanged(slot, itemId, state, quantitySold, spent, totalQuantity, price, T0, fills::add);
 		return fills.isEmpty() ? Optional.empty() : Optional.of(fills.get(0));
 	}
 
 	private Optional<OfferDelta> change(int slot, int itemId, GrandExchangeOfferState state,
-			int quantitySold, int spent, int totalQuantity, int price) {
+			int quantitySold, long spent, int totalQuantity, long price) {
 		return change(tracker, slot, itemId, state, quantitySold, spent, totalQuantity, price);
 	}
 
@@ -356,4 +356,25 @@ public class OfferTrackerTest {
 		assertTrue(altFill.isPresent());
 		assertEquals(50, altFill.get().getQuantity());
 	}
-}
+    @Test
+    public void largeCoinValuesSurviveRestartWithoutDuplicateFills() {
+        InMemorySnapshotStore store = new InMemorySnapshotStore();
+        OfferTracker first = new OfferTrackerImpl(store);
+        first.loadFor("large");
+        change(first, 0, TBOW, BUYING, 0, 0, 3, 3_000_000_001L);
+        OfferDelta fill = change(first, 0, TBOW, BUYING, 2, 6_000_000_002L, 3, 3_000_000_001L).get();
+        assertEquals(3_000_000_001L, fill.getPriceEach());
+        OfferTracker restarted = new OfferTrackerImpl(store);
+        restarted.loadFor("large");
+        assertFalse(change(restarted, 0, TBOW, BUYING, 2, 6_000_000_002L, 3, 3_000_000_001L).isPresent());
+        OfferDelta next = change(restarted, 0, TBOW, BOUGHT, 3, 9_000_000_003L, 3, 3_000_000_001L).get();
+        assertEquals(fill.getOfferId(), next.getOfferId());
+        assertEquals(3_000_000_001L, next.getPriceEach());
+    }
+
+    @Test
+    public void roundedPriceDoesNotLoseLongPrecision() {
+        change(0, TBOW, BUYING, 0, 0, 2, 4_503_599_627_370_497L);
+        assertEquals(4_503_599_627_370_497L,
+            change(0, TBOW, BOUGHT, 2, 9_007_199_254_740_994L, 2, 4_503_599_627_370_497L).get().getPriceEach());
+    }}

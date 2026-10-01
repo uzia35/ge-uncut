@@ -18,7 +18,7 @@ public class OfferPlacement {
 	private final String side;
 
 	@SerializedName("price_each")
-	private final int priceEach;
+	private final long priceEach;
 
 	@SerializedName("quantity_total")
 	private final int quantityTotal;

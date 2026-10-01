@@ -23,7 +23,7 @@ public class GeOffer {
 	private final int quantityTotal;
 
 	@SerializedName("price_each")
-	private final int priceEach;
+	private final long priceEach;
 
 	@SerializedName("occurred_at")
 	private final String occurredAt;
