@@ -70,7 +70,7 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 
 	@Override
 	public void record(int slot, int itemId, GrandExchangeOfferState state,
-			int quantitySold, int totalQuantity, int price, Instant now) {
+			int quantitySold, int totalQuantity, long price, Instant now) {
 		synchronized (slots) {
 			lastAccountHash = accountHash();
 			if (state == GrandExchangeOfferState.EMPTY) {
@@ -185,7 +185,7 @@ public class OfferSyncServiceImpl extends AbstractSyncService implements OfferSy
 	}
 
 	private static GeOffer toOffer(int slot, int itemId, GrandExchangeOfferState state,
-			int quantitySold, int totalQuantity, int price, Instant now) {
+			int quantitySold, int totalQuantity, long price, Instant now) {
 		if (totalQuantity <= 0 || price <= 0 || quantitySold < 0 || quantitySold > totalQuantity) {
 			return null;
 		}

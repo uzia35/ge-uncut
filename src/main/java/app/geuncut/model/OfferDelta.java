@@ -14,7 +14,7 @@ public class OfferDelta {
 	private final int itemId;
 	private final Side side;
 	private final int quantity;
-	private final int priceEach;
+	private final long priceEach;
 	private final int slot;
 	private final Instant occurredAt;
 	private final String offerId;

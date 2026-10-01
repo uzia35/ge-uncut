@@ -51,7 +51,7 @@ public final class GeHistoryParser {
 	private static GeHistoryRow parseRow(Widget[] children, int headerIndex, String side) {
 		int itemId = -1;
 		int quantity = 0;
-		int priceEach = -1;
+		long priceEach = -1;
 		long totalValue = -1;
 		int end = Math.min(children.length, headerIndex + 1 + ROW_SCAN_LIMIT);
 		for (int index = headerIndex + 1; index < end; index++) {
@@ -81,7 +81,7 @@ public final class GeHistoryParser {
 			return null;
 		}
 		if (priceEach <= 0 && totalValue > 0) {
-			priceEach = (int) (totalValue / quantity);
+			priceEach = totalValue / quantity;
 		}
 		if (priceEach <= 0) {
 			return null;
@@ -94,13 +94,13 @@ public final class GeHistoryParser {
 				.build();
 	}
 
-	private static int parseEach(String text) {
+	private static long parseEach(String text) {
 		int separator = text.lastIndexOf('=');
 		if (separator < 0) {
 			return -1;
 		}
 		long value = digits(text.substring(separator + 1));
-		return value > 0 && value <= Integer.MAX_VALUE ? (int) value : -1;
+		return value > 0 ? value : -1;
 	}
 
 	private static String truncateAtParen(String text) {
@@ -110,10 +110,14 @@ public final class GeHistoryParser {
 
 	private static long digits(String text) {
 		String cleaned = text.replaceAll("\\D", "");
-		if (cleaned.isEmpty() || cleaned.length() > 15) {
+		if (cleaned.isEmpty()) {
 			return -1;
 		}
-		return Long.parseLong(cleaned);
+		try {
+			return Long.parseLong(cleaned);
+		} catch (NumberFormatException overflow) {
+			return -1;
+		}
 	}
 
 	private static String plainText(Widget widget) {

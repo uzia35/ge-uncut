@@ -7,9 +7,9 @@ import net.runelite.api.GrandExchangeOfferState;
 public class OfferSnapshot {
 	private final int itemId;
 	private final int quantitySold;
-	private final int spent;
+	private final long spent;
 	private final GrandExchangeOfferState state;
 	private final int quantityTotal;
-	private final int price;
+	private final long price;
 	private final String offerId;
 }

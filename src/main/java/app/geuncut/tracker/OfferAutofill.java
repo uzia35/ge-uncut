@@ -6,6 +6,9 @@ import java.util.List;
 import lombok.Value;
 
 public final class OfferAutofill {
+	// Coins plus platinum tokens accepted by the Grand Exchange.
+	public static final long MAX_GE_COINS = 2_149_631_130_647L;
+
 	private OfferAutofill() {
 	}
 
@@ -42,7 +45,8 @@ public final class OfferAutofill {
 		if (resolved == null || resolved <= 0) {
 			return List.of();
 		}
-		long base = resolved;
+		long maximum = prompt == Prompt.PRICE ? MAX_GE_COINS : Integer.MAX_VALUE;
+		long base = Math.min(resolved, maximum);
 		if (prompt != Prompt.PRICE || percent <= 0) {
 			return List.of(new Choice(format(base, compact), base, true));
 		}
@@ -56,7 +60,7 @@ public final class OfferAutofill {
 	}
 
 	private static long scale(long base, int percentOfBase) {
-		return Math.max(1, Math.round(base * percentOfBase / 100.0));
+		return Math.max(1, Math.min(MAX_GE_COINS, Math.round(base * percentOfBase / 100.0)));
 	}
 
 	private static String format(long value, boolean compact) {

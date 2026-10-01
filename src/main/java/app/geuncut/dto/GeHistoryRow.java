@@ -15,5 +15,5 @@ public class GeHistoryRow {
 	private final int quantity;
 
 	@SerializedName("price_each")
-	private final int priceEach;
+	private final long priceEach;
 }
