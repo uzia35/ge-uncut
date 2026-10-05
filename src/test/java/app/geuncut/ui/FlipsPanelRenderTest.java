@@ -311,6 +311,32 @@ public class FlipsPanelRenderTest {
 	}
 
 	@Test
+	public void moversTabShowsEveryGainerLoserAndSpike() throws Exception {
+		Runnable noop = () -> {
+		};
+		IntConsumer noopItem = item -> {
+		};
+		FlipsPanel panel = new FlipsPanel(noop, noop, noop, noop, noop, stubIcons(), noopItem, noopArchive, noopArchive, noopArchive);
+		panel.showMovers(new app.geuncut.dto.Movers(moverEntries(100, 12.0, null),
+				moverEntries(200, -12.0, null), moverEntries(300, 1.5, 3.2)));
+		panel.selectTab("movers");
+		BufferedImage image = paint(panel);
+		write(image, "panel-tab-movers-all.png");
+
+		java.util.List<MoversList> lists = new java.util.ArrayList<>();
+		collectMoversLists(panel, lists);
+		assertEquals(3, lists.size());
+		for (MoversList list : lists) {
+			java.awt.Point origin = javax.swing.SwingUtilities.convertPoint(list, 0, 0, panel);
+			assertEquals(10 * 36, list.getHeight());
+			for (int row = 0; row < 10; row++) {
+				assertTrue("row " + (row + 1) + " is missing",
+						inked(image, origin.x, origin.y + row * 36, list.getWidth(), 36, Theme.SURFACE.getRGB()));
+			}
+		}
+	}
+
+	@Test
 	public void historySortsNewestFirstAcrossCardTypes() {
 		Runnable noop = () -> {
 		};
@@ -735,6 +761,37 @@ public class FlipsPanelRenderTest {
 			}
 		}
 		return null;
+	}
+
+	private static java.util.List<app.geuncut.dto.MoverEntry> moverEntries(int firstId, double changePct, Double volumeRatio) {
+		java.util.List<app.geuncut.dto.MoverEntry> entries = new java.util.ArrayList<>();
+		for (int i = 0; i < 10; i++) {
+			entries.add(new app.geuncut.dto.MoverEntry(firstId + i, "Item " + (firstId + i), changePct - i,
+					1_000L * (i + 1), 50_000L, volumeRatio));
+		}
+		return entries;
+	}
+
+	private static void collectMoversLists(Component component, java.util.List<MoversList> found) {
+		if (component instanceof MoversList) {
+			found.add((MoversList) component);
+		}
+		if (component instanceof Container) {
+			for (Component child : ((Container) component).getComponents()) {
+				collectMoversLists(child, found);
+			}
+		}
+	}
+
+	private static boolean inked(BufferedImage image, int left, int top, int width, int height, int background) {
+		for (int y = top; y < top + height; y++) {
+			for (int x = left; x < left + width; x++) {
+				if (image.getRGB(x, y) != background) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	private static boolean pixelsEqual(BufferedImage a, BufferedImage b) {

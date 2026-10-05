@@ -1,9 +1,7 @@
 package app.geuncut.ui;
 
-import java.awt.AlphaComposite;
 import java.awt.Color;
 import java.awt.Component;
-import java.awt.Composite;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
@@ -16,17 +14,13 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.IntConsumer;
 import javax.swing.JComponent;
-import javax.swing.Timer;
 
 import app.geuncut.dto.MoverEntry;
 
-class MoversRotator extends JComponent {
-	private static final int PAGE = 5;
-	private static final int DWELL_MS = 10_000;
-	private static final int FADE_MS = 650;
-	private static final int TICK_MS = 16;
+class MoversList extends JComponent {
 	private static final int ROW_HEIGHT = 36;
 	private static final int ICON = 20;
 	private static final int TEXT_X = ICON + 8;
@@ -40,22 +34,16 @@ class MoversRotator extends JComponent {
 	private final Color pctColor;
 	private final IconProvider icons;
 	private final IntConsumer onOpen;
-	private final java.util.function.Function<MoverEntry, String> valueText;
+	private final Function<MoverEntry, String> valueText;
 	private final List<Row> rows = new ArrayList<>();
-	private final Timer timer;
 
-	private int page;
-	private int fadingFrom = -1;
-	private long fadeStartNanos;
-	private long pageShownNanos;
-
-	MoversRotator(Font numberFont, Color pctColor, IconProvider icons, IntConsumer onOpen) {
+	MoversList(Font numberFont, Color pctColor, IconProvider icons, IntConsumer onOpen) {
 		this(numberFont, pctColor, icons, onOpen,
 				entry -> String.format("%+.1f%%", entry.getChangePct()));
 	}
 
-	MoversRotator(Font numberFont, Color pctColor, IconProvider icons, IntConsumer onOpen,
-			java.util.function.Function<MoverEntry, String> valueText) {
+	MoversList(Font numberFont, Color pctColor, IconProvider icons, IntConsumer onOpen,
+			Function<MoverEntry, String> valueText) {
 		this.numberFont = numberFont;
 		this.pctColor = pctColor;
 		this.icons = icons;
@@ -68,13 +56,12 @@ class MoversRotator extends JComponent {
 		addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent event) {
-				int index = page * PAGE + event.getY() / ROW_HEIGHT;
-				if (onOpen != null && index >= 0 && index < rows.size()) {
+				int index = event.getY() / ROW_HEIGHT;
+				if (onOpen != null && event.getY() >= 0 && index < rows.size()) {
 					onOpen.accept(rows.get(index).itemId);
 				}
 			}
 		});
-		timer = new Timer(TICK_MS, event -> tick());
 	}
 
 	void setEntries(List<MoverEntry> next) {
@@ -90,26 +77,11 @@ class MoversRotator extends JComponent {
 				rows.add(row);
 			}
 		}
-		page = 0;
-		fadingFrom = -1;
-		pageShownNanos = nowNanos();
-		int visibleRows = totalPages() > 1 ? PAGE : rows.size();
-		Dimension size = new Dimension(10, visibleRows * ROW_HEIGHT);
-		setPreferredSize(size);
-		setMaximumSize(new Dimension(Integer.MAX_VALUE, visibleRows * ROW_HEIGHT));
-		if (totalPages() > 1) {
-			if (!timer.isRunning()) {
-				timer.start();
-			}
-		} else {
-			timer.stop();
-		}
+		int height = rows.size() * ROW_HEIGHT;
+		setPreferredSize(new Dimension(10, height));
+		setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
 		revalidate();
 		repaint();
-	}
-
-	private int totalPages() {
-		return rows.isEmpty() ? 0 : (rows.size() + PAGE - 1) / PAGE;
 	}
 
 	private static String detailLine(MoverEntry entry) {
@@ -133,42 +105,6 @@ class MoversRotator extends JComponent {
 		return Long.toString(value);
 	}
 
-	void tick() {
-		long now = nowNanos();
-		if (fadingFrom >= 0) {
-			if (now - fadeStartNanos >= FADE_MS * 1_000_000L) {
-				fadingFrom = -1;
-				pageShownNanos = now;
-			}
-			repaint();
-		} else if (totalPages() > 1 && now - pageShownNanos >= DWELL_MS * 1_000_000L) {
-			fadingFrom = page;
-			page = (page + 1) % totalPages();
-			fadeStartNanos = now;
-			repaint();
-		}
-	}
-
-	long nowNanos() {
-		return System.nanoTime();
-	}
-
-	@Override
-	public void addNotify() {
-		super.addNotify();
-		if (totalPages() > 1 && !timer.isRunning()) {
-			fadingFrom = -1;
-			pageShownNanos = nowNanos();
-			timer.start();
-		}
-	}
-
-	@Override
-	public void removeNotify() {
-		timer.stop();
-		super.removeNotify();
-	}
-
 	@Override
 	protected void paintComponent(Graphics g) {
 		super.paintComponent(g);
@@ -180,34 +116,12 @@ class MoversRotator extends JComponent {
 		Graphics2D g2 = (Graphics2D) g.create();
 		g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 		g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-		if (fadingFrom >= 0) {
-			double progress = (nowNanos() - fadeStartNanos) / (FADE_MS * 1_000_000.0);
-			progress = Math.max(0.0, Math.min(1.0, progress));
-			if (progress < 0.5) {
-				paintPage(g2, fadingFrom, (float) (1.0 - progress * 2.0));
-			} else {
-				paintPage(g2, page, (float) (progress * 2.0 - 1.0));
-			}
-		} else {
-			paintPage(g2, page, 1f);
-		}
-		g2.dispose();
-	}
-
-	private void paintPage(Graphics2D g2, int pageIndex, float alpha) {
-		if (alpha <= 0f) {
-			return;
-		}
-		Composite base = g2.getComposite();
-		g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.min(1f, alpha)));
 		FontMetrics nameMetrics = g2.getFontMetrics(Theme.BODY);
 		FontMetrics pctMetrics = g2.getFontMetrics(numberFont);
 		FontMetrics detailMetrics = g2.getFontMetrics(Theme.NUM_SMALL);
-		int start = pageIndex * PAGE;
-		int end = Math.min(start + PAGE, rows.size());
-		for (int index = start; index < end; index++) {
+		for (int index = 0; index < rows.size(); index++) {
 			Row row = rows.get(index);
-			int rowY = (index - start) * ROW_HEIGHT;
+			int rowY = index * ROW_HEIGHT;
 			int line1 = rowY + 14;
 			int line2 = rowY + 29;
 			if (row.icon != null) {
@@ -229,7 +143,7 @@ class MoversRotator extends JComponent {
 				g2.drawString(truncate(row.detail, detailMetrics, pctX - NAME_GAP - TEXT_X), TEXT_X, line2);
 			}
 		}
-		g2.setComposite(base);
+		g2.dispose();
 	}
 
 	private static String truncate(String text, FontMetrics metrics, int maxWidth) {

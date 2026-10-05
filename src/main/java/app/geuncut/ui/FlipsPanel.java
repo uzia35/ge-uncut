@@ -74,9 +74,9 @@ public class FlipsPanel extends PluginPanel {
 	private final JPanel gainersGroup = new JPanel();
 	private final JPanel losersGroup = new JPanel();
 	private final JPanel spikesGroup = new JPanel();
-	private final MoversRotator gainers;
-	private final MoversRotator losers;
-	private final MoversRotator spikes;
+	private final MoversList gainers;
+	private final MoversList losers;
+	private final MoversList spikes;
 
 	private final JPanel offersSection = new JPanel();
 	private final JPanel offersList = listPanel();
@@ -190,9 +190,9 @@ public class FlipsPanel extends PluginPanel {
 		this.onTrackPair = onTrackPair;
 		this.onNotFlip = onNotFlip;
 		this.onRestore = onRestore;
-		gainers = new MoversRotator(Theme.NUM_SMALL, Theme.UP, iconLoader::sprite, onOpenItem);
-		losers = new MoversRotator(Theme.NUM_SMALL, Theme.DOWN, iconLoader::sprite, onOpenItem);
-		spikes = new MoversRotator(Theme.NUM_SMALL, Theme.AMBER, iconLoader::sprite, onOpenItem,
+		gainers = new MoversList(Theme.NUM_SMALL, Theme.UP, iconLoader::sprite, onOpenItem);
+		losers = new MoversList(Theme.NUM_SMALL, Theme.DOWN, iconLoader::sprite, onOpenItem);
+		spikes = new MoversList(Theme.NUM_SMALL, Theme.AMBER, iconLoader::sprite, onOpenItem,
 				entry -> entry.getVolumeRatio() != null
 						? String.format("%.1f×", entry.getVolumeRatio())
 						: String.format("%+.1f%%", entry.getChangePct()));
@@ -980,7 +980,7 @@ public class FlipsPanel extends PluginPanel {
 		repaint();
 	}
 
-	private void buildMoverGroup(JPanel group, String label, MoversRotator rotator, int topGap) {
+	private void buildMoverGroup(JPanel group, String label, MoversList list, int topGap) {
 		group.setLayout(new BoxLayout(group, BoxLayout.Y_AXIS));
 		group.setBackground(Theme.SURFACE);
 		group.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -989,7 +989,7 @@ public class FlipsPanel extends PluginPanel {
 		heading.setAlignmentX(Component.LEFT_ALIGNMENT);
 		heading.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
 		group.add(heading);
-		group.add(rotator);
+		group.add(list);
 	}
 
 	public void showFlips(List<Flip> flips, boolean linked) {
