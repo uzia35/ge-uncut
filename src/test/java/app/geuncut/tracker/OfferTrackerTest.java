@@ -377,4 +377,41 @@ public class OfferTrackerTest {
         change(0, TBOW, BUYING, 0, 0, 2, 4_503_599_627_370_497L);
         assertEquals(4_503_599_627_370_497L,
             change(0, TBOW, BOUGHT, 2, 9_007_199_254_740_994L, 2, 4_503_599_627_370_497L).get().getPriceEach());
-    }}
+    }
+
+	@Test
+	public void anAwayFillReportedBeforeTheBaselineLoadsIsStillRecorded() {
+		InMemorySnapshotStore store = new InMemorySnapshotStore();
+		OfferTracker durable = new OfferTrackerImpl(store);
+		durable.loadFor("acct-1");
+		change(durable, 3, 26231, SELLING, 0, 0, 15_000, 3_125);
+		change(durable, 3, 26231, SELLING, 10_395, 10_395L * 3_125, 15_000, 3_125);
+
+		durable.reset();
+		Optional<OfferDelta> early = change(durable, 3, 26231, SOLD, 15_000, 15_000L * 3_125, 15_000, 3_125);
+		assertFalse(early.isPresent());
+		assertEquals(10_395, store.load("acct-1").get(3).getQuantitySold());
+
+		List<OfferDelta> fills = new ArrayList<>();
+		durable.onOfferChanged(5, TBOW, BUYING, 0, 0, 1, 1_000_000, T0, fills::add);
+		durable.reset();
+		durable.onOfferChanged(3, 26231, SOLD, 15_000, 15_000L * 3_125, 15_000, 3_125, T0, fills::add);
+		durable.loadFor("acct-1");
+
+		assertEquals(1, fills.size());
+		assertEquals(OfferDelta.Side.SELL, fills.get(0).getSide());
+		assertEquals(4_605, fills.get(0).getQuantity());
+		assertEquals(3_125, fills.get(0).getPriceEach());
+		assertEquals(15_000, store.load("acct-1").get(3).getQuantitySold());
+	}
+
+	@Test
+	public void eventsHeldForALoginThatNeverLoadsAreDroppedOnTheNextReset() {
+		List<OfferDelta> fills = new ArrayList<>();
+		tracker.reset();
+		tracker.onOfferChanged(0, TBOW, BUYING, 3, 3_000_000, 8, 1_000_000, T0, fills::add);
+		tracker.reset();
+		tracker.loadFor(null);
+		assertTrue(fills.isEmpty());
+	}
+}
