@@ -1,8 +1,10 @@
 package app.geuncut.tracker.impl;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -22,8 +24,10 @@ import net.runelite.api.GrandExchangeOfferState;
 public class OfferTrackerImpl implements OfferTracker {
 	private final Map<Integer, OfferSnapshot> slots = new HashMap<>();
 	private final Set<Integer> replayedSlots = new HashSet<>();
+	private final List<Runnable> awaitingLoad = new ArrayList<>();
 	private final SnapshotStore store;
 	private String currentAccount;
+	private boolean loaded = true;
 
 	public OfferTrackerImpl() {
 		this(new InMemorySnapshotStore());
@@ -45,6 +49,10 @@ public class OfferTrackerImpl implements OfferTracker {
 			long price,
 			Instant now,
 			Consumer<OfferDelta> onFill) {
+		if (!loaded) {
+			awaitingLoad.add(() -> onOfferChanged(slot, itemId, state, quantitySold, spent, totalQuantity, price, now, onFill));
+			return;
+		}
 		OfferDelta delta = advance(slot, itemId, state, quantitySold, spent, totalQuantity, price, now);
 		if (delta != null && onFill != null) {
 			onFill.accept(delta);
@@ -123,12 +131,18 @@ public class OfferTrackerImpl implements OfferTracker {
 		if (accountHash != null) {
 			slots.putAll(store.load(accountHash));
 		}
+		loaded = true;
+		List<Runnable> early = new ArrayList<>(awaitingLoad);
+		awaitingLoad.clear();
+		early.forEach(Runnable::run);
 	}
 
 	@Override
 	public void reset() {
 		slots.clear();
 		replayedSlots.clear();
+		awaitingLoad.clear();
+		loaded = false;
 	}
 
 	private void persist() {

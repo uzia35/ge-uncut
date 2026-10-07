@@ -225,6 +225,8 @@ public class GeUncutPlugin extends Plugin {
 		if (client.getGameState() == GameState.LOGGED_IN) {
 			long hash = client.getAccountHash();
 			offerTracker.loadFor(hash != -1 ? Long.toString(hash) : null);
+		} else {
+			offerTracker.reset();
 		}
 		refreshFlips();
 		seedOfferPlacements();
