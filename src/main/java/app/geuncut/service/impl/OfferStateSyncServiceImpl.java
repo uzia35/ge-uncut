@@ -1,7 +1,9 @@
 package app.geuncut.service.impl;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -32,8 +34,9 @@ public class OfferStateSyncServiceImpl extends AbstractSyncService implements Of
 	private volatile IntConsumer onFillsBooked = fills -> {};
 	private final AtomicBoolean posting = new AtomicBoolean();
 	private final Map<String, long[]> replays = new ConcurrentHashMap<>();
-	private volatile String lastAccount;
+	private final Set<String> sessionAccounts = ConcurrentHashMap.newKeySet();
 	private volatile int batchSize = MAX_BATCH_STATES;
+	private volatile int oneAtATime;
 	private volatile int unauthorizedQuietTicks;
 
 	@Inject
@@ -60,29 +63,42 @@ public class OfferStateSyncServiceImpl extends AbstractSyncService implements Of
 
 	@Override
 	protected void flush() {
-		String current = accountHash();
-		if (current != null) {
-			lastAccount = current;
+		String accountHash = accountHash();
+		if (accountHash != null) {
+			sessionAccounts.add(accountHash);
 		}
-		String accountHash = current != null ? current : lastAccount;
-		if (accountHash == null || posting.get() || !sendGate.getAsBoolean()) {
+		if (posting.get() || !sendGate.getAsBoolean()) {
 			return;
 		}
 		if (unauthorizedQuietTicks > 0) {
 			unauthorizedQuietTicks--;
 			return;
 		}
-		long[] replay = replays.computeIfAbsent(accountHash, key -> {
-			long through = offerLog.deliveredOffset(key);
-			log.debug("event=offer_state_sync_replay_started account={} through={}", key, through);
-			return new long[] { 0, through };
-		});
-		OfferBatch fresh = offerLog.read(accountHash, offerLog.deliveredOffset(accountHash), batchSize);
-		if (!fresh.getEntries().isEmpty()) {
-			send(accountHash, fresh, null);
-			return;
+		long[] replay = null;
+		if (accountHash != null) {
+			replay = replays.computeIfAbsent(accountHash, key -> {
+				long through = offerLog.deliveredOffset(key);
+				log.debug("event=offer_state_sync_replay_started account={} through={}", key, through);
+				return new long[] { 0, through };
+			});
 		}
-		if (replay[0] < replay[1]) {
+		List<String> pending = new ArrayList<>();
+		if (accountHash != null) {
+			pending.add(accountHash);
+		}
+		for (String other : sessionAccounts) {
+			if (!other.equals(accountHash)) {
+				pending.add(other);
+			}
+		}
+		for (String account : pending) {
+			OfferBatch fresh = offerLog.read(account, offerLog.deliveredOffset(account), batchSize);
+			if (!fresh.getEntries().isEmpty()) {
+				send(account, fresh, null);
+				return;
+			}
+		}
+		if (replay != null && replay[0] < replay[1]) {
 			OfferBatch old = offerLog.read(accountHash, replay[0], batchSize);
 			if (old.getEntries().isEmpty()) {
 				replay[0] = replay[1];
@@ -101,7 +117,7 @@ public class OfferStateSyncServiceImpl extends AbstractSyncService implements Of
 		api.postOfferStates(accountHash, batch,
 				result -> {
 					unauthorizedQuietTicks = 0;
-					batchSize = MAX_BATCH_STATES;
+					steppedPast(batch.size());
 					passed(accountHash, next, replay);
 					posting.set(false);
 					int fills = result != null ? result.getFills() : 0;
@@ -117,10 +133,12 @@ public class OfferStateSyncServiceImpl extends AbstractSyncService implements Of
 						log.warn("event=offer_state_sync_unauthorized held={}", batch.size());
 					} else if (rejected(failure)) {
 						if (batch.size() > 1) {
+							oneAtATime = batch.size();
 							batchSize = 1;
 						} else {
 							log.warn("event=offer_state_sync_rejected slot={} state={} status={}",
 									batch.get(0).getSlot(), batch.get(0).getState(), failure.getStatusCode());
+							steppedPast(1);
 							passed(accountHash, next, replay);
 						}
 					} else {
@@ -139,9 +157,12 @@ public class OfferStateSyncServiceImpl extends AbstractSyncService implements Of
 		}
 	}
 
+	private void steppedPast(int states) {
+		oneAtATime = Math.max(0, oneAtATime - states);
+		batchSize = oneAtATime > 0 ? 1 : MAX_BATCH_STATES;
+	}
+
 	private static boolean rejected(ApiFailure failure) {
-		int status = failure.getStatusCode();
-		return failure.getKind() == ApiFailure.Kind.HTTP && status >= 400 && status < 500
-				&& status != 408 && status != 429;
+		return failure.getKind() == ApiFailure.Kind.HTTP && failure.getStatusCode() == 422;
 	}
 }

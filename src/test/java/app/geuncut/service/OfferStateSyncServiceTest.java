@@ -322,10 +322,6 @@ public class OfferStateSyncServiceTest {
 
 		api.failNextPost = true;
 		flushTick.run();
-		assertEquals(1, log.deliveredOffset("acct-1"));
-
-		api.failNextPost = true;
-		flushTick.run();
 		assertEquals(1, api.postedBatches.size());
 		assertEquals(2, log.deliveredOffset("acct-1"));
 
@@ -333,6 +329,19 @@ public class OfferStateSyncServiceTest {
 		assertEquals(2, api.postedBatches.size());
 		assertEquals(3, api.postedBatches.get(1).get(0).getQuantityFilled());
 		assertEquals(3, log.deliveredOffset("acct-1"));
+	}
+
+	@Test
+	public void onlyAStateTheServerCallsInvalidIsSkipped() {
+		for (int status : new int[] { 400, 403, 404, 405, 409, 413 }) {
+			api.failure = ApiFailure.http(status, "not the state's fault");
+			record(status);
+			api.failNextPost = true;
+			flushTick.run();
+			flushTick.run();
+		}
+		assertEquals(0, api.postedBatches.stream().mapToInt(List::size).sum() - 6);
+		assertEquals(6, log.deliveredOffset("acct-1"));
 	}
 
 	@Test
@@ -363,5 +372,30 @@ public class OfferStateSyncServiceTest {
 
 		assertEquals(1, api.postedBatches.size());
 		assertEquals("acct-1", api.postedStatesAccounts.get(0));
+	}
+
+	@Test
+	public void switchingAccountsStillUploadsWhatTheLastOneLeft() {
+		ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
+		OfferStateSyncService svc = new OfferStateSyncServiceImpl(api, log, executor);
+		String[] current = { "acct-1" };
+		svc.start(() -> current[0]);
+		ArgumentCaptor<Runnable> tick = ArgumentCaptor.forClass(Runnable.class);
+		verify(executor).scheduleWithFixedDelay(tick.capture(), anyLong(), anyLong(), any(TimeUnit.class));
+		tick.getValue().run();
+
+		record(7);
+		current[0] = "acct-2";
+		tick.getValue().run();
+
+		assertEquals("acct-1", api.postedStatesAccounts.get(0));
+		assertEquals(1, log.deliveredOffset("acct-1"));
+	}
+
+	@Test
+	public void anAccountNeverLoggedInThisSessionIsNotUploaded() {
+		log.append("acct-9", buying(1));
+		flushTick.run();
+		assertTrue(api.postedBatches.isEmpty());
 	}
 }
