@@ -50,6 +50,9 @@ public class OfferTrackerImpl implements OfferTracker {
 			Instant now,
 			Consumer<OfferDelta> onFill) {
 		if (!loaded) {
+			if (state == GrandExchangeOfferState.EMPTY) {
+				return;
+			}
 			awaitingLoad.add(() -> onOfferChanged(slot, itemId, state, quantitySold, spent, totalQuantity, price, now, onFill));
 			return;
 		}
