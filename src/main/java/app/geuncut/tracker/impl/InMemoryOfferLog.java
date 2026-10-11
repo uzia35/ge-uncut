@@ -14,12 +14,13 @@ public class InMemoryOfferLog implements OfferLog {
 	private final Map<String, Long> delivered = new HashMap<>();
 
 	@Override
-	public synchronized void append(String accountHash, OfferState state) {
+	public synchronized boolean append(String accountHash, OfferState state) {
 		if (accountHash == null || state == null || state.getState() == null) {
-			return;
+			return false;
 		}
 		List<OfferState> entries = byAccount.computeIfAbsent(accountHash, key -> new ArrayList<>());
-		entries.add(state.toBuilder().seq((long) entries.size()).build());
+		entries.add(state.getSeq() != null ? state : state.toBuilder().seq((long) entries.size()).build());
+		return true;
 	}
 
 	@Override

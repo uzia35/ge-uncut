@@ -3,7 +3,7 @@ package app.geuncut.tracker;
 import app.geuncut.dto.OfferState;
 
 public interface OfferLog {
-	void append(String accountHash, OfferState state);
+	boolean append(String accountHash, OfferState state);
 
 	OfferBatch read(String accountHash, long offset, int maxEntries);
 

@@ -286,4 +286,82 @@ public class OfferStateSyncServiceTest {
 
 		assertTrue(booked.isEmpty());
 	}
+
+	@Test
+	public void newStatesGoAheadOfTheReplay() {
+		for (int i = 1; i <= 260; i++) {
+			record(i);
+		}
+		flushTick.run();
+		flushTick.run();
+
+		MockGeUncutApi next = new MockGeUncutApi();
+		Runnable tick = restarted(next);
+		record(999);
+		tick.run();
+
+		assertEquals(1, next.postedBatches.size());
+		assertEquals(999, next.postedBatches.get(0).get(0).getQuantityFilled());
+		tick.run();
+		assertEquals(1, next.postedBatches.get(1).get(0).getQuantityFilled());
+	}
+
+	@Test
+	public void aRejectedBatchIsRetriedOneStateAtATimeAndTheBadStateIsSkipped() {
+		record(1);
+		record(2);
+		record(3);
+		api.failure = ApiFailure.http(422, "bad state");
+		api.failNextPost = true;
+		flushTick.run();
+		assertEquals(0, log.deliveredOffset("acct-1"));
+
+		flushTick.run();
+		assertEquals(1, api.postedBatches.get(0).size());
+		assertEquals(1, log.deliveredOffset("acct-1"));
+
+		api.failNextPost = true;
+		flushTick.run();
+		assertEquals(1, log.deliveredOffset("acct-1"));
+
+		api.failNextPost = true;
+		flushTick.run();
+		assertEquals(1, api.postedBatches.size());
+		assertEquals(2, log.deliveredOffset("acct-1"));
+
+		flushTick.run();
+		assertEquals(2, api.postedBatches.size());
+		assertEquals(3, api.postedBatches.get(1).get(0).getQuantityFilled());
+		assertEquals(3, log.deliveredOffset("acct-1"));
+	}
+
+	@Test
+	public void aServerErrorIsRetriedWithoutSkipping() {
+		record(1);
+		api.failure = ApiFailure.http(500, "down");
+		api.failNextPost = true;
+		flushTick.run();
+		flushTick.run();
+
+		assertEquals(1, api.postedBatches.size());
+		assertEquals(1, api.postedBatches.get(0).get(0).getQuantityFilled());
+	}
+
+	@Test
+	public void statesLeftAtLogoutStillUploadForTheLastAccount() {
+		ScheduledExecutorService executor = mock(ScheduledExecutorService.class);
+		OfferStateSyncService svc = new OfferStateSyncServiceImpl(api, log, executor);
+		String[] current = { "acct-1" };
+		svc.start(() -> current[0]);
+		ArgumentCaptor<Runnable> tick = ArgumentCaptor.forClass(Runnable.class);
+		verify(executor).scheduleWithFixedDelay(tick.capture(), anyLong(), anyLong(), any(TimeUnit.class));
+		tick.getValue().run();
+
+		record(7);
+		current[0] = null;
+		tick.getValue().run();
+
+		assertEquals(1, api.postedBatches.size());
+		assertEquals("acct-1", api.postedStatesAccounts.get(0));
+	}
 }

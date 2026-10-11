@@ -100,27 +100,26 @@ public class FileOfferLogTest {
 	}
 
 	@Test
-	public void appendStampsTheOrdinalOfEveryEntry() {
+	public void appendKeepsTheRunAndLineItWasGiven() {
 		FileOfferLog log = new FileOfferLog(gson, dir);
-		log.append("acct-1", state(1));
-		log.append("acct-1", state(2));
-		log.append("acct-1", state(3));
+		log.append("acct-1", state(1).toBuilder().seq(41L).build());
+		new FileOfferLog(gson, dir).append("acct-1", state(2).toBuilder().installId("install-2").seq(0L).build());
 
-		List<OfferState> entries = log.read("acct-1", 0, 50).getEntries();
-		assertEquals(Long.valueOf(0), entries.get(0).getSeq());
-		assertEquals(Long.valueOf(1), entries.get(1).getSeq());
-		assertEquals(Long.valueOf(2), entries.get(2).getSeq());
+		List<OfferState> entries = new FileOfferLog(gson, dir).read("acct-1", 0, 50).getEntries();
+		assertEquals(Long.valueOf(41), entries.get(0).getSeq());
+		assertEquals("install-1", entries.get(0).getInstallId());
+		assertEquals(Long.valueOf(0), entries.get(1).getSeq());
+		assertEquals("install-2", entries.get(1).getInstallId());
 	}
 
 	@Test
-	public void theOrdinalKeepsCountingAfterAReopen() {
-		new FileOfferLog(gson, dir).append("acct-1", state(1));
-		FileOfferLog reopened = new FileOfferLog(gson, dir);
-		reopened.append("acct-1", state(2));
+	public void aFailedAppendSaysSo() throws Exception {
+		File blocked = new File(dir, "blocked");
+		Files.write(blocked.toPath(), new byte[0]);
+		FileOfferLog log = new FileOfferLog(gson, blocked);
 
-		List<OfferState> entries = reopened.read("acct-1", 0, 50).getEntries();
-		assertEquals(Long.valueOf(0), entries.get(0).getSeq());
-		assertEquals(Long.valueOf(1), entries.get(1).getSeq());
+		assertFalse(log.append("acct-1", state(1)));
+		assertTrue(new FileOfferLog(gson, dir).append("acct-1", state(1)));
 	}
 
 	@Test
@@ -178,11 +177,14 @@ public class FileOfferLogTest {
 	}
 
 	@Test
-	public void aCursorPastTheEndOfTheLogClampsToTheLog() throws Exception {
+	public void aCursorPastTheEndMeansTheLogWasRecreatedAndEverythingIsSent() throws Exception {
 		FileOfferLog log = new FileOfferLog(gson, dir);
 		log.append("acct-1", state(1));
 		Files.write(new File(dir, "offers-acct-1.sent").toPath(), "999999".getBytes(StandardCharsets.UTF_8));
 
+		assertEquals(0, log.deliveredOffset("acct-1"));
+		assertEquals(1, log.read("acct-1", log.deliveredOffset("acct-1"), 50).getEntries().size());
+		log.markDelivered("acct-1", log.read("acct-1", 0, 50).getNextOffset());
 		assertEquals(logFile("acct-1").length(), log.deliveredOffset("acct-1"));
 	}
 

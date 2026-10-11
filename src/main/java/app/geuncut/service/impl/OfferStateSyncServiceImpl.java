@@ -1,12 +1,16 @@
 package app.geuncut.service.impl;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.IntConsumer;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
+import app.geuncut.api.ApiFailure;
 import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.OfferState;
 import app.geuncut.service.OfferStateSyncService;
@@ -26,11 +30,11 @@ public class OfferStateSyncServiceImpl extends AbstractSyncService implements Of
 
 	private volatile BooleanSupplier sendGate = () -> true;
 	private volatile IntConsumer onFillsBooked = fills -> {};
-	private volatile boolean posting;
-	private String replayedAccount;
-	private long replayOffset;
-	private long replayLimit;
-	private int unauthorizedQuietTicks;
+	private final AtomicBoolean posting = new AtomicBoolean();
+	private final Map<String, long[]> replays = new ConcurrentHashMap<>();
+	private volatile String lastAccount;
+	private volatile int batchSize = MAX_BATCH_STATES;
+	private volatile int unauthorizedQuietTicks;
 
 	@Inject
 	public OfferStateSyncServiceImpl(GeUncutApi api, OfferLog offerLog, ScheduledExecutorService executor) {
@@ -52,64 +56,92 @@ public class OfferStateSyncServiceImpl extends AbstractSyncService implements Of
 	@Override
 	protected void onStop() {
 		flush();
-		replayedAccount = null;
 	}
 
 	@Override
 	protected void flush() {
-		String accountHash = accountHash();
-		if (accountHash == null || posting || !sendGate.getAsBoolean()) {
+		String current = accountHash();
+		if (current != null) {
+			lastAccount = current;
+		}
+		String accountHash = current != null ? current : lastAccount;
+		if (accountHash == null || posting.get() || !sendGate.getAsBoolean()) {
 			return;
 		}
 		if (unauthorizedQuietTicks > 0) {
 			unauthorizedQuietTicks--;
 			return;
 		}
-		if (!accountHash.equals(replayedAccount)) {
-			replayedAccount = accountHash;
-			replayOffset = 0;
-			replayLimit = offerLog.deliveredOffset(accountHash);
-			log.debug("event=offer_state_sync_replay_started account={} through={}", accountHash, replayLimit);
+		long[] replay = replays.computeIfAbsent(accountHash, key -> {
+			long through = offerLog.deliveredOffset(key);
+			log.debug("event=offer_state_sync_replay_started account={} through={}", key, through);
+			return new long[] { 0, through };
+		});
+		OfferBatch fresh = offerLog.read(accountHash, offerLog.deliveredOffset(accountHash), batchSize);
+		if (!fresh.getEntries().isEmpty()) {
+			send(accountHash, fresh, null);
+			return;
 		}
-		boolean replaying = replayOffset < replayLimit;
-		send(accountHash, replaying ? replayOffset : offerLog.deliveredOffset(accountHash), replaying);
+		if (replay[0] < replay[1]) {
+			OfferBatch old = offerLog.read(accountHash, replay[0], batchSize);
+			if (old.getEntries().isEmpty()) {
+				replay[0] = replay[1];
+				return;
+			}
+			send(accountHash, old, replay);
+		}
 	}
 
-	private void send(String accountHash, long offset, boolean replaying) {
-		OfferBatch chunk = offerLog.read(accountHash, offset, MAX_BATCH_STATES);
-		if (chunk.getEntries().isEmpty()) {
-			if (replaying) {
-				replayOffset = replayLimit;
-			}
+	private void send(String accountHash, OfferBatch chunk, long[] replay) {
+		if (!posting.compareAndSet(false, true)) {
 			return;
 		}
 		List<OfferState> batch = chunk.getEntries();
 		long next = chunk.getNextOffset();
-		posting = true;
 		api.postOfferStates(accountHash, batch,
 				result -> {
-					posting = false;
 					unauthorizedQuietTicks = 0;
-					if (replaying) {
-						replayOffset = next;
-					}
-					offerLog.markDelivered(accountHash, next);
+					batchSize = MAX_BATCH_STATES;
+					passed(accountHash, next, replay);
+					posting.set(false);
 					int fills = result != null ? result.getFills() : 0;
 					log.debug("event=offer_state_sync_flushed count={} replay={} offset={} fills={}",
-							batch.size(), replaying, next, fills);
+							batch.size(), replay != null, next, fills);
 					if (fills > 0) {
 						onFillsBooked.accept(fills);
 					}
 				},
 				failure -> {
-					posting = false;
 					if (failure.isUnauthorized()) {
 						unauthorizedQuietTicks = UNAUTHORIZED_QUIET_TICKS;
 						log.warn("event=offer_state_sync_unauthorized held={}", batch.size());
-						return;
+					} else if (rejected(failure)) {
+						if (batch.size() > 1) {
+							batchSize = 1;
+						} else {
+							log.warn("event=offer_state_sync_rejected slot={} state={} status={}",
+									batch.get(0).getSlot(), batch.get(0).getState(), failure.getStatusCode());
+							passed(accountHash, next, replay);
+						}
+					} else {
+						log.debug("event=offer_state_sync_retry count={} kind={} status={}",
+								batch.size(), failure.getKind(), failure.getStatusCode());
 					}
-					log.debug("event=offer_state_sync_retry count={} kind={} status={}",
-							batch.size(), failure.getKind(), failure.getStatusCode());
+					posting.set(false);
 				});
+	}
+
+	private void passed(String accountHash, long next, long[] replay) {
+		if (replay != null) {
+			replay[0] = next;
+		} else {
+			offerLog.markDelivered(accountHash, next);
+		}
+	}
+
+	private static boolean rejected(ApiFailure failure) {
+		int status = failure.getStatusCode();
+		return failure.getKind() == ApiFailure.Kind.HTTP && status >= 400 && status < 500
+				&& status != 408 && status != 429;
 	}
 }

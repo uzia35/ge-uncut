@@ -104,7 +104,7 @@ public class OfferStateRecorderTest {
 		assertEquals(1, entries.size());
 		OfferState recorded = entries.get(0);
 		assertEquals(Long.valueOf(0), recorded.getSeq());
-		assertEquals("install-1", recorded.getInstallId());
+		assertTrue(recorded.getInstallId().startsWith("install-1-"));
 		assertEquals(2, recorded.getSlot());
 		assertEquals("buying", recorded.getState());
 		assertEquals(TBOW, recorded.getItemId());
@@ -180,7 +180,8 @@ public class OfferStateRecorderTest {
 		assertEquals(0, entries.get(0).getSlot());
 		assertEquals(1, entries.get(1).getSlot());
 		assertEquals(2, entries.get(2).getSlot());
-		assertEquals("install-1", entries.get(0).getInstallId());
+		assertTrue(entries.get(0).getInstallId().startsWith("install-1-"));
+		assertEquals(Long.valueOf(2), entries.get(2).getSeq());
 		assertTrue(logged("-1").isEmpty());
 	}
 
@@ -219,12 +220,10 @@ public class OfferStateRecorderTest {
 		recorder.onLoggedIn(ACCOUNT);
 
 		List<OfferState> entries = logged(ACCT);
-		assertEquals(5, entries.size());
+		assertEquals(3, entries.size());
 		assertEquals(3, entries.get(0).getQuantityFilled());
 		assertEquals(0, entries.get(1).getQuantityFilled());
-		assertEquals(3, entries.get(2).getQuantityFilled());
-		assertEquals(0, entries.get(3).getQuantityFilled());
-		assertEquals(4, entries.get(4).getQuantityFilled());
+		assertEquals(4, entries.get(2).getQuantityFilled());
 		for (OfferState entry : entries) {
 			assertEquals("buying", entry.getState());
 		}
@@ -255,19 +254,72 @@ public class OfferStateRecorderTest {
 	}
 
 	@Test
-	public void theBuyLimitTimerIgnoresSellsNewOffersAndFirstSightings() {
+	public void theBuyLimitTimerIgnoresSellsAndFirstSightings() {
 		recorder.onLoggedIn(ACCOUNT);
 		recorder.record(buying(0, 5));
 		recorder.record(state(1, GrandExchangeOfferState.SELLING, TBOW, 1000, 10, 0, 0, T0));
 		recorder.record(state(1, GrandExchangeOfferState.SELLING, TBOW, 1000, 10, 4, 4000, T0));
-		recorder.record(state(2, GrandExchangeOfferState.BUYING, TBOW, 1000, 10, 2, 2000, T0));
-		recorder.record(state(2, GrandExchangeOfferState.BUYING, TBOW, 1100, 10, 5, 5500, T0));
-		recorder.record(state(3, GrandExchangeOfferState.BUYING, TBOW, 1000, 10, 2, 2000, T0));
-		recorder.record(state(3, GrandExchangeOfferState.BUYING, 561, 1000, 10, 5, 5000, T0));
-		recorder.record(state(4, GrandExchangeOfferState.BUYING, TBOW, 1000, 10, 2, 2000, T0));
-		recorder.record(state(4, GrandExchangeOfferState.BUYING, TBOW, 1000, 20, 5, 5000, T0));
 
 		verify(buyLimits, never()).recordBuy(anyInt(), anyInt(), any(Instant.class));
+	}
+
+	@Test
+	public void aNewBuyInAKnownSlotCountsEverythingItFilled() {
+		recorder.onLoggedIn(ACCOUNT);
+		recorder.record(state(2, GrandExchangeOfferState.BOUGHT, TBOW, 1000, 10, 10, 10_000, T0));
+		recorder.record(state(2, GrandExchangeOfferState.EMPTY, 0, 0, 0, 0, 0, T0));
+		recorder.record(state(2, GrandExchangeOfferState.BOUGHT, 561, 1000, 10, 7, 7000, T0));
+
+		verify(buyLimits).recordBuy(561, 7, T0);
+		verifyNoMoreInteractions(buyLimits);
+	}
+
+	@Test
+	public void theBuyLimitTimerKeepsCountingAcrossAHop() {
+		recorder.onLoggedIn(ACCOUNT);
+		recorder.record(buying(0, 2));
+		recorder.reset();
+		recorder.record(buying(0, 6));
+		recorder.onLoggedIn(ACCOUNT);
+
+		verify(buyLimits).recordBuy(TBOW, 4, T0);
+	}
+
+	@Test
+	public void theClockNeverRunsBackwardsWithinARun() {
+		recorder.onLoggedIn(ACCOUNT);
+		recorder.record(state(0, GrandExchangeOfferState.BUYING, TBOW, 1000, 10, 1, 1000, T0.plusSeconds(60)));
+		recorder.record(state(0, GrandExchangeOfferState.BUYING, TBOW, 1000, 10, 2, 2000, T0));
+
+		List<OfferState> entries = logged(ACCT);
+		assertEquals("2026-07-05T12:01:00Z", entries.get(1).getObservedAt());
+		assertEquals(Long.valueOf(1), entries.get(1).getSeq());
+	}
+
+	@Test
+	public void everyRunNumbersItsLinesUnderItsOwnId() {
+		recorder.onLoggedIn(ACCOUNT);
+		recorder.record(buying(0, 1));
+		OfferStateRecorder next = new OfferStateRecorder(log, buyLimits);
+		next.setInstallId("install-1");
+		next.onLoggedIn(ACCOUNT);
+		next.record(buying(0, 1));
+
+		List<OfferState> entries = logged(ACCT);
+		assertEquals(entries.get(0).getSeq(), entries.get(1).getSeq());
+		assertTrue(!entries.get(0).getInstallId().equals(entries.get(1).getInstallId()));
+	}
+
+	@Test
+	public void aStateThatFailedToSaveIsRecordedAgain() {
+		OfferLog flaky = mock(OfferLog.class);
+		when(flaky.append(any(), any())).thenReturn(false, true);
+		OfferStateRecorder withFlakyLog = new OfferStateRecorder(flaky, buyLimits);
+		withFlakyLog.onLoggedIn(ACCOUNT);
+		withFlakyLog.record(buying(0, 3));
+		withFlakyLog.record(buying(0, 3));
+
+		verify(flaky, org.mockito.Mockito.times(2)).append(any(), any());
 	}
 
 	@Test

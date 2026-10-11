@@ -13,10 +13,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import app.geuncut.dto.OfferState;
@@ -31,7 +29,6 @@ public class FileOfferLog implements OfferLog {
 	private final File dir;
 	private final Object lock = new Object();
 	private final Set<String> prepared = new HashSet<>();
-	private final Map<String, Long> entryCounts = new HashMap<>();
 
 	public FileOfferLog(Gson gson, File dir) {
 		this.gson = gson;
@@ -47,9 +44,9 @@ public class FileOfferLog implements OfferLog {
 	}
 
 	@Override
-	public void append(String accountHash, OfferState state) {
+	public boolean append(String accountHash, OfferState state) {
 		if (accountHash == null || state == null || state.getState() == null) {
-			return;
+			return false;
 		}
 		synchronized (lock) {
 			prepare(accountHash);
@@ -58,14 +55,14 @@ public class FileOfferLog implements OfferLog {
 			if (parent != null) {
 				parent.mkdirs();
 			}
-			long seq = entryCount(accountHash);
-			OfferState numbered = state.toBuilder().seq(seq).build();
 			try {
-				Files.write(file.toPath(), (gson.toJson(numbered) + "\n").getBytes(StandardCharsets.UTF_8),
+				Files.write(file.toPath(), (gson.toJson(state) + "\n").getBytes(StandardCharsets.UTF_8),
 						StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-				entryCounts.put(accountHash, seq + 1);
+				return true;
 			} catch (IOException e) {
+				prepared.remove(accountHash);
 				log.warn("event=offer_log_append_failed account={} error={}", accountHash, e.getMessage());
+				return false;
 			}
 		}
 	}
@@ -122,7 +119,7 @@ public class FileOfferLog implements OfferLog {
 				String raw = new String(Files.readAllBytes(cursor.toPath()), StandardCharsets.UTF_8).trim();
 				long offset = Long.parseLong(raw);
 				long size = fileFor(accountHash).length();
-				return offset < 0 ? 0 : Math.min(offset, size);
+				return offset < 0 || offset > size ? 0 : offset;
 			} catch (IOException | NumberFormatException unusable) {
 				log.warn("event=offer_log_cursor_unreadable account={}", accountHash);
 				return 0;
@@ -175,30 +172,6 @@ public class FileOfferLog implements OfferLog {
 			log.warn("event=offer_log_bad_line account={}", accountHash);
 			return null;
 		}
-	}
-
-	private long entryCount(String accountHash) {
-		Long known = entryCounts.get(accountHash);
-		if (known != null) {
-			return known;
-		}
-		long counted = 0;
-		File file = fileFor(accountHash);
-		if (file.isFile()) {
-			try (InputStream raw = new FileInputStream(file);
-					BufferedInputStream in = new BufferedInputStream(raw)) {
-				int read;
-				while ((read = in.read()) >= 0) {
-					if (read == '\n') {
-						counted++;
-					}
-				}
-			} catch (IOException e) {
-				log.warn("event=offer_log_count_failed account={} error={}", accountHash, e.getMessage());
-			}
-		}
-		entryCounts.put(accountHash, counted);
-		return counted;
 	}
 
 	private void prepare(String accountHash) {

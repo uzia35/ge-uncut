@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 
@@ -19,10 +20,12 @@ import net.runelite.api.GrandExchangeOfferState;
 public class OfferStateRecorder {
 	private final OfferLog offerLog;
 	private final BuyLimitTracker buyLimits;
-	private final Map<Integer, OfferState> lastBySlot = new HashMap<>();
+	private final Map<String, Map<Integer, OfferState>> lastBySlot = new HashMap<>();
 	private final List<OfferState> held = new ArrayList<>();
 	private String account;
-	private String installId;
+	private String runId;
+	private long nextSeq;
+	private Instant lastObserved;
 
 	@Inject
 	public OfferStateRecorder(OfferLog offerLog, BuyLimitTracker buyLimits) {
@@ -93,7 +96,9 @@ public class OfferStateRecorder {
 	}
 
 	public synchronized void setInstallId(String installId) {
-		this.installId = installId;
+		String run = UUID.randomUUID().toString().substring(0, 8);
+		this.runId = installId != null ? installId + "-" + run : run;
+		this.nextSeq = 0;
 	}
 
 	public synchronized void record(OfferState state) {
@@ -112,9 +117,6 @@ public class OfferStateRecorder {
 		if (known == null) {
 			return;
 		}
-		if (!known.equals(account)) {
-			lastBySlot.clear();
-		}
 		account = known;
 		List<OfferState> early = new ArrayList<>(held);
 		held.clear();
@@ -127,27 +129,44 @@ public class OfferStateRecorder {
 	public synchronized void reset() {
 		account = null;
 		held.clear();
-		lastBySlot.clear();
 	}
 
 	private void write(OfferState state) {
-		OfferState last = lastBySlot.get(state.getSlot());
+		Map<Integer, OfferState> slots = lastBySlot.computeIfAbsent(account, key -> new HashMap<>());
+		OfferState last = slots.get(state.getSlot());
 		if (sameState(last, state)) {
 			return;
 		}
-		lastBySlot.put(state.getSlot(), state);
-		trackBuyLimit(last, state);
-		offerLog.append(account, state.toBuilder().installId(installId).build());
+		OfferState stamped = state.toBuilder()
+				.installId(runId)
+				.seq(nextSeq++)
+				.observedAt(notBefore(Instant.parse(state.getObservedAt())).toString())
+				.build();
+		if (!offerLog.append(account, stamped)) {
+			return;
+		}
+		slots.put(state.getSlot(), stamped);
+		trackBuyLimit(last, stamped);
 		log.debug("event=offer_state_recorded slot={} state={} item={} filled={} total={}",
 				state.getSlot(), state.getState(), state.getItemId(), state.getQuantityFilled(),
 				state.getQuantityTotal());
 	}
 
+	private Instant notBefore(Instant observed) {
+		if (lastObserved != null && observed.isBefore(lastObserved)) {
+			return lastObserved;
+		}
+		lastObserved = observed;
+		return observed;
+	}
+
 	private void trackBuyLimit(OfferState last, OfferState state) {
-		if (last == null || !"buy".equals(state.getSide()) || !sameOffer(last, state)) {
+		if (last == null || !"buy".equals(state.getSide())) {
 			return;
 		}
-		int rise = state.getQuantityFilled() - last.getQuantityFilled();
+		int rise = sameOffer(last, state) && state.getQuantityFilled() >= last.getQuantityFilled()
+				? state.getQuantityFilled() - last.getQuantityFilled()
+				: state.getQuantityFilled();
 		if (rise > 0) {
 			buyLimits.recordBuy(state.getItemId(), rise, Instant.parse(state.getObservedAt()));
 		}
