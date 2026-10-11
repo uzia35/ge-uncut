@@ -9,11 +9,12 @@ import app.geuncut.api.GeUncutApi;
 import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
-import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.ItemPrice;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
+import app.geuncut.dto.OfferState;
+import app.geuncut.dto.OfferStatesResult;
 import app.geuncut.dto.PositionsResponse;
 import app.geuncut.dto.ScanRequest;
 
@@ -33,7 +34,9 @@ class MockGeUncutApi implements GeUncutApi {
 	Movers moversResponse;
 	List<OfferPlacement> placementsResponse;
 
-	final List<List<GeTradeEvent>> postedBatches = new ArrayList<>();
+	final List<List<OfferState>> postedBatches = new ArrayList<>();
+	final List<String> postedStatesAccounts = new ArrayList<>();
+	int fillsBooked;
 	final List<List<GeOffer>> postedOffers = new ArrayList<>();
 	final List<List<GeHistoryRow>> postedHistory = new ArrayList<>();
 	final List<Long> archivedPositions = new ArrayList<>();
@@ -130,7 +133,7 @@ class MockGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError) {
+	public void postOfferStates(String accountHash, List<OfferState> states, Consumer<OfferStatesResult> onSuccess, Consumer<ApiFailure> onError) {
 		if (deferNextPost) {
 			deferNextPost = false;
 			pendingPostFailure = () -> onError.accept(failure);
@@ -141,8 +144,9 @@ class MockGeUncutApi implements GeUncutApi {
 			onError.accept(failure);
 			return;
 		}
-		postedBatches.add(new ArrayList<>(events));
-		onSuccess.run();
+		postedStatesAccounts.add(accountHash);
+		postedBatches.add(new ArrayList<>(states));
+		onSuccess.accept(OfferStatesResult.builder().fills(fillsBooked).build());
 	}
 
 	void firePendingPostFailure() {

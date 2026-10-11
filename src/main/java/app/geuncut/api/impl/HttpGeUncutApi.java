@@ -17,12 +17,13 @@ import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
-import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.ItemPrice;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
 import app.geuncut.dto.OfferPlacementsResponse;
+import app.geuncut.dto.OfferState;
+import app.geuncut.dto.OfferStatesResult;
 import app.geuncut.dto.PositionsResponse;
 import app.geuncut.dto.ScanRequest;
 import com.google.gson.Gson;
@@ -231,19 +232,23 @@ public class HttpGeUncutApi implements GeUncutApi {
 	}
 
 	@Override
-	public void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError) {
-		HttpUrl url = resolve("/api/plugin/ge-events");
+	public void postOfferStates(String accountHash, List<OfferState> states, Consumer<OfferStatesResult> onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/plugin/offer-states");
 		if (url == null) {
 			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
 			return;
 		}
 		JsonObject payload = new JsonObject();
-		payload.add("events", gson.toJsonTree(events));
+		payload.addProperty("account_hash", accountHash);
+		payload.add("states", gson.toJsonTree(states));
 		Request request = new Request.Builder()
 				.url(url)
 				.post(RequestBody.create(JSON, payload.toString()))
 				.build();
-		enqueue(request, onError, body -> onSuccess.run());
+		enqueue(request, onError, body -> {
+			OfferStatesResult result = gson.fromJson(body, OfferStatesResult.class);
+			onSuccess.accept(result != null ? result : OfferStatesResult.builder().fills(0).build());
+		});
 	}
 
 	@Override

@@ -6,11 +6,12 @@ import java.util.List;
 import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
-import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.ItemPrice;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
+import app.geuncut.dto.OfferState;
+import app.geuncut.dto.OfferStatesResult;
 import app.geuncut.dto.PositionsResponse;
 import app.geuncut.dto.ScanRequest;
 
@@ -33,7 +34,7 @@ public interface GeUncutApi {
 
 	void fetchMovers(Consumer<Movers> onSuccess, Consumer<ApiFailure> onError);
 
-	void postGeEvents(List<GeTradeEvent> events, Runnable onSuccess, Consumer<ApiFailure> onError);
+	void postOfferStates(String accountHash, List<OfferState> states, Consumer<OfferStatesResult> onSuccess, Consumer<ApiFailure> onError);
 
 	void postOffers(String accountHash, List<GeOffer> offers, String syncedAt, Runnable onSuccess, Consumer<ApiFailure> onError);
 
