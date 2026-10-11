@@ -406,6 +406,44 @@ public class OfferTrackerTest {
 	}
 
 	@Test
+	public void theLoginClearingOfAPartlyFilledOfferIsNotAFill() {
+		InMemorySnapshotStore store = new InMemorySnapshotStore();
+		OfferTracker durable = new OfferTrackerImpl(store);
+		durable.loadFor("acct-1");
+		change(durable, 3, 22124, BUYING, 0, 0, 4_800, 20_671);
+		change(durable, 3, 22124, BUYING, 2_723, 2_723L * 20_671, 4_800, 20_671);
+
+		List<OfferDelta> fills = new ArrayList<>();
+		for (int login = 0; login < 3; login++) {
+			durable.reset();
+			durable.onOfferChanged(3, 0, EMPTY, 0, 0, 0, 0, T0, fills::add);
+			durable.loadFor("acct-1");
+			durable.onOfferChanged(3, 22124, BUYING, 2_723, 2_723L * 20_671, 4_800, 20_671, T0, fills::add);
+		}
+
+		assertTrue(fills.isEmpty());
+		assertEquals(2_723, store.load("acct-1").get(3).getQuantitySold());
+	}
+
+	@Test
+	public void anOfferCollectedAfterTheLoginStillBooksItsResidual() {
+		InMemorySnapshotStore store = new InMemorySnapshotStore();
+		OfferTracker durable = new OfferTrackerImpl(store);
+		durable.loadFor("acct-1");
+		change(durable, 7, 22124, SELLING, 0, 0, 2_723, 23_000);
+		change(durable, 7, 22124, SELLING, 1_603, 1_603L * 23_000, 2_723, 23_000);
+
+		durable.reset();
+		durable.onOfferChanged(7, 0, EMPTY, 0, 0, 0, 0, T0, null);
+		durable.loadFor("acct-1");
+
+		Optional<OfferDelta> residual = change(durable, 7, 0, EMPTY, 0, 0, 0, 0);
+		assertTrue(residual.isPresent());
+		assertEquals(1_120, residual.get().getQuantity());
+		assertEquals(2_723, residual.get().getCumulativeQuantitySold());
+	}
+
+	@Test
 	public void eventsHeldForALoginThatNeverLoadsAreDroppedOnTheNextReset() {
 		List<OfferDelta> fills = new ArrayList<>();
 		tracker.reset();

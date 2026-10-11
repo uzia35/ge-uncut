@@ -57,6 +57,7 @@ import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.FontID;
 import net.runelite.api.GameState;
+import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.VarClientStr;
@@ -389,6 +390,9 @@ public class GeUncutPlugin extends Plugin {
 	@Subscribe
 	public void onGrandExchangeOfferChanged(GrandExchangeOfferChanged event) {
 		GrandExchangeOffer offer = event.getOffer();
+		if (offer.getState() == GrandExchangeOfferState.EMPTY && client.getGameState() != GameState.LOGGED_IN) {
+			return;
+		}
 		Instant now = Instant.now();
 		offerTracker.onOfferChanged(
 				event.getSlot(),
