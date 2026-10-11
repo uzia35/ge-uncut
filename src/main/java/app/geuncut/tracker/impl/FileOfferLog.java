@@ -13,43 +13,40 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
-import app.geuncut.dto.GeTradeEvent;
-import app.geuncut.tracker.FillBatch;
-import app.geuncut.tracker.FillLog;
+import app.geuncut.dto.OfferState;
+import app.geuncut.tracker.OfferBatch;
+import app.geuncut.tracker.OfferLog;
 import com.google.gson.Gson;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class FileFillLog implements FillLog {
+public class FileOfferLog implements OfferLog {
 	private final Gson gson;
 	private final File dir;
 	private final Object lock = new Object();
 	private final Set<String> prepared = new HashSet<>();
-	private final Map<String, Long> entryCounts = new HashMap<>();
 
-	public FileFillLog(Gson gson, File dir) {
+	public FileOfferLog(Gson gson, File dir) {
 		this.gson = gson;
 		this.dir = dir;
 	}
 
 	private File fileFor(String accountHash) {
-		return new File(dir, "fills-" + accountHash + ".jsonl");
+		return new File(dir, "offers-" + accountHash + ".jsonl");
 	}
 
 	private File cursorFor(String accountHash) {
-		return new File(dir, "fills-" + accountHash + ".sent");
+		return new File(dir, "offers-" + accountHash + ".sent");
 	}
 
 	@Override
-	public void append(String accountHash, GeTradeEvent event) {
-		if (accountHash == null || event == null || event.getIdempotencyKey() == null) {
-			return;
+	public boolean append(String accountHash, OfferState state) {
+		if (accountHash == null || state == null || state.getState() == null) {
+			return false;
 		}
 		synchronized (lock) {
 			prepare(accountHash);
@@ -58,30 +55,30 @@ public class FileFillLog implements FillLog {
 			if (parent != null) {
 				parent.mkdirs();
 			}
-			long seq = entryCount(accountHash);
-			GeTradeEvent numbered = event.toBuilder().seq(seq).build();
 			try {
-				Files.write(file.toPath(), (gson.toJson(numbered) + "\n").getBytes(StandardCharsets.UTF_8),
+				Files.write(file.toPath(), (gson.toJson(state) + "\n").getBytes(StandardCharsets.UTF_8),
 						StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-				entryCounts.put(accountHash, seq + 1);
+				return true;
 			} catch (IOException e) {
-				log.warn("event=fill_log_append_failed account={} error={}", accountHash, e.getMessage());
+				prepared.remove(accountHash);
+				log.warn("event=offer_log_append_failed account={} error={}", accountHash, e.getMessage());
+				return false;
 			}
 		}
 	}
 
 	@Override
-	public FillBatch read(String accountHash, long offset, int maxEntries) {
-		List<GeTradeEvent> entries = new ArrayList<>();
+	public OfferBatch read(String accountHash, long offset, int maxEntries) {
+		List<OfferState> entries = new ArrayList<>();
 		if (accountHash == null || maxEntries <= 0) {
-			return new FillBatch(entries, Math.max(0, offset));
+			return new OfferBatch(entries, Math.max(0, offset));
 		}
 		synchronized (lock) {
 			prepare(accountHash);
 			File file = fileFor(accountHash);
 			long start = Math.max(0, offset);
 			if (!file.isFile() || start >= file.length()) {
-				return new FillBatch(entries, start);
+				return new OfferBatch(entries, start);
 			}
 			long position = start;
 			try (InputStream raw = new FileInputStream(file);
@@ -95,16 +92,16 @@ public class FileFillLog implements FillLog {
 						continue;
 					}
 					position += line.size();
-					GeTradeEvent event = parse(accountHash, line.toString("UTF-8"));
+					OfferState state = parse(accountHash, line.toString("UTF-8"));
 					line.reset();
-					if (event != null) {
-						entries.add(event);
+					if (state != null) {
+						entries.add(state);
 					}
 				}
 			} catch (IOException e) {
-				log.warn("event=fill_log_read_failed account={} error={}", accountHash, e.getMessage());
+				log.warn("event=offer_log_read_failed account={} error={}", accountHash, e.getMessage());
 			}
-			return new FillBatch(entries, position);
+			return new OfferBatch(entries, position);
 		}
 	}
 
@@ -122,9 +119,9 @@ public class FileFillLog implements FillLog {
 				String raw = new String(Files.readAllBytes(cursor.toPath()), StandardCharsets.UTF_8).trim();
 				long offset = Long.parseLong(raw);
 				long size = fileFor(accountHash).length();
-				return offset < 0 ? 0 : Math.min(offset, size);
+				return offset < 0 || offset > size ? 0 : offset;
 			} catch (IOException | NumberFormatException unusable) {
-				log.warn("event=fill_log_cursor_unreadable account={}", accountHash);
+				log.warn("event=offer_log_cursor_unreadable account={}", accountHash);
 				return 0;
 			}
 		}
@@ -154,7 +151,7 @@ public class FileFillLog implements FillLog {
 					Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
 				}
 			} catch (IOException e) {
-				log.warn("event=fill_log_cursor_write_failed account={} error={}", accountHash, e.getMessage());
+				log.warn("event=offer_log_cursor_write_failed account={} error={}", accountHash, e.getMessage());
 				try {
 					Files.deleteIfExists(tmp);
 				} catch (IOException ignored) {
@@ -163,42 +160,18 @@ public class FileFillLog implements FillLog {
 		}
 	}
 
-	private GeTradeEvent parse(String accountHash, String line) {
+	private OfferState parse(String accountHash, String line) {
 		String trimmed = line.trim();
 		if (trimmed.isEmpty()) {
 			return null;
 		}
 		try {
-			GeTradeEvent event = gson.fromJson(trimmed, GeTradeEvent.class);
-			return event != null && event.getIdempotencyKey() != null ? event : null;
+			OfferState state = gson.fromJson(trimmed, OfferState.class);
+			return state != null && state.getState() != null ? state : null;
 		} catch (RuntimeException malformed) {
-			log.warn("event=fill_log_bad_line account={}", accountHash);
+			log.warn("event=offer_log_bad_line account={}", accountHash);
 			return null;
 		}
-	}
-
-	private long entryCount(String accountHash) {
-		Long known = entryCounts.get(accountHash);
-		if (known != null) {
-			return known;
-		}
-		long counted = 0;
-		File file = fileFor(accountHash);
-		if (file.isFile()) {
-			try (InputStream raw = new FileInputStream(file);
-					BufferedInputStream in = new BufferedInputStream(raw)) {
-				int read;
-				while ((read = in.read()) >= 0) {
-					if (read == '\n') {
-						counted++;
-					}
-				}
-			} catch (IOException e) {
-				log.warn("event=fill_log_count_failed account={} error={}", accountHash, e.getMessage());
-			}
-		}
-		entryCounts.put(accountHash, counted);
-		return counted;
 	}
 
 	private void prepare(String accountHash) {
@@ -215,14 +188,14 @@ public class FileFillLog implements FillLog {
 				return;
 			}
 		} catch (IOException e) {
-			log.warn("event=fill_log_tail_unreadable account={} error={}", accountHash, e.getMessage());
+			log.warn("event=offer_log_tail_unreadable account={} error={}", accountHash, e.getMessage());
 			return;
 		}
 		try {
 			Files.write(file.toPath(), "\n".getBytes(StandardCharsets.UTF_8), StandardOpenOption.APPEND);
-			log.warn("event=fill_log_torn_line_sealed account={}", accountHash);
+			log.warn("event=offer_log_torn_line_sealed account={}", accountHash);
 		} catch (IOException e) {
-			log.warn("event=fill_log_seal_failed account={} error={}", accountHash, e.getMessage());
+			log.warn("event=offer_log_seal_failed account={} error={}", accountHash, e.getMessage());
 		}
 	}
 

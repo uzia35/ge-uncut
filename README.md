@@ -37,7 +37,7 @@ Fully usable without an account. Linking adds members-item flips and cross-devic
 
 **Nothing is sent to any server until you link an account.** Unlinked, the plugin only fetches the public flip list (the same anonymous scan the website serves) and does its buy-limit and working-offers tracking locally.
 
-Once linked, the plugin talks to `geuncut.app` only, over HTTPS, using your personal token. It sends your non-reversible OSRS account hash (used to attribute your offers, not your username), your own GE offer fills, and a snapshot of your current GE slots. No credentials are ever transmitted. Every endpoint lives under `https://geuncut.app/api/plugin/`: `flips`, `positions`, `ge-events`, `offers`, `link/start`, `link/poll`, and `link` (unlink).
+Once linked, the plugin talks to `geuncut.app` only, over HTTPS, using your personal token. It sends your non-reversible OSRS account hash (used to attribute your offers, not your username), your own GE offer states as the game reports them, and a snapshot of your current GE slots. No credentials are ever transmitted. Every endpoint lives under `https://geuncut.app/api/plugin/`: `flips`, `positions`, `offer-states`, `offers`, `link/start`, `link/poll`, and `link` (unlink).
 
 ## Building
 

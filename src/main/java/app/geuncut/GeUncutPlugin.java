@@ -21,27 +21,23 @@ import app.geuncut.api.impl.HttpGeUncutApi;
 import app.geuncut.config.GeUncutConfig;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.ItemPrice;
-import app.geuncut.model.OfferDelta;
 import app.geuncut.tracker.OfferAutofill;
 import app.geuncut.tracker.PriceHint;
 import app.geuncut.service.FlipsService;
 import app.geuncut.service.impl.FlipsServiceImpl;
 import app.geuncut.service.impl.LinkServiceImpl;
+import app.geuncut.service.impl.OfferStateSyncServiceImpl;
 import app.geuncut.service.impl.OfferSyncServiceImpl;
 import app.geuncut.service.impl.PositionsServiceImpl;
-import app.geuncut.service.impl.TradeSyncServiceImpl;
 import app.geuncut.service.LinkService;
+import app.geuncut.service.OfferStateSyncService;
 import app.geuncut.service.OfferSyncService;
 import app.geuncut.service.PositionsService;
-import app.geuncut.service.TradeSyncService;
 import app.geuncut.tracker.BuyLimitTracker;
-import app.geuncut.tracker.FillLog;
-import app.geuncut.tracker.impl.FileFillLog;
+import app.geuncut.tracker.OfferLog;
+import app.geuncut.tracker.OfferStateRecorder;
+import app.geuncut.tracker.impl.FileOfferLog;
 import app.geuncut.tracker.impl.BuyLimitTrackerImpl;
-import app.geuncut.tracker.impl.ConfigSnapshotStore;
-import app.geuncut.tracker.impl.OfferTrackerImpl;
-import app.geuncut.tracker.OfferTracker;
-import app.geuncut.tracker.SnapshotStore;
 import app.geuncut.ui.FlipsPanel;
 import app.geuncut.ui.ItemIconLoader;
 import app.geuncut.ui.OfferPriceOverlay;
@@ -95,17 +91,15 @@ public class GeUncutPlugin extends Plugin {
 		binder.bind(FlipsService.class).to(FlipsServiceImpl.class);
 		binder.bind(PositionsService.class).to(PositionsServiceImpl.class);
 		binder.bind(LinkService.class).to(LinkServiceImpl.class);
-		binder.bind(TradeSyncService.class).to(TradeSyncServiceImpl.class);
+		binder.bind(OfferStateSyncService.class).to(OfferStateSyncServiceImpl.class);
 		binder.bind(OfferSyncService.class).to(OfferSyncServiceImpl.class);
-		binder.bind(OfferTracker.class).to(OfferTrackerImpl.class);
-		binder.bind(SnapshotStore.class).to(ConfigSnapshotStore.class);
 		binder.bind(BuyLimitTracker.class).to(BuyLimitTrackerImpl.class);
 	}
 
 	@Provides
 	@Singleton
-	FillLog provideFillLog(Gson gson) {
-		return new FileFillLog(gson, new File(RuneLite.RUNELITE_DIR, "geuncut"));
+	OfferLog provideOfferLog(Gson gson) {
+		return new FileOfferLog(gson, new File(RuneLite.RUNELITE_DIR, "geuncut"));
 	}
 
 	@Inject
@@ -148,13 +142,13 @@ public class GeUncutPlugin extends Plugin {
 	private LinkService link;
 
 	@Inject
-	private TradeSyncService tradeSync;
+	private OfferStateSyncService offerStateSync;
 
 	@Inject
 	private OfferSyncService offerSync;
 
 	@Inject
-	private OfferTracker offerTracker;
+	private OfferStateRecorder offerRecorder;
 
 	@Inject
 	private BuyLimitTracker buyLimits;
@@ -216,18 +210,18 @@ public class GeUncutPlugin extends Plugin {
 		overlayManager.add(offerOverlay);
 		mouseManager.registerMouseListener(offerMouseListener);
 
-		tradeSync.setSendGate(this::linked);
-		tradeSync.setInstallId(installId());
-		tradeSync.start(this::trackedAccount);
+		configManager.unsetConfiguration(GeUncutConfig.GROUP, "offerBaselines");
+		offerRecorder.setInstallId(installId());
+		offerStateSync.setSendGate(this::linked);
+		offerStateSync.setOnFillsBooked(this::onFillsBooked);
+		offerStateSync.start(this::trackedAccount);
 		offerSync.start(() -> linked() ? Long.toString(client.getAccountHash()) : null);
 		if (linked()) {
 			startPositionsPoll();
 		}
+		offerRecorder.reset();
 		if (client.getGameState() == GameState.LOGGED_IN) {
-			long hash = client.getAccountHash();
-			offerTracker.loadFor(hash != -1 ? Long.toString(hash) : null);
-		} else {
-			offerTracker.reset();
+			offerRecorder.onLoggedIn(client.getAccountHash());
 		}
 		refreshFlips();
 		seedOfferPlacements();
@@ -333,14 +327,14 @@ public class GeUncutPlugin extends Plugin {
 	protected void shutDown() {
 		link.cancel();
 		stopPositionsPoll();
-		tradeSync.stop();
+		offerStateSync.stop();
 		offerSync.stop();
 		overlayManager.remove(offerOverlay);
 		mouseManager.unregisterMouseListener(offerMouseListener);
 		offerOverlay.clear();
 		clientToolbar.removeNavigation(navButton);
 		clientThread.invoke(() -> {
-			offerTracker.reset();
+			offerRecorder.reset();
 			buyLimits.reset();
 		});
 	}
@@ -353,12 +347,12 @@ public class GeUncutPlugin extends Plugin {
 			offerReplayPending = true;
 		}
 		if (current == GameState.LOGIN_SCREEN || current == GameState.HOPPING) {
-			offerTracker.reset();
+			offerRecorder.reset();
 		}
 		if (current == GameState.LOGGED_IN) {
 			long hash = client.getAccountHash();
 			String account = hash != -1 ? Long.toString(hash) : null;
-			offerTracker.loadFor(account);
+			offerRecorder.onLoggedIn(hash);
 			SwingUtilities.invokeLater(() -> {
 				panel.setGameActive(true);
 				panel.setLoggedInAccount(account);
@@ -390,20 +384,11 @@ public class GeUncutPlugin extends Plugin {
 	@Subscribe
 	public void onGrandExchangeOfferChanged(GrandExchangeOfferChanged event) {
 		GrandExchangeOffer offer = event.getOffer();
-		if (offer.getState() == GrandExchangeOfferState.EMPTY && client.getGameState() != GameState.LOGGED_IN) {
+		if (!shouldRecord(offer.getState(), client.getGameState())) {
 			return;
 		}
 		Instant now = Instant.now();
-		offerTracker.onOfferChanged(
-				event.getSlot(),
-				offer.getItemId(),
-				offer.getState(),
-				offer.getQuantitySold(),
-				offer.getSpent(),
-				offer.getTotalQuantity(),
-				offer.getPrice(),
-				now,
-				this::onFill);
+		offerRecorder.record(OfferStateRecorder.stateOf(event.getSlot(), offer, now));
 		offerSync.record(
 				event.getSlot(),
 				offer.getItemId(),
@@ -691,13 +676,12 @@ public class GeUncutPlugin extends Plugin {
 		return !config.apiToken().trim().isEmpty();
 	}
 
-	private void onFill(OfferDelta delta) {
-		log.debug("event=fill_observed item={} side={} quantity={} price_each={} slot={}",
-				delta.getItemId(), delta.getSide(), delta.getQuantity(), delta.getPriceEach(), delta.getSlot());
-		if (delta.getSide() == OfferDelta.Side.BUY) {
-			buyLimits.recordBuy(delta.getItemId(), delta.getQuantity(), delta.getOccurredAt());
-		}
-		tradeSync.accept(delta);
+	static boolean shouldRecord(GrandExchangeOfferState offerState, GameState gameState) {
+		return offerState != GrandExchangeOfferState.EMPTY || gameState == GameState.LOGGED_IN;
+	}
+
+	private void onFillsBooked(int fills) {
+		log.debug("event=fills_booked count={}", fills);
 		if (linked()) {
 			executor.schedule(this::refreshPositions, POST_FILL_REFRESH_SECONDS, TimeUnit.SECONDS);
 		}

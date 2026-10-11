@@ -1,6 +1,7 @@
 package app.geuncut.api;
 
 import java.net.HttpURLConnection;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -15,13 +16,16 @@ import app.geuncut.dto.Flip;
 import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
-import app.geuncut.dto.GeTradeEvent;
 import app.geuncut.dto.ItemPrice;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
+import app.geuncut.dto.OfferState;
+import app.geuncut.dto.OfferStatesResult;
 import app.geuncut.dto.PositionsResponse;
 import app.geuncut.dto.ScanRequest;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -312,35 +316,83 @@ public class HttpGeUncutApiTest {
 	}
 
 	@Test
-	public void postGeEventsSendsSnakeCaseFieldsAndAuthenticates() throws Exception {
-		server.enqueue(new MockResponse().setBody("{}"));
+	public void postOfferStatesSendsTheAccountAndStatesAndReadsBookedFills() throws Exception {
+		server.enqueue(new MockResponse().setBody("{\"accepted\":2,\"fills\":3}"));
 
-		List<GeTradeEvent> events = Collections.singletonList(GeTradeEvent.builder()
-				.accountHash("acct-1")
-				.idempotencyKey("acct-1:0:20997:BUY:3:1751719200000")
-				.itemId(20997)
-				.side("buy")
-				.quantity(3)
-				.priceEach(1480000000)
-				.slot(0)
-				.occurredAt("2026-07-05T12:00:00Z")
-				.build());
+		List<OfferState> states = Arrays.asList(
+				OfferState.builder()
+						.seq(7L)
+						.installId("install-1")
+						.slot(2)
+						.state("buying")
+						.itemId(20997)
+						.side("buy")
+						.priceEach(3_000_000_001L)
+						.quantityTotal(10)
+						.quantityFilled(4)
+						.spent(12_000_000_004L)
+						.observedAt("2026-07-05T12:00:00Z")
+						.build(),
+				OfferState.builder()
+						.seq(8L)
+						.installId("install-1")
+						.slot(3)
+						.state("empty")
+						.observedAt("2026-07-05T12:00:01Z")
+						.build());
 
+		AtomicReference<OfferStatesResult> received = new AtomicReference<>();
 		CountDownLatch done = new CountDownLatch(1);
-		api.postGeEvents(events, done::countDown, error -> done.countDown());
+		api.postOfferStates("acct-1", states, result -> {
+			received.set(result);
+			done.countDown();
+		}, error -> done.countDown());
 
 		assertTrue(done.await(2, TimeUnit.SECONDS));
+		assertEquals(3, received.get().getFills());
 		RecordedRequest recorded = server.takeRequest();
 		assertEquals("POST", recorded.getMethod());
-		assertEquals("/api/plugin/ge-events", recorded.getPath());
+		assertEquals("/api/plugin/offer-states", recorded.getPath());
 		assertEquals("Bearer " + TOKEN, recorded.getHeader("Authorization"));
-		String body = recorded.getBody().readUtf8();
-		assertTrue(body.contains("\"account_hash\":\"acct-1\""));
-		assertTrue(body.contains("\"idempotency_key\""));
-		assertTrue(body.contains("\"price_each\":1480000000"));
-		assertTrue(body.contains("\"occurred_at\":\"2026-07-05T12:00:00Z\""));
+		JsonObject body = new Gson().fromJson(recorded.getBody().readUtf8(), JsonObject.class);
+		assertEquals("acct-1", body.get("account_hash").getAsString());
+		JsonArray sent = body.getAsJsonArray("states");
+		assertEquals(2, sent.size());
+		JsonObject first = sent.get(0).getAsJsonObject();
+		assertEquals(7, first.get("seq").getAsLong());
+		assertEquals("install-1", first.get("install_id").getAsString());
+		assertEquals(2, first.get("slot").getAsInt());
+		assertEquals("buying", first.get("state").getAsString());
+		assertEquals(20997, first.get("item_id").getAsInt());
+		assertEquals("buy", first.get("side").getAsString());
+		assertEquals(3_000_000_001L, first.get("price_each").getAsLong());
+		assertEquals(10, first.get("quantity_total").getAsInt());
+		assertEquals(4, first.get("quantity_filled").getAsInt());
+		assertEquals(12_000_000_004L, first.get("spent").getAsLong());
+		assertEquals("2026-07-05T12:00:00Z", first.get("observed_at").getAsString());
+		JsonObject empty = sent.get(1).getAsJsonObject();
+		assertEquals("empty", empty.get("state").getAsString());
+		assertEquals(0, empty.get("item_id").getAsInt());
+		assertTrue(!empty.has("side") || empty.get("side").isJsonNull());
 	}
 
+	@Test
+	public void postOfferStatesRetriesATransientFailure() throws Exception {
+		server.enqueue(new MockResponse().setResponseCode(HttpURLConnection.HTTP_UNAVAILABLE));
+		server.enqueue(new MockResponse().setBody("{\"fills\":0}"));
+
+		AtomicReference<OfferStatesResult> received = new AtomicReference<>();
+		CountDownLatch done = new CountDownLatch(1);
+		api.postOfferStates("acct-1", Collections.singletonList(OfferState.builder().slot(0).state("empty").build()),
+				result -> {
+					received.set(result);
+					done.countDown();
+				}, error -> done.countDown());
+
+		assertTrue(done.await(5, TimeUnit.SECONDS));
+		assertEquals(0, received.get().getFills());
+		assertEquals(2, server.getRequestCount());
+	}
 	@Test
 	public void postGeHistorySendsRowsAndAuthenticates() throws Exception {
 		server.enqueue(new MockResponse().setBody("{}"));
