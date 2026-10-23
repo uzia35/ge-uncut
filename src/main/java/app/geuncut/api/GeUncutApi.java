@@ -7,6 +7,7 @@ import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.ItemPrice;
+import app.geuncut.dto.ItemHistory;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
@@ -19,6 +20,8 @@ public interface GeUncutApi {
 	void fetchFlips(ScanRequest request, Consumer<FlipsResponse> onSuccess, Consumer<ApiFailure> onError);
 
 	void fetchItemPrice(int itemId, Consumer<ItemPrice> onSuccess, Consumer<ApiFailure> onError);
+
+	void fetchItemHistory(int itemId, Consumer<ItemHistory> onSuccess, Consumer<ApiFailure> onError);
 
 	void fetchPositions(Consumer<PositionsResponse> onSuccess, Consumer<ApiFailure> onError);
 

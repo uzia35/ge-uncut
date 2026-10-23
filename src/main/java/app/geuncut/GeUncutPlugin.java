@@ -24,6 +24,7 @@ import app.geuncut.dto.ItemPrice;
 import app.geuncut.tracker.OfferAutofill;
 import app.geuncut.tracker.PriceHint;
 import app.geuncut.service.FlipsService;
+import app.geuncut.service.ItemHistoryService;
 import app.geuncut.service.impl.FlipsServiceImpl;
 import app.geuncut.service.impl.LinkServiceImpl;
 import app.geuncut.service.impl.OfferStateSyncServiceImpl;
@@ -48,12 +49,16 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.PostClientTick;
+import net.runelite.api.events.ScriptPostFired;
+import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.FontID;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOfferState;
+import net.runelite.api.ScriptID;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.ItemComposition;
 import net.runelite.api.VarClientStr;
@@ -118,6 +123,9 @@ public class GeUncutPlugin extends Plugin {
 	private GeUncutApi api;
 
 	@Inject
+	private ItemHistoryService itemHistory;
+
+	@Inject
 	private GeUncutConfig config;
 
 	@Inject
@@ -164,7 +172,14 @@ public class GeUncutPlugin extends Plugin {
 	private final MouseListener offerMouseListener = new MouseAdapter() {
 		@Override
 		public MouseEvent mousePressed(MouseEvent event) {
-			if (overlayIconItemId > 0 && offerOverlay.isDetailsClick(event.getPoint())) {
+			if (event.getButton() != MouseEvent.BUTTON1) {
+				return event;
+			}
+			if (offerOverlay.handleChartClick(event.getPoint(), itemHistory::retry)) {
+				event.consume();
+				return event;
+			}
+			if (overlayIconItemId > 0 && offerOverlay.isWebsiteClick(event.getPoint())) {
 				openItem(overlayIconItemId);
 				event.consume();
 			}
@@ -173,13 +188,22 @@ public class GeUncutPlugin extends Plugin {
 
 		@Override
 		public MouseEvent mouseMoved(MouseEvent event) {
+			offerOverlay.setMouse(event.getPoint());
 			offerOverlay.setDetailsHover(offerOverlay.isDetailsClick(event.getPoint()));
 			return event;
 		}
 
 		@Override
 		public MouseEvent mouseDragged(MouseEvent event) {
+			offerOverlay.setMouse(event.getPoint());
 			offerOverlay.setDetailsHover(offerOverlay.isDetailsClick(event.getPoint()));
+			return event;
+		}
+
+		@Override
+		public MouseEvent mouseExited(MouseEvent event) {
+			offerOverlay.setMouse(null);
+			offerOverlay.setDetailsHover(false);
 			return event;
 		}
 	};
@@ -305,6 +329,11 @@ public class GeUncutPlugin extends Plugin {
 		if (!GeUncutConfig.GROUP.equals(event.getGroup())) {
 			return;
 		}
+		if ("showItemChart".equals(event.getKey())) {
+			// Apply on the client thread immediately, without waiting for a server tick.
+			clientThread.invoke(this::refreshSelectedItem);
+			return;
+		}
 		if ("autoFillOffers".equals(event.getKey()) || "offerAdjustPercent".equals(event.getKey())) {
 			FlipsPanel target = panel;
 			SwingUtilities.invokeLater(
@@ -331,6 +360,7 @@ public class GeUncutPlugin extends Plugin {
 		offerSync.stop();
 		overlayManager.remove(offerOverlay);
 		mouseManager.unregisterMouseListener(offerMouseListener);
+		itemHistory.clear();
 		offerOverlay.clear();
 		clientToolbar.removeNavigation(navButton);
 		clientThread.invoke(() -> {
@@ -344,6 +374,7 @@ public class GeUncutPlugin extends Plugin {
 		GameState current = event.getGameState();
 		if (current == GameState.LOGIN_SCREEN || current == GameState.HOPPING
 				|| current == GameState.CONNECTION_LOST) {
+			clearOffer();
 			offerReplayPending = true;
 		}
 		if (current == GameState.LOGIN_SCREEN || current == GameState.HOPPING) {
@@ -410,42 +441,103 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	@Subscribe
-	public void onGameTick(GameTick event) {
-		if (!config.autoFillOffers()) {
+	public void onScriptPostFired(ScriptPostFired event) {
+		if (event.getScriptId() == ScriptID.GE_OFFERS_SETUP_BUILD
+				|| event.getScriptId() == ScriptID.GE_ITEM_SEARCH) {
+			refreshSelectedItem();
+		}
+	}
+
+	@Subscribe
+	public void onPostClientTick(PostClientTick event) {
+		// Selection and widget visibility can change between server ticks. Read the
+		// completed client frame so Back/Close never leaves another item's chart up.
+		refreshSelectedItem();
+	}
+
+	@Subscribe
+	public void onWidgetClosed(WidgetClosed event) {
+		if (event.getGroupId() == InterfaceID.GE_OFFERS) {
 			clearOffer();
+		}
+	}
+
+	private int selectedGeItem() {
+		if (client.getGameState() != GameState.LOGGED_IN) {
+			return -1;
+		}
+		Widget window = client.getWidget(InterfaceID.GeOffers.UNIVERSE);
+		Widget setup = client.getWidget(InterfaceID.GeOffers.SETUP);
+		Widget search = client.getWidget(ComponentID.CHATBOX_GE_SEARCH_RESULTS);
+		if (window == null || window.isHidden() || setup == null || setup.isHidden()
+				|| (search != null && !search.isHidden())) {
+			return -1;
+		}
+		return client.getVarpValue(VarPlayer.CURRENT_GE_ITEM);
+	}
+
+	private boolean pricePromptVisible() {
+		Widget title = client.getWidget(ComponentID.CHATBOX_TITLE);
+		return title != null && !title.isHidden()
+				&& OfferAutofill.promptKind(title.getText()) == OfferAutofill.Prompt.PRICE
+				&& client.getWidget(ComponentID.CHATBOX_CONTAINER) != null;
+	}
+
+	private void refreshSelectedItem() {
+		int itemId = selectedGeItem();
+		if (itemId <= 0) {
+			clearOffer();
+			return;
+		}
+		boolean showTips = config.autoFillOffers() && pricePromptVisible();
+		if (!showTips) {
+			clearPriceTips();
+		}
+		if (!config.showItemChart()) {
+			clearItemDetails();
+			return;
+		}
+		if (offerOverlay.isDismissed(itemId)) {
+			itemHistory.clear();
+			return;
+		}
+		ItemPrice market = marketPrice(itemId);
+		if (overlayIconItemId != itemId) {
+			overlayIconItemId = itemId;
+			overlayIcon = itemManager.getImage(itemId);
+		}
+		offerOverlay.show(itemId, market, itemName(itemId), overlayIcon, itemHistory.select(itemId));
+	}
+
+	@Subscribe
+	public void onGameTick(GameTick event) {
+		refreshSelectedItem();
+		if (!config.autoFillOffers()) {
+			clearPriceTips();
 			return;
 		}
 		Widget title = client.getWidget(ComponentID.CHATBOX_TITLE);
 		if (title == null || title.isHidden()) {
-			clearOffer();
+			clearPriceTips();
 			return;
 		}
 		OfferAutofill.Prompt kind = OfferAutofill.promptKind(title.getText());
 		if (kind != OfferAutofill.Prompt.PRICE) {
-			clearOffer();
+			clearPriceTips();
 			return;
 		}
-		int itemId = client.getVarpValue(VarPlayer.CURRENT_GE_ITEM);
+		int itemId = selectedGeItem();
 		if (itemId <= 0) {
 			clearOffer();
 			return;
 		}
 		Widget container = client.getWidget(ComponentID.CHATBOX_CONTAINER);
 		if (container == null) {
-			clearOffer();
+			clearPriceTips();
 			return;
 		}
 		boolean sell = client.getVarbitValue(Varbits.GE_OFFER_CREATION_TYPE) == 1;
 		ItemPrice market = marketPrice(itemId);
-		if (market != null && PriceHint.hasPrices(market)) {
-			if (overlayIconItemId != itemId) {
-				overlayIconItemId = itemId;
-				overlayIcon = itemManager.getImage(itemId);
-			}
-			offerOverlay.show(market, itemName(itemId), overlayIcon);
-		} else {
-			offerOverlay.clear();
-		}
 		String promptKey = itemId + ":" + sell + ":" + kind;
 		if (promptKey.equals(lastAutofillPrompt)
 				&& !offerLines.isEmpty() && offerLinesAttached(container)) {
@@ -485,10 +577,20 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void clearOffer() {
+		clearPriceTips();
+		clearItemDetails();
+	}
+
+	private void clearItemDetails() {
+		itemHistory.clear();
+		overlayIconItemId = -1;
+		overlayIcon = null;
+		offerOverlay.clear();
+	}
+
+	private void clearPriceTips() {
 		hideOfferLine();
 		lastAutofillPrompt = null;
-		overlayIconItemId = -1;
-		offerOverlay.clear();
 	}
 
 	private ItemPrice marketPrice(int itemId) {

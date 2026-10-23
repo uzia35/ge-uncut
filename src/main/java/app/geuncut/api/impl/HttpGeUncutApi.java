@@ -18,6 +18,7 @@ import app.geuncut.dto.FlipsResponse;
 import app.geuncut.dto.GeHistoryRow;
 import app.geuncut.dto.GeOffer;
 import app.geuncut.dto.ItemPrice;
+import app.geuncut.dto.ItemHistory;
 import app.geuncut.dto.LinkSession;
 import app.geuncut.dto.Movers;
 import app.geuncut.dto.OfferPlacement;
@@ -131,6 +132,23 @@ public class HttpGeUncutApi implements GeUncutApi {
 				return;
 			}
 			onSuccess.accept(gson.fromJson(items.get(0), ItemPrice.class));
+		});
+	}
+
+	@Override
+	public void fetchItemHistory(int itemId, Consumer<ItemHistory> onSuccess, Consumer<ApiFailure> onError) {
+		HttpUrl url = resolve("/api/market/items/" + itemId);
+		if (url == null) {
+			onError.accept(ApiFailure.network("Invalid geuncut.app URL"));
+			return;
+		}
+		enqueue(new Request.Builder().url(url).get().build(), onError, body -> {
+			JsonObject parsed = gson.fromJson(body, JsonObject.class);
+			if (parsed == null || !parsed.has("intraday_candles") || !parsed.get("intraday_candles").isJsonArray()
+					|| !parsed.has("daily_candles") || !parsed.get("daily_candles").isJsonArray()) {
+				throw new JsonParseException("Missing item candle arrays");
+			}
+			onSuccess.accept(gson.fromJson(parsed, ItemHistory.class));
 		});
 	}
 
