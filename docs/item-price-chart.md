@@ -3,8 +3,8 @@
 `OfferPriceOverlay` shows a compact summary when a player selects an item from
 GE search and its setup appears. Opening the price-entry prompt is not required.
 The summary retains the item sprite, Buy/Sell prices, quote ages, and separate
-volume counts. One full-width **Show chart** button reveals history below the
-unchanged summary; **Hide chart** hides only that section. There is no Details
+volume counts. One full-width **Show chart** button enlarges the whole popup
+and reveals history below the summary; **Hide chart** restores the small summary. There is no Details
 tab or website button in the popup.
 
 **Show GE item details** controls the whole popup and defaults to enabled. It
@@ -65,8 +65,13 @@ The chart renders native antialiased Java2D text, lines and volume bars. The
 summary reuses the production popup's small font, six-pixel padding and 36x32
 sprite column. Width follows content with a 232-pixel minimum. The full-width
 chart control uses 12-point bold text and a 28-pixel hit area: usual collapsed
-height is 104 pixels and expanded height 294. Width and summary stay unchanged
-when expanded. The background retains 220/255 opacity; text and plots are
+height is 104 pixels. Expansion targets 480x420 logical pixels, retaining the
+summary's typography and fields while giving the plot substantially more space.
+The popup shrinks and repositions within the game viewport with a six-pixel
+margin (480x322 in the 512x334 fixed viewport). Both paint and mouse bounds are
+corrected on the first expanded/resized frame, before the host has the new size.
+Viewport and input coordinates remain logical pixels; host DPI/stretch transforms
+are preserved. The background retains 220/255 opacity; text and plots are
 opaque. All controls have matching logical paint/hit bounds and visible hover
 and active states. The sprite uses `ItemManager.getImage` and stays associated
 with its selection. Time tick spacing and exact hover values fit available space.
@@ -80,6 +85,7 @@ they may modify launcher settings.
 Tests cover HTTP parsing, side mapping, missing/zero/large values, all ranges,
 local midnight and DST, daily source dates, stale responses, repeated selections,
 retries, display without a price prompt, close/reset, master toggle, X, volume
-retention, hidden hit targets, and native layouts at 100%/125% scale. Headless
+retention, hidden hit targets, expansion/collapse at viewport edges and resize,
+and native layouts at 100%/125% and nonuniform stretched scale. Headless
 renders exercise the actual component; live placement and stretched-mode input
 still require user testing.

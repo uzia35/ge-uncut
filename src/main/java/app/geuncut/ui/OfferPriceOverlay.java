@@ -33,6 +33,9 @@ public class OfferPriceOverlay extends Overlay {
 	private static final Color AGO = new Color(0xD7DCE1);
 	private static final int PAD = 6;
 	private static final int LOGO_SIZE = 16;
+	private static final int EXPANDED_WIDTH = 480;
+	private static final int EXPANDED_HEIGHT = 420;
+	private Rectangle viewport;
 
 	private final BufferedImage logo = ImageUtil.loadImageResource(OfferPriceOverlay.class, "/geuncut_icon.png");
 	private volatile ItemPrice price;
@@ -130,6 +133,26 @@ public class OfferPriceOverlay extends Overlay {
 		mouse = point == null ? null : new Point(point);
 	}
 
+	/** RuneLite viewport and mouse coordinates are logical game pixels, before host scaling. */
+	public synchronized void setViewport(Rectangle viewport) {
+		this.viewport = viewport == null || viewport.isEmpty() ? null : new Rectangle(viewport);
+	}
+
+	@Override
+	public synchronized Rectangle getParentBounds() {
+		return viewport == null ? null : new Rectangle(viewport);
+	}
+
+	static Rectangle fitToViewport(Rectangle requested, Rectangle viewport) {
+		if (viewport == null || viewport.isEmpty()) { return new Rectangle(requested); }
+		int margin = Math.min(PAD, Math.min(viewport.width, viewport.height) / 4);
+		int width = Math.min(requested.width, viewport.width - margin * 2);
+		int height = Math.min(requested.height, viewport.height - margin * 2);
+		int x = Math.max(viewport.x + margin, Math.min(requested.x, viewport.x + viewport.width - margin - width));
+		int y = Math.max(viewport.y + margin, Math.min(requested.y, viewport.y + viewport.height - margin - height));
+		return new Rectangle(x, y, width, height);
+	}
+
 	/** Dismissal belongs to this selection, not a persistent setting or another item. */
 	public synchronized boolean isDismissed(int selectedItemId) {
 		return dismissed && itemId == selectedItemId;
@@ -173,15 +196,26 @@ public class OfferPriceOverlay extends Overlay {
 		ItemChartData.Point volumePoint = ItemChartData.latest(history, range);
 		String[] volumes = topVolumeValues(volumePoint, history == null ? Status.LOADING : history.getStatus());
 		for (int i = 0; i < volumes.length; i++) { volumes[i] = volumes[i].replace(" items", ""); }
-		int volumeX = Math.max(textX + Math.min(180, metrics.stringWidth(name)),
+		int minimumVolumeX = Math.max(textX + Math.min(180, metrics.stringWidth(name)),
 				valueX + Math.max(metrics.stringWidth(buyValue), metrics.stringWidth(sellValue))) + 10;
 		int volumeWidth = Math.max(metrics.stringWidth("Volume"),
 				Math.max(metrics.stringWidth(volumes[0]), metrics.stringWidth(volumes[1])));
-		// Keep short, cheap items wide enough for the same accordion controls and chart.
-		int width = Math.max(232, volumeX + volumeWidth + PAD);
+		int summaryWidth = Math.max(232, minimumVolumeX + volumeWidth + PAD);
+		Rectangle overlayBounds = getBounds();
+		Rectangle fitted = fitToViewport(new Rectangle(overlayBounds.x, overlayBounds.y,
+				expanded ? Math.max(EXPANDED_WIDTH, summaryWidth) : summaryWidth,
+				expanded ? EXPANDED_HEIGHT : summaryHeight), viewport);
+		int width = fitted.width;
+		int height = fitted.height;
+		// Host placement uses the previous frame's size. Correct expansion/resize now,
+		// and update those same bounds so mouse hits match the translated paint immediately.
+		g.translate(fitted.x - overlayBounds.x, fitted.y - overlayBounds.y);
+		overlayBounds.setLocation(fitted.getLocation());
+		g.clipRect(0, 0, width, height);
+		int volumeX = width - PAD - volumeWidth;
 		int rangeY = summaryHeight + 4;
-		Rectangle chartArea = new Rectangle(PAD, rangeY + 26, width - 2 * PAD, 154);
-		int height = expanded ? chartArea.y + chartArea.height + PAD : summaryHeight;
+		Rectangle chartArea = new Rectangle(PAD, rangeY + 26, width - 2 * PAD,
+				Math.max(0, height - rangeY - 26 - PAD));
 		g.setColor(new Color(20, 20, 22, 220));
 		g.fillRoundRect(0, 0, width, height, 7, 7);
 		g.setColor(new Color(90, 96, 108, 180));
@@ -216,9 +250,11 @@ public class OfferPriceOverlay extends Overlay {
 			rangeBounds.put(option, bounds);
 			button(g, bounds, option.label, option == range);
 		}
-		chart.render(g, chartArea, history, range, mouse == null ? null : localPoint(mouse));
+		if (chartArea.height >= 110) {
+			chart.render(g, chartArea, history, range, mouse == null ? null : localPoint(mouse));
+		}
 		if (history != null && history.getStatus() == Status.ERROR) {
-			retryBounds = new Rectangle(width / 2 - 50, chartArea.y + 85, 100, 23);
+			retryBounds = new Rectangle(width / 2 - 50, chartArea.y + Math.min(85, Math.max(0, chartArea.height - 23)), 100, 23);
 			button(g, retryBounds, "Retry", false);
 		}
 		return new Dimension(width, height);

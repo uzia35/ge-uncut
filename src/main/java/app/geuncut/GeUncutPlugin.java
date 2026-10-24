@@ -477,6 +477,8 @@ public class GeUncutPlugin extends Plugin {
 	}
 
 	private void refreshSelectedItem() {
+		offerOverlay.setViewport(new java.awt.Rectangle(client.getViewportXOffset(), client.getViewportYOffset(),
+				client.getViewportWidth(), client.getViewportHeight()));
 		int itemId = selectedGeItem();
 		if (itemId <= 0) {
 			clearOffer();

@@ -42,11 +42,11 @@ public class OfferPriceOverlayChartTest {
 		assertTrue(ranges(overlay).isEmpty());
 		openChart(overlay);
 		BufferedImage expanded = paint(overlay);
-		assertEquals(collapsed.getWidth(), expanded.getWidth());
-		assertEquals(294, expanded.getHeight());
+		assertEquals(480, expanded.getWidth());
+		assertEquals(420, expanded.getHeight());
 		assertTrue(ranges(overlay).get(Range.DAY).x > 70);
 		Rectangle button = (Rectangle) field(overlay, "expandBounds");
-		assertEquals(collapsed.getWidth() - 12, button.width);
+		assertEquals(expanded.getWidth() - 12, button.width);
 		assertEquals(28, button.height);
 		assertEquals(false, Arrays.stream(OfferPriceOverlay.class.getDeclaredFields())
 				.anyMatch(field -> field.getName().equals("detailsBounds") || field.getName().equals("detailsOpen")));
@@ -59,7 +59,7 @@ public class OfferPriceOverlayChartTest {
 		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, DATA));
 		openChart(overlay);
 		BufferedImage image = paint(overlay);
-		assertTrue(image.getHeight() < 334);
+		assertEquals(420, image.getHeight());
 		assertTrue(image.getWidth() <= 512);
 		overlay.getBounds().setLocation(43, 27);
 		for (Range range : Range.values()) {
@@ -127,7 +127,7 @@ public class OfferPriceOverlayChartTest {
 		openChart(overlay);
 		overlay.setMouse(new Point(280, 170));
 		BufferedImage image = paint(overlay);
-		assertTrue(image.getHeight() < 334);
+		assertEquals(420, image.getHeight());
 		assertTrue(image.getWidth() <= 512);
 	}
 
@@ -148,11 +148,9 @@ public class OfferPriceOverlayChartTest {
 		assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail()));
 		assertTrue(ranges(overlay).isEmpty());
 		BufferedImage expanded = paint(overlay);
-		assertEquals(compact.getWidth(), expanded.getWidth());
-		assertEquals(294, expanded.getHeight());
-		for (int y = 0; y < 68; y++) {
-			for (int x = 0; x < compact.getWidth(); x++) { assertEquals(compact.getRGB(x, y), expanded.getRGB(x, y)); }
-		}
+		assertEquals(480, expanded.getWidth());
+		assertEquals(420, expanded.getHeight());
+		assertTrue(expanded.getWidth() >= compact.getWidth() * 1.5);
 		Point oldRangeTarget = center(overlay, ranges(overlay).get(Range.YEAR));
 		overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.WEEK)), id -> fail());
 		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, DATA));
@@ -192,7 +190,7 @@ public class OfferPriceOverlayChartTest {
 				BufferedImage clean = paint(overlay);
 				overlay.setMouse(new Point(170, 177));
 				BufferedImage priceHover = paint(overlay);
-				overlay.setMouse(new Point(170, 259));
+				overlay.setMouse(new Point(170, 390));
 				BufferedImage volumeHover = paint(overlay);
 				for (int y = 0; y < clean.getHeight(); y++) {
 					for (int x = 0; x < clean.getWidth(); x++) {
@@ -257,7 +255,7 @@ public class OfferPriceOverlayChartTest {
 		assertFalse(overlay.handleChartClick(hide, id -> fail()));
 		// Ordinary same-item refreshes cannot undo the dismissal.
 		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, DATA));
-		Graphics2D g = new BufferedImage(600, 400, BufferedImage.TYPE_INT_ARGB).createGraphics();
+		Graphics2D g = new BufferedImage(800, 650, BufferedImage.TYPE_INT_ARGB).createGraphics();
 		try { assertNull(overlay.render(g)); } finally { g.dispose(); }
 		overlay.clear();
 		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, DATA));
@@ -265,8 +263,78 @@ public class OfferPriceOverlayChartTest {
 		assertEquals(104, paint(overlay).getHeight());
 	}
 
+	@Test
+	public void expandedWindowFitsViewportEdgesOnFirstFrameWithScaledPaintAndHits() throws Exception {
+		for (Rectangle viewport : new Rectangle[] {new Rectangle(4, 4, 512, 334),
+				new Rectangle(25, 40, 960, 700), new Rectangle(10, 20, 360, 330)}) {
+			for (double[] scale : new double[][] {{1, 1}, {1.25, 1.25}, {2, 1.5}}) {
+				OfferPriceOverlay overlay = new OfferPriceOverlay();
+				overlay.setViewport(viewport);
+				overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, DATA));
+				Point corner = new Point(viewport.x + viewport.width - 40, viewport.y + viewport.height - 30);
+				paintAt(overlay, corner, scale);
+				int collapsedWidth = overlay.getBounds().width;
+				assertEquals(104, overlay.getBounds().height);
+				assertTrue(viewport.contains(overlay.getBounds()));
+				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail()));
+				// RuneLite clamps using the preceding frame's dimensions; the render must
+				// correct its current size before painting, without a clipped transition frame.
+				BufferedImage image = paintAt(overlay, corner, scale);
+				Rectangle bounds = overlay.getBounds();
+				assertEquals(Math.min(480, viewport.width - 12), bounds.width);
+				assertEquals(Math.min(420, viewport.height - 12), bounds.height);
+				assertTrue(viewport.contains(bounds));
+				assertTrue(bounds.width > collapsedWidth);
+				assertEquals(220, image.getRGB((int) ((bounds.x + 3) * scale[0]),
+						(int) ((bounds.y + 35) * scale[1])) >>> 24);
+				assertTrue(overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.DAY)), id -> fail()));
+				assertEquals(Range.DAY, field(overlay, "range"));
+				Point oldRange = center(overlay, ranges(overlay).get(Range.YEAR));
+				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail()));
+				paintAt(overlay, corner, scale);
+				assertEquals(collapsedWidth, overlay.getBounds().width);
+				assertEquals(104, overlay.getBounds().height);
+				assertTrue(ranges(overlay).isEmpty());
+				assertFalse(overlay.handleChartClick(oldRange, id -> fail()));
+				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "closeBounds")), id -> fail()));
+				assertTrue(overlay.isDismissed(536));
+			}
+		}
+	}
+
+	@Test
+	public void viewportResizeRepositionsExpandedPopupAndKeepsControlsInside() throws Exception {
+		OfferPriceOverlay overlay = new OfferPriceOverlay();
+		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, DATA));
+		openChart(overlay);
+		overlay.setViewport(new Rectangle(10, 20, 400, 334));
+		paintAt(overlay, new Point(700, 500), new double[] {1, 1});
+		assertEquals(new Rectangle(16, 26, 388, 322), overlay.getBounds());
+		Rectangle returned = overlay.getParentBounds();
+		returned.setSize(1, 1);
+		assertEquals(400, overlay.getParentBounds().width);
+		for (Rectangle button : ranges(overlay).values()) {
+			assertTrue(new Rectangle(0, 0, 388, 322).contains(button));
+		}
+		assertTrue(new Rectangle(0, 0, 388, 322).contains((Rectangle) field(overlay, "closeBounds")));
+	}
+
+	private static BufferedImage paintAt(OfferPriceOverlay overlay, Point origin, double[] scale) {
+		BufferedImage image = new BufferedImage(2200, 1500, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = image.createGraphics();
+		try {
+			g.scale(scale[0], scale[1]);
+			g.translate(origin.x, origin.y);
+			overlay.getBounds().setLocation(origin);
+			Dimension size = overlay.render(g);
+			assertNotNull(size);
+			overlay.getBounds().setSize(size);
+		} finally { g.dispose(); }
+		return image;
+	}
+
 	static BufferedImage paint(OfferPriceOverlay overlay) {
-		BufferedImage image = new BufferedImage(600, 400, BufferedImage.TYPE_INT_ARGB);
+		BufferedImage image = new BufferedImage(800, 650, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g = image.createGraphics();
 		Dimension size;
 		try { size = overlay.render(g); } finally { g.dispose(); }

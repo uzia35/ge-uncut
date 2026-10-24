@@ -73,6 +73,20 @@ public class ItemChartIntegrationTest {
 	}
 
 	@Test
+	public void selectionAndClientFramesSupplyLogicalViewportBounds() {
+		when(client.getViewportXOffset()).thenReturn(4);
+		when(client.getViewportYOffset()).thenReturn(4);
+		when(client.getViewportWidth()).thenReturn(512);
+		when(client.getViewportHeight()).thenReturn(334);
+		select();
+		assertEquals(new java.awt.Rectangle(4, 4, 512, 334), overlay.getParentBounds());
+		when(client.getViewportWidth()).thenReturn(900);
+		when(client.getViewportHeight()).thenReturn(650);
+		frame();
+		assertEquals(new java.awt.Rectangle(4, 4, 900, 650), overlay.getParentBounds());
+	}
+
+	@Test
 	public void selectionDisplaysChartWithoutAPricePromptEvenWithTipsDisabled() throws Exception {
 		when(config.autoFillOffers()).thenReturn(false);
 		select();
