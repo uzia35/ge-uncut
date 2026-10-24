@@ -194,6 +194,40 @@ public class ItemChartDataTest {
 	}
 
 	@Test
+	public void compactHoverKeepsMostOfChartVisibleWithExactPriceAndVolume() {
+		java.awt.Graphics2D g = new java.awt.image.BufferedImage(220, 154,
+				java.awt.image.BufferedImage.TYPE_INT_ARGB).createGraphics();
+		try {
+			ItemHistoryChart.prepare(g);
+			long time = Instant.parse("2026-10-23T01:15:00Z").toEpochMilli();
+			for (Range range : Range.values()) {
+				String stamp = ItemHistoryChart.hoverTime(range, time, java.time.ZoneId.of("America/New_York"));
+				String[] values = ItemHistoryChart.hoverValues(new ItemChartData.Point(time, 3200L, 3286L, 0L, null));
+				int width = ItemHistoryChart.tableContentWidth(g, stamp, values);
+				assertTrue("Normal exact values use two rows", width <= 217);
+				java.awt.Rectangle price = ItemHistoryChart.hoverBounds(100, 40, width, 220, 154);
+				java.awt.Rectangle volume = ItemHistoryChart.hoverBounds(100, 120, width, 220, 154);
+				assertEquals(65, price.height);
+				assertTrue(price.width * price.height < 220 * 154 / 2);
+				assertTrue(price.y > 40);
+				assertEquals(0, volume.y);
+				assertFalse(volume.contains(100, 120));
+				values = ItemHistoryChart.hoverValues(new ItemChartData.Point(time, Long.MAX_VALUE, Long.MAX_VALUE,
+						Long.MAX_VALUE, Long.MAX_VALUE));
+				assertTrue(ItemHistoryChart.tableContentWidth(g, stamp, values) > 217);
+				java.awt.Rectangle fallback = ItemHistoryChart.hoverBounds(100, 40, 400, 220, 154, 73);
+				assertTrue(fallback.height < 154 * 0.55);
+				for (int mouseY = 34; mouseY <= 136; mouseY++) {
+					assertFalse(ItemHistoryChart.hoverBounds(100, mouseY, 400, 220, 154, 73).contains(100, mouseY));
+				}
+				ItemHistoryChart.fitHoverFont(g, stamp, "", values, fallback.width);
+				assertTrue(ItemHistoryChart.hoverContentWidth(g, stamp, "", values) <= fallback.width);
+				g.setFont(ItemHistoryChart.FONT);
+			}
+		} finally { g.dispose(); }
+	}
+
+	@Test
 	public void nativeNarrowTimeAxisChoosesNonoverlappingTicksForAllRanges() {
 		java.awt.Graphics2D g = new java.awt.image.BufferedImage(220, 154,
 				java.awt.image.BufferedImage.TYPE_INT_ARGB).createGraphics();

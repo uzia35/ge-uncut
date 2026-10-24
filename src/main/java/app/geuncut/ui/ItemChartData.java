@@ -11,6 +11,8 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import app.geuncut.dto.ItemHistory;
+import app.geuncut.service.ItemHistoryService.Snapshot;
+import app.geuncut.service.ItemHistoryService.Status;
 import lombok.Value;
 
 /** Calendar windows anchored to the newest observation, like the web item chart. Never fills gaps. */
@@ -50,6 +52,16 @@ public class ItemChartData {
 			try { return Math.addExact(buyVolume, sellVolume); }
 			catch (ArithmeticException overflow) { return null; }
 		}
+	}
+
+	static Point latest(Snapshot snapshot, Range range) {
+		if (snapshot == null || snapshot.getStatus() != Status.READY || snapshot.getHistory() == null) { return null; }
+		ItemChartData data = from(snapshot.getHistory(), range);
+		return data.points.isEmpty() ? null : data.points.get(data.points.size() - 1);
+	}
+
+	static String quantity(Long value) {
+		return value == null ? "Not reported" : String.format(java.util.Locale.ENGLISH, "%,d items", value);
 	}
 
 	public Point nearest(long time) {

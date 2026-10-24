@@ -179,31 +179,24 @@ public class GeUncutPlugin extends Plugin {
 				event.consume();
 				return event;
 			}
-			if (overlayIconItemId > 0 && offerOverlay.isWebsiteClick(event.getPoint())) {
-				openItem(overlayIconItemId);
-				event.consume();
-			}
 			return event;
 		}
 
 		@Override
 		public MouseEvent mouseMoved(MouseEvent event) {
 			offerOverlay.setMouse(event.getPoint());
-			offerOverlay.setDetailsHover(offerOverlay.isDetailsClick(event.getPoint()));
 			return event;
 		}
 
 		@Override
 		public MouseEvent mouseDragged(MouseEvent event) {
 			offerOverlay.setMouse(event.getPoint());
-			offerOverlay.setDetailsHover(offerOverlay.isDetailsClick(event.getPoint()));
 			return event;
 		}
 
 		@Override
 		public MouseEvent mouseExited(MouseEvent event) {
 			offerOverlay.setMouse(null);
-			offerOverlay.setDetailsHover(false);
 			return event;
 		}
 	};

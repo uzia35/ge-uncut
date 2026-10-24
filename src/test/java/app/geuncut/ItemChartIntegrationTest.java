@@ -259,7 +259,6 @@ public class ItemChartIntegrationTest {
 		assertClosed(); // No client frame or game tick needed after the configuration action.
 		assertEquals(false, get(overlay, "expanded"));
 		assertNull(get(overlay, "expandBounds"));
-		assertNull(get(overlay, "detailsBounds"));
 		assertNull(get(plugin, "overlayIcon"));
 		replies.get(0).accept(empty);
 		frame();

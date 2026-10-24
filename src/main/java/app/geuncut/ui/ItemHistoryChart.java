@@ -102,7 +102,7 @@ final class ItemHistoryChart {
 				marker(g, selectedX, selected.getBuy(), pricePlot, ticks, BUY);
 				marker(g, selectedX, selected.getSell(), pricePlot, ticks, SELL);
 				g.setFont(FONT);
-				hoverCard(g, selected, range, localZone, selectedX, pricePlot.y + 1, area.width, area.height);
+				hoverCard(g, selected, range, localZone, selectedX, local.y, area.width, area.height);
 			}
 		} finally { g.dispose(); }
 	}
@@ -147,7 +147,7 @@ final class ItemHistoryChart {
 
 	static String[] hoverValues(ItemChartData.Point point) {
 		return new String[] {exact(point.getBuy()) + " gp", exact(point.getSell()) + " gp",
-				ItemVolumeDetails.quantity(point.getBuyVolume()), ItemVolumeDetails.quantity(point.getSellVolume())};
+				ItemChartData.quantity(point.getBuyVolume()), ItemChartData.quantity(point.getSellVolume())};
 	}
 
 	static int timeTickCount(Graphics2D g, Range range, long start, ZoneId zone, Rectangle plot, int width) {
@@ -169,7 +169,7 @@ final class ItemHistoryChart {
 		return Math.max(plot.x, Math.min(width - textWidth, x - textWidth / 2));
 	}
 
-	private static final String[] HOVER_LABELS = {"Buy price", "Sell price", "Buy volume", "Sell volume"};
+	private static final String[] HOVER_LABELS = {"Buy", "Sell", "Buy vol.", "Sell vol."};
 
 	static int hoverContentWidth(Graphics2D g, String stamp, String qualifier, String[] values) {
 		int width = Math.max(g.getFontMetrics().stringWidth(stamp), g.getFontMetrics().stringWidth(qualifier)) + 16;
@@ -187,37 +187,65 @@ final class ItemHistoryChart {
 		}
 	}
 
-	static Rectangle hoverBounds(int selectedX, int requestedTop, int contentWidth, int width, int height) {
-		int cardWidth = Math.min(width - 3, Math.max(244, contentWidth));
-		int cardHeight = 126;
+	static Rectangle hoverBounds(int selectedX, int mouseY, int contentWidth, int width, int height) {
+		return hoverBounds(selectedX, mouseY, contentWidth, width, height, 65);
+	}
+
+	static Rectangle hoverBounds(int selectedX, int mouseY, int contentWidth, int width, int height, int cardHeight) {
+		int cardWidth = Math.min(width - 3, Math.max(140, contentWidth));
 		int left = selectedX + 12 + cardWidth <= width - 3 ? selectedX + 12 : Math.max(0, selectedX - 12 - cardWidth);
-		int top = Math.max(0, Math.min(requestedTop, height - cardHeight - 4));
+		// Keep the inspected plot visible: price hover uses the bottom, volume hover the top.
+		int top = mouseY < height / 2 ? Math.max(0, height - cardHeight - 4) : 0;
 		return new Rectangle(left, top, cardWidth, cardHeight);
 	}
 
+	static int tableContentWidth(Graphics2D g, String stamp, String[] values) {
+		int priceWidth = Math.max(g.getFontMetrics().stringWidth("GP"),
+				Math.max(g.getFontMetrics().stringWidth(tableValue(values[0])), g.getFontMetrics().stringWidth(tableValue(values[1]))));
+		int volumeWidth = Math.max(g.getFontMetrics().stringWidth("Volume"),
+				Math.max(g.getFontMetrics().stringWidth(tableValue(values[2])), g.getFontMetrics().stringWidth(tableValue(values[3]))));
+		return Math.max(g.getFontMetrics().stringWidth(stamp) + 16,
+				g.getFontMetrics().stringWidth("Sell") + priceWidth + volumeWidth + 40);
+	}
+
+	private static String tableValue(String value) { return value.replace(" gp", "").replace(" items", ""); }
+
 	private static void hoverCard(Graphics2D g, ItemChartData.Point point, Range range, ZoneId localZone,
-			int selectedX, int requestedTop, int width, int height) {
+			int selectedX, int mouseY, int width, int height) {
 		String stamp = hoverTime(range, point.getTime(), localZone);
-		String qualifier = range.intraday ? "5-minute averages" : "Daily averages";
 		String[] values = hoverValues(point);
-		int contentWidth = hoverContentWidth(g, stamp, qualifier, values);
-		Rectangle card = hoverBounds(selectedX, requestedTop, contentWidth, width, height);
-		fitHoverFont(g, stamp, qualifier, values, card.width);
+		g.setFont(FONT);
+		int contentWidth = tableContentWidth(g, stamp, values);
+		boolean stacked = contentWidth > width - 3;
+		if (stacked) { contentWidth = hoverContentWidth(g, stamp, "", values); }
+		Rectangle card = hoverBounds(selectedX, mouseY, contentWidth, width, height, stacked ? 73 : 65);
+		if (stacked) { fitHoverFont(g, stamp, "", values, card.width); }
 		g.setColor(new Color(0, 0, 0, 80));
 		g.fillRoundRect(card.x + 2, card.y + 3, card.width, card.height, 10, 10);
 		g.setColor(RAISED);
 		g.fillRoundRect(card.x, card.y, card.width, card.height, 10, 10);
 		g.setColor(SELECTED);
 		g.drawRoundRect(card.x, card.y, card.width, card.height, 10, 10);
-		label(g, stamp, card.x + 8, card.y + 17, INK);
-		label(g, qualifier, card.x + 8, card.y + 33, MUTED);
-		g.setColor(BORDER);
-		g.drawLine(card.x + 12, card.y + 77, card.x + card.width - 12, card.y + 77);
-		int[] baselines = {52, 69, 96, 113};
-		for (int i = 0; i < values.length; i++) {
-			label(g, HOVER_LABELS[i], card.x + 8, card.y + baselines[i], i % 2 == 0 ? BUY : SELL);
-			g.setColor(INK);
-			right(g, values[i], card.x + card.width - 8, card.y + baselines[i]);
+		label(g, stamp, card.x + 8, card.y + 13, INK);
+		if (stacked) {
+			for (int i = 0; i < values.length; i++) {
+				label(g, HOVER_LABELS[i], card.x + 8, card.y + 28 + i * 13, i % 2 == 0 ? BUY : SELL);
+				g.setColor(INK);
+				right(g, values[i], card.x + card.width - 8, card.y + 28 + i * 13);
+			}
+		} else {
+			int volumeWidth = Math.max(g.getFontMetrics().stringWidth("Volume"),
+					Math.max(g.getFontMetrics().stringWidth(tableValue(values[2])), g.getFontMetrics().stringWidth(tableValue(values[3]))));
+			int volumeRight = card.x + card.width - 8;
+			int priceRight = volumeRight - volumeWidth - 12;
+			g.setColor(MUTED); right(g, "GP", priceRight, card.y + 28); right(g, "Volume", volumeRight, card.y + 28);
+			for (int i = 0; i < 2; i++) {
+				int baseline = card.y + 43 + i * 15;
+				label(g, i == 0 ? "Buy" : "Sell", card.x + 8, baseline, i == 0 ? BUY : SELL);
+				g.setColor(INK);
+				right(g, tableValue(values[i]), priceRight, baseline);
+				right(g, tableValue(values[i + 2]), volumeRight, baseline);
+			}
 		}
 	}
 
