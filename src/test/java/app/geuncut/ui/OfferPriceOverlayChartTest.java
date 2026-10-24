@@ -29,7 +29,7 @@ public class OfferPriceOverlayChartTest {
 			new ItemHistory.Candle(null, "2026-10-22", 3_020_000_000L, null)));
 
 	@Test
-	public void inexpensiveShortNameItemHasOneLargerFullWidthChartControl() throws Exception {
+	public void inexpensiveShortNameItemHasReadableChartAndWebsiteControls() throws Exception {
 		String now = java.time.Instant.now().toString();
 		ItemHistory history = new ItemHistory(Collections.emptyList(), Collections.singletonList(
 				new ItemHistory.Candle(null, "2026-10-23", 5L, 6L, 0L, 0L)));
@@ -46,11 +46,58 @@ public class OfferPriceOverlayChartTest {
 		assertEquals(420, expanded.getHeight());
 		assertTrue(ranges(overlay).get(Range.DAY).x > 70);
 		Rectangle button = (Rectangle) field(overlay, "expandBounds");
-		assertEquals(expanded.getWidth() - 12, button.width);
+		assertEquals(expanded.getWidth() - 124, button.width);
 		assertEquals(28, button.height);
 		assertEquals(false, Arrays.stream(OfferPriceOverlay.class.getDeclaredFields())
 				.anyMatch(field -> field.getName().equals("detailsBounds") || field.getName().equals("detailsOpen")));
 
+	}
+
+	@Test
+	public void websiteActionUsesRenderedSelectionWithoutChangingChartAndClearsStaleTargets() throws Exception {
+		OfferPriceOverlay overlay = new OfferPriceOverlay();
+		AtomicInteger opened = new AtomicInteger();
+		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.LOADING, null));
+		paint(overlay);
+		overlay.getBounds().setLocation(43, 27);
+		for (int mode = 0; mode < 2; mode++) {
+			BufferedImage normal = paint(overlay);
+			Rectangle website = (Rectangle) field(overlay, "websiteBounds");
+			Rectangle toggle = (Rectangle) field(overlay, "expandBounds");
+			assertEquals(28, website.height);
+			assertFalse(website.intersects(toggle));
+			assertTrue(new Rectangle(0, 0, normal.getWidth(), normal.getHeight()).contains(website));
+			Graphics2D metrics = normal.createGraphics();
+			try {
+				metrics.setFont(ItemHistoryChart.FONT.deriveFont(java.awt.Font.BOLD, 12f));
+				assertTrue(metrics.getFontMetrics().stringWidth("Item details ↗") <= website.width - 8);
+				assertTrue(metrics.getFontMetrics().stringWidth("Show chart ∨") <= toggle.width - 8);
+			} finally { metrics.dispose(); }
+			Point click = center(overlay, website);
+			overlay.setMouse(click);
+			BufferedImage hover = paint(overlay);
+			assertNotEquals(normal.getRGB(website.x + 3, website.y + 8), hover.getRGB(website.x + 3, website.y + 8));
+			assertTrue(overlay.handleChartClick(click, id -> fail("Not a retry"), opened::set));
+			assertEquals(536, opened.get());
+			assertEquals(mode == 1, field(overlay, "expanded"));
+			assertEquals(Range.MONTH, field(overlay, "range"));
+			overlay.setMouse(null);
+			if (mode == 0) { openChart(overlay); }
+		}
+		Point oldClick = center(overlay, (Rectangle) field(overlay, "websiteBounds"));
+		overlay.show(4151, null, "Abyssal whip", null, new Snapshot(4151, Status.ERROR, null));
+		assertNull(field(overlay, "websiteBounds"));
+		assertFalse(overlay.handleChartClick(oldClick, id -> fail(), id -> fail("Stale item target")));
+		paint(overlay);
+		Point newClick = center(overlay, (Rectangle) field(overlay, "websiteBounds"));
+		assertTrue(overlay.handleChartClick(newClick, id -> fail(), opened::set));
+		assertEquals(4151, opened.get());
+		overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "closeBounds")), id -> fail(), id -> fail());
+		assertNull(field(overlay, "websiteBounds"));
+		assertFalse(overlay.handleChartClick(newClick, id -> fail(), id -> fail()));
+		overlay.show(536, null, "Dragon bones", null, null, false);
+		assertNull(field(overlay, "websiteBounds"));
+		assertFalse(overlay.handleChartClick(newClick, id -> fail(), id -> fail()));
 	}
 
 	@Test
@@ -63,14 +110,14 @@ public class OfferPriceOverlayChartTest {
 		assertTrue(image.getWidth() <= 512);
 		overlay.getBounds().setLocation(43, 27);
 		for (Range range : Range.values()) {
-			assertTrue(overlay.handleChartClick(center(overlay, ranges(overlay).get(range)), id -> fail("not a retry")));
+			assertTrue(overlay.handleChartClick(center(overlay, ranges(overlay).get(range)), id -> fail("not a retry"), ignoredWebsite -> fail("Unexpected website action")));
 			assertEquals(range, field(overlay, "range"));
 			paint(overlay);
 		}
 		// Hover cards use the same moved-overlay coordinates as the controls.
 		overlay.setMouse(new Point(43 + 280, 27 + 190));
 		paint(overlay);
-		assertFalse(overlay.handleChartClick(new Point(-1, -1), id -> fail()));
+		assertFalse(overlay.handleChartClick(new Point(-1, -1), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 	}
 
 
@@ -80,7 +127,7 @@ public class OfferPriceOverlayChartTest {
 		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, DATA));
 		openChart(overlay);
 		paint(overlay);
-		overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.YEAR)), id -> fail());
+		overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.YEAR)), id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 		overlay.setMouse(new Point(280, 190));
 		overlay.show(4151, null, "Abyssal whip", null, new Snapshot(536, Status.READY, DATA));
 		assertNull(field(overlay, "history"));
@@ -88,7 +135,7 @@ public class OfferPriceOverlayChartTest {
 		assertEquals(Range.MONTH, field(overlay, "range"));
 		assertTrue(ranges(overlay).isEmpty());
 		overlay.clear();
-		assertFalse(overlay.handleChartClick(new Point(50, 50), id -> fail()));
+		assertFalse(overlay.handleChartClick(new Point(50, 50), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 		Graphics2D g = new BufferedImage(500, 500, BufferedImage.TYPE_INT_ARGB).createGraphics();
 		try { assertNull(overlay.render(g)); } finally { g.dispose(); }
 	}
@@ -103,7 +150,7 @@ public class OfferPriceOverlayChartTest {
 			paint(overlay);
 			if (status == Status.ERROR) {
 				AtomicInteger retry = new AtomicInteger();
-				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "retryBounds")), retry::set));
+				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "retryBounds")), retry::set, ignoredWebsite -> fail("Unexpected website action")));
 				assertEquals(536, retry.get());
 			} else {
 				assertNull(field(overlay, "retryBounds"));
@@ -143,29 +190,29 @@ public class OfferPriceOverlayChartTest {
 		assertEquals(104, compact.getHeight());
 		assertTrue(ranges(overlay).isEmpty());
 		assertNull(field(overlay, "retryBounds"));
-		assertFalse(overlay.handleChartClick(new Point(280, 150), id -> fail()));
+		assertFalse(overlay.handleChartClick(new Point(280, 150), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 		overlay.getBounds().setLocation(43, 27);
-		assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail()));
+		assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 		assertTrue(ranges(overlay).isEmpty());
 		BufferedImage expanded = paint(overlay);
 		assertEquals(480, expanded.getWidth());
 		assertEquals(420, expanded.getHeight());
 		assertTrue(expanded.getWidth() >= compact.getWidth() * 1.5);
 		Point oldRangeTarget = center(overlay, ranges(overlay).get(Range.YEAR));
-		overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.WEEK)), id -> fail());
+		overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.WEEK)), id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, DATA));
 		assertEquals(true, field(overlay, "expanded"));
-		overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail());
+		overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 		assertEquals(Range.WEEK, field(overlay, "range"));
 		assertTrue(ranges(overlay).isEmpty());
-		assertFalse(overlay.handleChartClick(oldRangeTarget, id -> fail()));
+		assertFalse(overlay.handleChartClick(oldRangeTarget, id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 		assertEquals(104, paint(overlay).getHeight());
 		assertTrue(ranges(overlay).isEmpty());
-		overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail());
+		overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 		overlay.show(4151, null, "Abyssal whip", null, new Snapshot(4151, Status.READY, DATA));
 		assertEquals(false, field(overlay, "expanded"));
 		paint(overlay);
-		overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail());
+		overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 		overlay.show(4151, null, "Abyssal whip", null, null, false);
 		assertEquals(false, field(overlay, "expanded"));
 		assertNull(field(overlay, "expandBounds"));
@@ -185,7 +232,7 @@ public class OfferPriceOverlayChartTest {
 		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, history));
 		openChart(overlay);
 			for (Range range : Range.values()) {
-				overlay.handleChartClick(center(overlay, ranges(overlay).get(range)), id -> fail());
+				overlay.handleChartClick(center(overlay, ranges(overlay).get(range)), id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 				overlay.setMouse(null);
 				BufferedImage clean = paint(overlay);
 				overlay.setMouse(new Point(170, 177));
@@ -221,13 +268,13 @@ public class OfferPriceOverlayChartTest {
 			Graphics2D graphics = scaled.createGraphics();
 			try { graphics.scale(1.25, 1.25); overlay.render(graphics); } finally { graphics.dispose(); }
 			assertNotEquals(0, scaled.getRGB((int) ((button.x + 4) * 1.25), (int) ((button.y + 8) * 1.25)));
-			assertTrue(overlay.handleChartClick(click, id -> fail()));
+			assertTrue(overlay.handleChartClick(click, id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 			overlay.setMouse(null);
 			BufferedImage active = paint(overlay);
 			assertNotEquals(normal.getRGB(button.x + 4, button.y + 8), active.getRGB(button.x + 4, button.y + 8));
-			overlay.handleChartClick(click, id -> fail());
+			overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 			paint(overlay);
-			overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail());
+			overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 		}
 	}
 
@@ -244,15 +291,15 @@ public class OfferPriceOverlayChartTest {
 		assertNotEquals(normal.getRGB(close.x + 2, close.y + 2), hover.getRGB(close.x + 2, close.y + 2));
 		openChart(overlay);
 		Point hide = center(overlay, (Rectangle) field(overlay, "expandBounds"));
-		overlay.handleChartClick(hide, id -> fail());
+		overlay.handleChartClick(hide, id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 		assertFalse(overlay.isDismissed(536));
 		assertEquals(104, paint(overlay).getHeight());
-		assertTrue(overlay.handleChartClick(closeClick, id -> fail()));
+		assertTrue(overlay.handleChartClick(closeClick, id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 		assertTrue(overlay.isDismissed(536));
 		assertTrue(ranges(overlay).isEmpty());
 		assertNull(field(overlay, "closeBounds"));
 		assertNull(field(overlay, "expandBounds"));
-		assertFalse(overlay.handleChartClick(hide, id -> fail()));
+		assertFalse(overlay.handleChartClick(hide, id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 		// Ordinary same-item refreshes cannot undo the dismissal.
 		overlay.show(536, null, "Dragon bones", null, new Snapshot(536, Status.READY, DATA));
 		Graphics2D g = new BufferedImage(800, 650, BufferedImage.TYPE_INT_ARGB).createGraphics();
@@ -276,7 +323,7 @@ public class OfferPriceOverlayChartTest {
 				int collapsedWidth = overlay.getBounds().width;
 				assertEquals(104, overlay.getBounds().height);
 				assertTrue(viewport.contains(overlay.getBounds()));
-				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail()));
+				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 				// RuneLite clamps using the preceding frame's dimensions; the render must
 				// correct its current size before painting, without a clipped transition frame.
 				BufferedImage image = paintAt(overlay, corner, scale);
@@ -287,16 +334,16 @@ public class OfferPriceOverlayChartTest {
 				assertTrue(bounds.width > collapsedWidth);
 				assertEquals(220, image.getRGB((int) ((bounds.x + 3) * scale[0]),
 						(int) ((bounds.y + 35) * scale[1])) >>> 24);
-				assertTrue(overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.DAY)), id -> fail()));
+				assertTrue(overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.DAY)), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 				assertEquals(Range.DAY, field(overlay, "range"));
 				Point oldRange = center(overlay, ranges(overlay).get(Range.YEAR));
-				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail()));
+				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 				paintAt(overlay, corner, scale);
 				assertEquals(collapsedWidth, overlay.getBounds().width);
 				assertEquals(104, overlay.getBounds().height);
 				assertTrue(ranges(overlay).isEmpty());
-				assertFalse(overlay.handleChartClick(oldRange, id -> fail()));
-				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "closeBounds")), id -> fail()));
+				assertFalse(overlay.handleChartClick(oldRange, id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
+				assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "closeBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 				assertTrue(overlay.isDismissed(536));
 			}
 		}
@@ -348,7 +395,7 @@ public class OfferPriceOverlayChartTest {
 	private static void openChart(OfferPriceOverlay overlay) throws Exception {
 		paint(overlay);
 		if (!(boolean) field(overlay, "expanded")) {
-			assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail()));
+			assertTrue(overlay.handleChartClick(center(overlay, (Rectangle) field(overlay, "expandBounds")), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 			paint(overlay);
 		}
 	}
@@ -383,10 +430,10 @@ public class OfferPriceOverlayChartTest {
 		Files.createDirectories(Path.of(args[1]));
 		openChart(overlay);
 		for (Range range : Range.values()) {
-			overlay.handleChartClick(center(overlay, ranges(overlay).get(range)), ignored -> {});
+			overlay.handleChartClick(center(overlay, ranges(overlay).get(range)), ignored -> {}, ignoredWebsite -> fail("Unexpected website action"));
 			ImageIO.write(paint(overlay), "png", new File(args[1], "item-" + id + "-" + range.label + ".png"));
 		}
-		overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.MONTH)), ignored -> {});
+		overlay.handleChartClick(center(overlay, ranges(overlay).get(Range.MONTH)), ignored -> {}, ignoredWebsite -> fail("Unexpected website action"));
 		overlay.setMouse(new Point(280, 190));
 		ImageIO.write(paint(overlay), "png", new File(args[1], "item-" + id + "-hover.png"));
 		for (Status status : new Status[] { Status.LOADING, Status.ERROR, Status.READY }) {
