@@ -46,4 +46,10 @@ public interface GeUncutConfig extends Config {
 	default String installId() {
 		return "";
 	}
+
+	// Retain the existing key so saved enabled/disabled preferences survive the clearer label.
+	@ConfigItem(keyName = "showItemChart", name = "Show GE item details", description = "Shows the GE item details popup with prices, volume and an expandable chart. Turn off to hide the entire popup", position = 8)
+	default boolean showItemChart() {
+		return true;
+	}
 }
