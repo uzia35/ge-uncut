@@ -49,6 +49,7 @@ public class OfferPriceOverlay extends Overlay {
 	private Rectangle retryBounds;
 	private boolean expanded;
 	private Rectangle expandBounds;
+	private Rectangle websiteBounds;
 	private boolean dismissed;
 	private Rectangle closeBounds;
 	private Point mouse;
@@ -74,6 +75,7 @@ public class OfferPriceOverlay extends Overlay {
 			mouse = null;
 			expanded = false;
 			expandBounds = null;
+			websiteBounds = null;
 		}
 		this.itemId = itemId;
 		this.price = price;
@@ -91,13 +93,14 @@ public class OfferPriceOverlay extends Overlay {
 		this.retryBounds = null;
 		this.expanded = false;
 		this.expandBounds = null;
+		this.websiteBounds = null;
 		this.mouse = null;
 		this.price = null;
 		this.itemName = null;
 		this.icon = null;
 	}
 
-	public synchronized boolean handleChartClick(Point point, IntConsumer onRetry) {
+	public synchronized boolean handleChartClick(Point point, IntConsumer onRetry, IntConsumer onOpenItem) {
 		if (itemId <= 0 || dismissed) { return false; }
 		Point local = localPoint(point);
 		if (closeBounds != null && closeBounds.contains(local)) {
@@ -107,10 +110,15 @@ public class OfferPriceOverlay extends Overlay {
 			dismissed = true;
 			return true;
 		}
+		if (websiteBounds != null && websiteBounds.contains(local)) {
+			onOpenItem.accept(itemId);
+			return true;
+		}
 		if (expandBounds != null && expandBounds.contains(local)) {
 			expanded = !expanded;
 			rangeBounds.clear();
 			expandBounds = null;
+			websiteBounds = null;
 			retryBounds = null;
 			mouse = null;
 			return true;
@@ -235,8 +243,12 @@ public class OfferPriceOverlay extends Overlay {
 		text(g, "Volume", volumeX, nameBaseline, LABEL);
 		text(g, volumes[0], width - PAD - metrics.stringWidth(volumes[0]), nameBaseline + lineH, VALUE);
 		text(g, volumes[1], width - PAD - metrics.stringWidth(volumes[1]), nameBaseline + lineH * 2, VALUE);
-		expandBounds = new Rectangle(PAD, buttonY, width - 2 * PAD, buttonH);
+		int websiteWidth = 108;
+		expandBounds = new Rectangle(PAD, buttonY, width - 2 * PAD - websiteWidth - 4, buttonH);
+		websiteBounds = new Rectangle(width - PAD - websiteWidth, buttonY, websiteWidth, buttonH);
 		button(g, expandBounds, expanded ? "Hide chart ∧" : "Show chart ∨", expanded,
+				ItemHistoryChart.FONT.deriveFont(java.awt.Font.BOLD, 12f));
+		button(g, websiteBounds, "Item details ↗", false,
 				ItemHistoryChart.FONT.deriveFont(java.awt.Font.BOLD, 12f));
 		rangeBounds.clear();
 		retryBounds = null;

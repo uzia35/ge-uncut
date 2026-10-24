@@ -3,9 +3,11 @@
 `OfferPriceOverlay` shows a compact summary when a player selects an item from
 GE search and its setup appears. Opening the price-entry prompt is not required.
 The summary retains the item sprite, Buy/Sell prices, quote ages, and separate
-volume counts. One full-width **Show chart** button enlarges the whole popup
+volume counts. The **Show chart** button enlarges the whole popup
 and reveals history below the summary; **Hide chart** restores the small summary. There is no Details
-tab or website button in the popup.
+tab in the popup. **Item details ↗** beside the chart control opens the selected
+item's existing `https://geuncut.app/items/{itemId}` page through RuneLite's
+`LinkBrowser`, without changing the chart or requiring account linking.
 
 **Show GE item details** controls the whole popup and defaults to enabled. It
 retains the `showItemChart` configuration key and saved preference. Changes apply
@@ -63,8 +65,8 @@ selection. Loading, empty and error states retain the header.
 
 The chart renders native antialiased Java2D text, lines and volume bars. The
 summary reuses the production popup's small font, six-pixel padding and 36x32
-sprite column. Width follows content with a 232-pixel minimum. The full-width
-chart control uses 12-point bold text and a 28-pixel hit area: usual collapsed
+sprite column. Width follows content with a 232-pixel minimum. The chart and website
+controls use 12-point bold text and a 28-pixel hit area: usual collapsed
 height is 104 pixels. Expansion targets 480x420 logical pixels, retaining the
 summary's typography and fields while giving the plot substantially more space.
 The popup shrinks and repositions within the game viewport with a six-pixel

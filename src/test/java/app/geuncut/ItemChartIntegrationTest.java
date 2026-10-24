@@ -266,7 +266,7 @@ public class ItemChartIntegrationTest {
 		java.awt.Graphics2D graphics = new BufferedImage(600, 400, BufferedImage.TYPE_INT_ARGB).createGraphics();
 		try { overlay.render(graphics); } finally { graphics.dispose(); }
 		java.awt.Rectangle button = (java.awt.Rectangle) get(overlay, "expandBounds");
-		overlay.handleChartClick(new java.awt.Point(button.x + 2, button.y + 2), id -> fail());
+		overlay.handleChartClick(new java.awt.Point(button.x + 2, button.y + 2), id -> fail(), ignoredWebsite -> fail("Unexpected website action"));
 		assertEquals(true, get(overlay, "expanded"));
 		when(config.showItemChart()).thenReturn(false);
 		plugin.onConfigChanged(detailsSettingChanged());
@@ -353,7 +353,7 @@ public class ItemChartIntegrationTest {
 		java.awt.Graphics2D graphics = new BufferedImage(600, 400, BufferedImage.TYPE_INT_ARGB).createGraphics();
 		try { assertNotNull(overlay.render(graphics)); } finally { graphics.dispose(); }
 		java.awt.Rectangle button = (java.awt.Rectangle) get(overlay, "closeBounds");
-		assertTrue(overlay.handleChartClick(new java.awt.Point(button.x + 2, button.y + 2), id -> fail()));
+		assertTrue(overlay.handleChartClick(new java.awt.Point(button.x + 2, button.y + 2), id -> fail(), ignoredWebsite -> fail("Unexpected website action")));
 	}
 
 	private ConfigChanged detailsSettingChanged() {

@@ -175,7 +175,7 @@ public class GeUncutPlugin extends Plugin {
 			if (event.getButton() != MouseEvent.BUTTON1) {
 				return event;
 			}
-			if (offerOverlay.handleChartClick(event.getPoint(), itemHistory::retry)) {
+			if (offerOverlay.handleChartClick(event.getPoint(), itemHistory::retry, GeUncutPlugin.this::openItem)) {
 				event.consume();
 				return event;
 			}
